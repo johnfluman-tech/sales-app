@@ -1143,6 +1143,14 @@ td {
       <div class="nav-item" id="nav-dashboard" data-view="dashboard" onclick="switchView('dashboard')">
         <span class="nav-icon">▦</span> Dashboard
       </div>
+      <div class="nav-item" id="nav-collections" data-view="collections" onclick="switchView('collections')">
+        <span class="nav-icon">💰</span> Collections
+        <span class="nav-badge red" id="badge-collections">—</span>
+      </div>
+      <div class="nav-item" id="nav-contacts" data-view="contacts" onclick="switchView('contacts')">
+        <span class="nav-icon">👥</span> Contacts
+        <span class="nav-badge" id="badge-contacts">—</span>
+      </div>
       <div class="nav-item" id="nav-all" data-view="all" onclick="switchView('all')" style="display:none">
         <span class="nav-icon">⊞</span> All Reps
         <span class="nav-badge" id="badge-all">—</span>
@@ -1629,6 +1637,7 @@ let state = {
   ordersHistoryCache: [], // orders placed by date (for booked calc)
   gpCache: [],            // GP records
   reqsCache: [],          // flat reqs for dashboard counting
+  collectionsNotes: {},   // keyed by customer name — collections-specific notes
   notesByAccount: {},  // keyed by account name
   loading: false,
   accessToken: null,
@@ -1949,11 +1958,13 @@ function switchView(view) {
   document.querySelector(`[data-view="${view}"]`)?.classList.add('active');
 
   const titles = {
-    accounts: 'My Accounts',
-    inactive: 'Inactive Accounts',
-    followup: 'Follow-ups Due',
-    dashboard: 'Dashboard',
-    all: 'All Accounts — All Reps',
+    accounts:    'My Accounts',
+    inactive:    'Inactive Accounts',
+    followup:    'Follow-ups Due',
+    dashboard:   'Dashboard',
+    collections: 'Collections',
+    contacts:    'Contacts',
+    all:         'All Accounts — All Reps',
   };
   document.getElementById('topbar-title').textContent = titles[view] || view;
 
@@ -1964,6 +1975,22 @@ function switchView(view) {
       });
     }
     renderDashboard();
+  } else if (view === 'collections') {
+    if (!state.cacheLoaded) {
+      loadSupplementalData().then(() => {
+        if (state.activeView === 'collections') renderCollectionsView();
+      });
+    } else {
+      renderCollectionsView();
+    }
+  } else if (view === 'contacts') {
+    if (!state.cacheLoaded) {
+      loadSupplementalData().then(() => {
+        if (state.activeView === 'contacts') renderContactsView();
+      });
+    } else {
+      renderContactsView();
+    }
   } else {
     renderAccountsView();
   }
@@ -2845,8 +2872,507 @@ function openInEmail() {
 }
 
 // ══════════════════════════════════════════════════════════
-//  UTILITIES
+//  RENDER — COLLECTIONS VIEW
 // ══════════════════════════════════════════════════════════
+function renderCollectionsView() {
+  const content = document.getElementById('main-content');
+  const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
+
+  // Build collections list from cache, filtered by rep
+  let collList = Object.entries(state.collectionsCache).map(([name, c]) => {
+    const acc = state.accounts.find(a => a.name.trim() === name.trim());
+    return { name, ...c, rep: acc?.rep || '', accObj: acc };
+  }).filter(c => c.balance > 0);
+
+  if (repFilter) collList = collList.filter(c => c.rep === repFilter);
+  collList.sort((a, b) => b.balance - a.balance);
+
+  const totalAR    = collList.reduce((s, c) => s + c.balance, 0);
+  const onHold     = collList.filter(c => c.creditHold === 'Y').length;
+  const highRisk   = collList.filter(c => c.risk?.includes('HIGH')).length;
+  const watchCount = collList.filter(c => c.risk?.includes('WATCH')).length;
+
+  content.innerHTML = `
+    <div style="flex:1;overflow-y:auto;padding:24px" id="collections-main">
+
+      <!-- Summary KPIs -->
+      <div class="dashboard-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+        <div class="stat-card">
+          <div class="stat-label">Total AR Outstanding</div>
+          <div class="stat-value red" style="font-size:22px">$${formatNum(totalAR)}</div>
+          <div class="stat-sub">${collList.length} accounts with balances</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">On Credit Hold</div>
+          <div class="stat-value red">${onHold}</div>
+          <div class="stat-sub">accounts blocked</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">High Risk</div>
+          <div class="stat-value orange">${highRisk}</div>
+          <div class="stat-sub">need immediate action</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Watch</div>
+          <div class="stat-value accent">${watchCount}</div>
+          <div class="stat-sub">monitor closely</div>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+        <button class="filter-btn active" onclick="filterCollections('all',this)">ALL</button>
+        <button class="filter-btn" onclick="filterCollections('hold',this)">ON HOLD</button>
+        <button class="filter-btn" onclick="filterCollections('high',this)">HIGH RISK</button>
+        <button class="filter-btn" onclick="filterCollections('watch',this)">WATCH</button>
+        <input type="text" id="coll-search" placeholder="Search accounts..."
+          oninput="filterCollections('search',null)"
+          style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);
+                 font-family:var(--font-main);font-size:12px;padding:6px 10px;outline:none;margin-left:auto;width:200px">
+      </div>
+
+      <!-- Two-panel layout -->
+      <div style="display:flex;gap:16px;min-height:500px">
+
+        <!-- Account list -->
+        <div id="coll-list" style="width:380px;flex-shrink:0;overflow-y:auto;max-height:700px">
+          ${collList.map(c => {
+            const riskColor = c.risk?.includes('HIGH') ? 'var(--red)' : c.risk?.includes('WATCH') ? 'var(--orange)' : 'var(--accent)';
+            const holdBadge = c.creditHold === 'Y' ? `<span style="background:rgba(192,57,43,0.2);color:var(--red);font-size:9px;font-family:var(--font-mono);padding:2px 5px;margin-left:6px">HOLD</span>` : '';
+            const collNote = state.collectionsNotes[c.name] || {};
+            const hasNote = collNote.note;
+            return `<div class="coll-item" data-name="${escHtml(c.name)}" data-rep="${escHtml(c.rep)}" data-risk="${escHtml(c.risk||'')}"
+              onclick="selectCollectionsAccount('${escHtml(c.name)}')"
+              style="padding:12px 14px;background:var(--navy-light);border:1px solid var(--border);
+                     border-left:3px solid ${riskColor};margin-bottom:6px;cursor:pointer;transition:background 0.15s">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+                <div style="font-weight:500;font-size:13px;flex:1">${escHtml(c.name)}${holdBadge}</div>
+                <div style="font-family:var(--font-mono);font-size:14px;color:${riskColor};margin-left:8px">$${formatNum(c.balance)}</div>
+              </div>
+              <div style="display:flex;gap:12px;font-size:11px;color:var(--text-muted)">
+                <span>Rep: ${escHtml(c.rep)}</span>
+                <span>Limit: $${formatNum(c.credit)}</span>
+                <span>Avg Pay: ${c.avgPay || '—'} days</span>
+              </div>
+              ${hasNote ? `<div style="font-size:10px;color:var(--accent);margin-top:4px;font-style:italic">📝 ${escHtml(collNote.note.slice(0,60))}${collNote.note.length>60?'…':''}</div>` : ''}
+            </div>`;
+          }).join('') || '<div style="color:var(--text-muted);font-size:12px;padding:20px">No accounts with open balances.</div>'}
+        </div>
+
+        <!-- Detail panel -->
+        <div id="coll-detail" style="flex:1;background:var(--navy-light);border:1px solid var(--border);padding:20px;overflow-y:auto;max-height:700px">
+          <div style="color:var(--text-muted);font-size:12px;text-align:center;padding:40px 0">
+            ← Select an account to view details
+          </div>
+        </div>
+
+      </div>
+    </div>`;
+}
+
+function filterCollections(type, btn) {
+  if (btn) {
+    document.querySelectorAll('#collections-main .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  const search = document.getElementById('coll-search')?.value.toLowerCase() || '';
+  document.querySelectorAll('.coll-item').forEach(el => {
+    const name = el.dataset.name?.toLowerCase() || '';
+    const risk = el.dataset.risk?.toLowerCase() || '';
+    const rep  = el.dataset.rep?.toLowerCase() || '';
+    let show = true;
+    if (type === 'hold') show = el.innerHTML.includes('HOLD');
+    if (type === 'high') show = risk.includes('high');
+    if (type === 'watch') show = risk.includes('watch');
+    if (search) show = show && (name.includes(search) || rep.includes(search));
+    el.style.display = show ? '' : 'none';
+  });
+}
+
+function selectCollectionsAccount(name) {
+  document.querySelectorAll('.coll-item').forEach(el => {
+    el.style.background = el.dataset.name === name ? 'var(--navy-mid)' : 'var(--navy-light)';
+  });
+  const c = state.collectionsCache[name] || {};
+  const acc = state.accounts.find(a => a.name.trim() === name.trim());
+  const contacts = (state.contactsCache[name] || []).filter(ct => ct.type === 'AP/Collections');
+  const collNote = state.collectionsNotes[name] || {};
+  const riskColor = c.risk?.includes('HIGH') ? 'var(--red)' : c.risk?.includes('WATCH') ? 'var(--orange)' : 'var(--accent)';
+
+  const detail = document.getElementById('coll-detail');
+  if (!detail) return;
+
+  detail.innerHTML = `
+    <div style="margin-bottom:16px">
+      <div style="font-size:16px;font-weight:600;margin-bottom:4px">${escHtml(name)}</div>
+      <div style="font-size:12px;color:var(--text-muted)">Rep: ${escHtml(acc?.rep||'—')} &nbsp;·&nbsp; Status: ${acc ? statusBadge(acc.status).replace(/<[^>]+>/g,'') : '—'}</div>
+    </div>
+
+    <!-- Balance cards -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+      <div style="background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${riskColor};padding:12px">
+        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">BALANCE</div>
+        <div style="font-size:20px;font-family:var(--font-mono);color:${riskColor}">$${formatNum(c.balance)}</div>
+      </div>
+      <div style="background:var(--navy-mid);border:1px solid var(--border);padding:12px">
+        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">CREDIT LIMIT</div>
+        <div style="font-size:20px;font-family:var(--font-mono)">$${formatNum(c.credit)}</div>
+      </div>
+      <div style="background:var(--navy-mid);border:1px solid var(--border);padding:12px">
+        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">AVG DAYS TO PAY</div>
+        <div style="font-size:20px;font-family:var(--font-mono);color:${(c.avgPay||0)>45?'var(--red)':(c.avgPay||0)>30?'var(--orange)':'var(--green)'}">${c.avgPay||'—'}</div>
+      </div>
+    </div>
+
+    <!-- Credit hold + risk -->
+    ${c.creditHold==='Y' ? `<div style="background:rgba(192,57,43,0.15);border:1px solid var(--red);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--red);font-family:var(--font-mono)">⚠ ACCOUNT ON CREDIT HOLD</div>` : ''}
+    ${c.risk ? `<div style="background:rgba(232,160,32,0.08);border:1px solid var(--border);padding:8px 12px;margin-bottom:12px;font-size:11px;font-family:var(--font-mono);color:${riskColor}">${escHtml(c.risk)}</div>` : ''}
+
+    <!-- AP Contacts -->
+    ${contacts.length ? `
+    <div style="margin-bottom:16px">
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--accent);margin-bottom:8px">AP / COLLECTIONS CONTACTS</div>
+      ${contacts.map(ct => `
+        <div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid var(--accent);margin-bottom:6px;font-size:12px">
+          <div style="font-weight:500">${escHtml(ct.name)}</div>
+          ${ct.title ? `<div style="font-size:11px;color:var(--text-muted)">${escHtml(ct.title)}</div>` : ''}
+          <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
+            ${ct.email ? `<a href="mailto:${escHtml(ct.email)}" style="font-size:11px;color:var(--blue-bright)">✉ ${escHtml(ct.email)}</a>` : ''}
+            ${ct.phone ? `<span style="font-size:11px;color:var(--text-dim)">☎ ${escHtml(ct.phone)}</span>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>` : ''}
+
+    <!-- Collection note from CRM -->
+    ${c.note ? `
+    <div style="margin-bottom:16px">
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:6px">LATEST CRM COLLECTION NOTE</div>
+      <div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);font-size:12px;color:var(--text-dim);line-height:1.5">${escHtml(c.note)}</div>
+    </div>` : ''}
+
+    <!-- Collections follow-up note -->
+    <div style="margin-bottom:16px">
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--accent);margin-bottom:8px">COLLECTIONS NOTE & FOLLOW-UP</div>
+      <select id="coll-status-select" style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:7px 10px;outline:none;margin-bottom:8px">
+        <option value="">— Status —</option>
+        <option value="Contacted" ${collNote.status==='Contacted'?'selected':''}>Contacted</option>
+        <option value="Promised Payment" ${collNote.status==='Promised Payment'?'selected':''}>Promised Payment</option>
+        <option value="Partial Paid" ${collNote.status==='Partial Paid'?'selected':''}>Partial Paid</option>
+        <option value="Disputed" ${collNote.status==='Disputed'?'selected':''}>Disputed</option>
+        <option value="Escalated" ${collNote.status==='Escalated'?'selected':''}>Escalated</option>
+        <option value="Resolved" ${collNote.status==='Resolved'?'selected':''}>Resolved</option>
+      </select>
+      <input type="date" id="coll-promised-date" value="${collNote.promisedDate||''}"
+        placeholder="Promised payment date"
+        style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:7px 10px;outline:none;margin-bottom:8px;box-sizing:border-box">
+      <textarea id="coll-note-text" rows="3" placeholder="Collections note — call outcome, promise details, disputes..."
+        style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:8px 10px;outline:none;resize:vertical;box-sizing:border-box;margin-bottom:8px">${escHtml(collNote.note||'')}</textarea>
+      <button onclick="saveCollectionsNote('${escHtml(name)}')"
+        style="background:var(--blue);border:none;color:white;font-family:var(--font-mono);font-size:11px;padding:8px 16px;cursor:pointer;letter-spacing:0.1em;margin-bottom:12px">
+        SAVE NOTE
+      </button>
+    </div>
+
+    <!-- AI Collections Email -->
+    <div>
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:8px">AI COLLECTIONS EMAIL</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button onclick="generateCollectionsEmail('${escHtml(name)}','gentle')"
+          style="background:var(--navy-mid);border:1px solid var(--border);color:var(--accent);font-family:var(--font-mono);font-size:10px;padding:7px 12px;cursor:pointer;letter-spacing:0.1em">
+          ✦ GENTLE REMINDER
+        </button>
+        <button onclick="generateCollectionsEmail('${escHtml(name)}','firm')"
+          style="background:var(--navy-mid);border:1px solid var(--border);color:var(--orange);font-family:var(--font-mono);font-size:10px;padding:7px 12px;cursor:pointer;letter-spacing:0.1em">
+          ✦ FIRM NOTICE
+        </button>
+        <button onclick="generateCollectionsEmail('${escHtml(name)}','final')"
+          style="background:var(--navy-mid);border:1px solid var(--red);color:var(--red);font-family:var(--font-mono);font-size:10px;padding:7px 12px;cursor:pointer;letter-spacing:0.1em">
+          ✦ FINAL NOTICE
+        </button>
+      </div>
+      <div id="coll-email-fields" style="display:none">
+        <input id="coll-email-subject" type="text" placeholder="Subject"
+          style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:7px 10px;outline:none;margin-bottom:6px;box-sizing:border-box">
+        <textarea id="coll-email-body" rows="8"
+          style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:8px 10px;outline:none;resize:vertical;box-sizing:border-box;margin-bottom:8px"></textarea>
+        <div style="display:flex;gap:8px">
+          <button onclick="copyCollectionsEmail()"
+            style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:10px;padding:7px 12px;cursor:pointer">
+            COPY
+          </button>
+          <button onclick="openCollectionsEmailClient('${escHtml(contacts[0]?.email||'')}')"
+            style="background:var(--blue);border:none;color:white;font-family:var(--font-mono);font-size:10px;padding:7px 12px;cursor:pointer">
+            OPEN IN EMAIL
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function saveCollectionsNote(name) {
+  const note          = document.getElementById('coll-note-text')?.value.trim() || '';
+  const status        = document.getElementById('coll-status-select')?.value || '';
+  const promisedDate  = document.getElementById('coll-promised-date')?.value || '';
+  if (!note && !status && !promisedDate) { showToast('Nothing to save', 'error'); return; }
+  if (!state.collectionsNotes[name]) state.collectionsNotes[name] = {};
+  const timestamp = new Date().toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  const prev = state.collectionsNotes[name].note || '';
+  state.collectionsNotes[name] = {
+    note: note ? `[${timestamp}] ${note}` + (prev ? `\n${prev}` : '') : prev,
+    status,
+    promisedDate,
+  };
+  showToast('Collections note saved ✓', 'success');
+  // Re-render to show updated note on card
+  renderCollectionsView();
+  selectCollectionsAccount(name);
+}
+
+async function generateCollectionsEmail(name, tone) {
+  const c    = state.collectionsCache[name] || {};
+  const acc  = state.accounts.find(a => a.name.trim() === name.trim());
+  const collNote = state.collectionsNotes[name] || {};
+  const toneDesc = tone === 'gentle' ? 'a polite, friendly payment reminder' :
+                   tone === 'firm'   ? 'a firm but professional overdue notice' :
+                                       'a final notice before escalation to collections';
+
+  const prompt = `You are writing ${toneDesc} on behalf of ${acc?.rep || 'our team'} at Intransit Technologies, an industrial parts distributor.
+
+Account: ${name}
+Outstanding balance: $${formatNum(c.balance)}
+Credit limit: $${formatNum(c.credit)}
+Average days to pay: ${c.avgPay || 'unknown'}
+Credit hold: ${c.creditHold === 'Y' ? 'YES — account is on hold' : 'No'}
+Collections status: ${collNote.status || 'Not set'}
+Promised payment date: ${collNote.promisedDate || 'None on record'}
+Recent note: ${collNote.note?.slice(0,200) || 'None'}
+
+Write a ${toneDesc}. Be professional and direct. For gentle: warm but clear. For firm: no-nonsense, deadline-focused. For final: serious, consequence-focused without being threatening.
+
+Return ONLY a JSON object with keys "subject" and "body". No preamble.`;
+
+  try {
+    showToast('Generating email...', 'success');
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+    let parsed;
+    try { parsed = JSON.parse(text.replace(/```json|```/g,'').trim()); }
+    catch(e) {
+      const subMatch = text.match(/"subject"\s*:\s*"([^"]+)"/);
+      const bodyMatch = text.match(/"body"\s*:\s*"([\s\S]+?)"\s*\}/);
+      parsed = { subject: subMatch?.[1] || 'Payment Reminder', body: bodyMatch?.[1]?.replace(/\\n/g,'\n') || text };
+    }
+    document.getElementById('coll-email-fields').style.display = 'block';
+    document.getElementById('coll-email-subject').value = parsed.subject || '';
+    document.getElementById('coll-email-body').value    = parsed.body    || '';
+    showToast('Email generated ✓', 'success');
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+function copyCollectionsEmail() {
+  const subject = document.getElementById('coll-email-subject')?.value || '';
+  const body    = document.getElementById('coll-email-body')?.value    || '';
+  navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
+    .then(() => showToast('Copied ✓', 'success'))
+    .catch(() => showToast('Could not copy', 'error'));
+}
+
+function openCollectionsEmailClient(email) {
+  const subject = encodeURIComponent(document.getElementById('coll-email-subject')?.value || '');
+  const body    = encodeURIComponent(document.getElementById('coll-email-body')?.value    || '');
+  window.open(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`);
+}
+
+// ══════════════════════════════════════════════════════════
+//  RENDER — CONTACTS VIEW
+// ══════════════════════════════════════════════════════════
+function renderContactsView() {
+  const content = document.getElementById('main-content');
+  const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
+
+  // Flatten all contacts with account info
+  let allContacts = [];
+  for (const [accName, contacts] of Object.entries(state.contactsCache)) {
+    const acc = state.accounts.find(a => a.name.trim() === accName.trim());
+    if (repFilter && acc?.rep !== repFilter) continue;
+    contacts.forEach(ct => {
+      allContacts.push({
+        ...ct,
+        accountName: accName,
+        rep: acc?.rep || '',
+        accStatus: acc?.status || '',
+        lastSale: acc?.lastSaleDate || '',
+        daysInactive: acc?.daysInactive || 0,
+        accTotal: acc?.total || 0,
+        isInactiveAcc: acc ? isInactive(acc) : false,
+      });
+    });
+  }
+
+  const totalContacts   = allContacts.length;
+  const withEmail       = allContacts.filter(c => c.email).length;
+  const apContacts      = allContacts.filter(c => c.type === 'AP/Collections').length;
+  const inactiveAccts   = new Set(allContacts.filter(c => c.isInactiveAcc).map(c => c.accountName)).size;
+
+  content.innerHTML = `
+    <div style="flex:1;overflow-y:auto;padding:24px" id="contacts-main">
+
+      <!-- KPIs -->
+      <div class="dashboard-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+        <div class="stat-card">
+          <div class="stat-label">Total Contacts</div>
+          <div class="stat-value accent" style="font-size:22px">${totalContacts}</div>
+          <div class="stat-sub">across all accounts</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Have Email</div>
+          <div class="stat-value green">${withEmail}</div>
+          <div class="stat-sub">${Math.round(withEmail/Math.max(totalContacts,1)*100)}% reachable</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">AP / Collections</div>
+          <div class="stat-value accent">${apContacts}</div>
+          <div class="stat-sub">finance contacts</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">At Inactive Accounts</div>
+          <div class="stat-value orange">${inactiveAccts}</div>
+          <div class="stat-sub">accounts need re-engagement</div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+        <button class="filter-btn active" onclick="filterContactsView('all',this)">ALL</button>
+        <button class="filter-btn" onclick="filterContactsView('purchasing',this)">PURCHASING</button>
+        <button class="filter-btn" onclick="filterContactsView('ap',this)">AP/COLLECTIONS</button>
+        <button class="filter-btn" onclick="filterContactsView('inactive',this)">INACTIVE ACCOUNTS</button>
+        <button class="filter-btn" onclick="filterContactsView('email',this)">HAS EMAIL</button>
+        <input type="text" id="contacts-search" placeholder="Search name, account, email..."
+          oninput="filterContactsView('search',null)"
+          style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);
+                 font-family:var(--font-main);font-size:12px;padding:6px 10px;outline:none;margin-left:auto;width:220px">
+      </div>
+
+      <!-- Sort -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;font-size:11px;color:var(--text-muted)">
+        <span style="font-family:var(--font-mono);font-size:10px">SORT:</span>
+        <button class="filter-btn active" onclick="sortContactsView('account',this)" style="padding:4px 8px;font-size:10px">ACCOUNT</button>
+        <button class="filter-btn" onclick="sortContactsView('name',this)" style="padding:4px 8px;font-size:10px">NAME</button>
+        <button class="filter-btn" onclick="sortContactsView('inactive',this)" style="padding:4px 8px;font-size:10px">MOST INACTIVE</button>
+        <button class="filter-btn" onclick="sortContactsView('value',this)" style="padding:4px 8px;font-size:10px">ACCOUNT VALUE</button>
+        <span style="margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--text-muted)" id="contacts-count">${totalContacts} contacts</span>
+      </div>
+
+      <!-- Contact cards grid -->
+      <div id="contacts-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px">
+        ${allContacts.map(ct => {
+          const statusColor = ct.isInactiveAcc ? 'var(--orange)' : 'var(--green)';
+          const typeColor   = ct.type === 'AP/Collections' ? 'var(--accent)' : 'var(--blue-bright)';
+          const accStatusClean = (ct.accStatus || '').replace(/[🔴🟠⚫🟡]/g,'').trim();
+          return `<div class="contact-card"
+            data-type="${escHtml(ct.type||'')}"
+            data-inactive="${ct.isInactiveAcc?'1':'0'}"
+            data-email="${ct.email?'1':'0'}"
+            data-name="${escHtml((ct.name||'').toLowerCase())}"
+            data-account="${escHtml((ct.accountName||'').toLowerCase())}"
+            data-emailval="${escHtml((ct.email||'').toLowerCase())}"
+            data-days="${ct.daysInactive}"
+            data-value="${ct.accTotal}"
+            style="background:var(--navy-light);border:1px solid var(--border);border-top:2px solid ${typeColor};padding:14px;cursor:pointer;transition:background 0.15s"
+            onclick="selectContactCard(this,'${escHtml(ct.accountName)}')">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+              <div>
+                <div style="font-weight:500;font-size:13px">${escHtml(ct.name||'—')}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:1px">${escHtml(ct.title||'No title')}</div>
+              </div>
+              <span style="font-size:9px;font-family:var(--font-mono);color:${typeColor};background:rgba(0,0,0,0.2);padding:2px 6px;white-space:nowrap">
+                ${ct.type === 'AP/Collections' ? 'AP' : 'BUYER'}
+              </span>
+            </div>
+            <div style="font-size:11px;color:var(--blue-bright);margin-bottom:6px;font-weight:500">${escHtml(ct.accountName)}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+              ${ct.email ? `<a href="mailto:${escHtml(ct.email)}" onclick="event.stopPropagation()" style="font-size:10px;color:var(--blue-bright);text-decoration:none">✉ ${escHtml(ct.email)}</a>` : '<span style="font-size:10px;color:var(--text-muted)">No email</span>'}
+              ${ct.phone ? `<span style="font-size:10px;color:var(--text-muted)">☎ ${escHtml(ct.phone)}</span>` : ''}
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);border-top:1px solid var(--border-light);padding-top:6px">
+              <span style="color:${statusColor}">${ct.isInactiveAcc ? `Inactive ${ct.daysInactive}d` : 'Active'}</span>
+              <span>${escHtml(ct.rep)}</span>
+              <span style="color:var(--accent)">$${formatNum(ct.accTotal)}</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function filterContactsView(type, btn) {
+  if (btn) {
+    document.querySelectorAll('#contacts-main .filter-btn').forEach(b => {
+      if (['ALL','PURCHASING','AP/COLLECTIONS','INACTIVE ACCOUNTS','HAS EMAIL'].includes(b.textContent)) b.classList.remove('active');
+    });
+    btn.classList.add('active');
+  }
+  const search = document.getElementById('contacts-search')?.value.toLowerCase() || '';
+  let count = 0;
+  document.querySelectorAll('.contact-card').forEach(el => {
+    const t        = el.dataset.type?.toLowerCase() || '';
+    const inactive = el.dataset.inactive === '1';
+    const hasEmail = el.dataset.email === '1';
+    const name     = el.dataset.name    || '';
+    const account  = el.dataset.account || '';
+    const email    = el.dataset.emailval|| '';
+    let show = true;
+    if (type === 'purchasing') show = !t.includes('ap');
+    if (type === 'ap')         show = t.includes('ap');
+    if (type === 'inactive')   show = inactive;
+    if (type === 'email')      show = hasEmail;
+    if (search) show = show && (name.includes(search) || account.includes(search) || email.includes(search));
+    el.style.display = show ? '' : 'none';
+    if (show) count++;
+  });
+  const countEl = document.getElementById('contacts-count');
+  if (countEl) countEl.textContent = count + ' contacts';
+}
+
+function sortContactsView(by, btn) {
+  document.querySelectorAll('#contacts-main .filter-btn').forEach(b => {
+    if (['ACCOUNT','NAME','MOST INACTIVE','ACCOUNT VALUE'].includes(b.textContent)) b.classList.remove('active');
+  });
+  btn?.classList.add('active');
+  const grid = document.getElementById('contacts-grid');
+  if (!grid) return;
+  const cards = [...grid.querySelectorAll('.contact-card')];
+  cards.sort((a, b) => {
+    if (by === 'name')     return (a.dataset.name||'').localeCompare(b.dataset.name||'');
+    if (by === 'account')  return (a.dataset.account||'').localeCompare(b.dataset.account||'');
+    if (by === 'inactive') return parseInt(b.dataset.days||0) - parseInt(a.dataset.days||0);
+    if (by === 'value')    return parseFloat(b.dataset.value||0) - parseFloat(a.dataset.value||0);
+    return 0;
+  });
+  cards.forEach(c => grid.appendChild(c));
+}
+
+function selectContactCard(el, accountName) {
+  document.querySelectorAll('.contact-card').forEach(c => c.style.background = 'var(--navy-light)');
+  el.style.background = 'var(--navy-mid)';
+  // Navigate to account detail
+  const acc = state.accounts.find(a => a.name.trim() === accountName.trim());
+  if (acc) {
+    switchView('accounts');
+    setTimeout(() => {
+      state.selectedAccount = acc;
+      renderDetail(acc);
+    }, 100);
+  }
+}
 function statusBadge(status) {
   const s = status || '';
   let cls = 'status-active', label = 'Active';
@@ -2900,10 +3426,15 @@ function updateBadges() {
     return d && d <= today;
   }).length;
 
-  document.getElementById('badge-accounts').textContent = accs.length;
-  document.getElementById('badge-inactive').textContent = inactive;
-  document.getElementById('badge-followup').textContent = due || '0';
-  document.getElementById('badge-all').textContent = accs.length;
+  const collectionsCount = Object.keys(state.collectionsCache).length;
+  const contactsCount    = Object.keys(state.contactsCache).length;
+
+  document.getElementById('badge-accounts').textContent    = accs.length;
+  document.getElementById('badge-inactive').textContent    = inactive;
+  document.getElementById('badge-followup').textContent    = due || '0';
+  document.getElementById('badge-all').textContent         = accs.length;
+  document.getElementById('badge-collections').textContent = collectionsCount || '—';
+  document.getElementById('badge-contacts').textContent    = contactsCount || '—';
 }
 
 // ══════════════════════════════════════════════════════════

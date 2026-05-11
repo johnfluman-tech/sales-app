@@ -1305,20 +1305,21 @@ async function loadSupplementalData() {
     const reqRows = await sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000");
     if (reqRows.length > 1) {
       const hdrs = reqRows[0];
-      const iName = hdrs.indexOf('CUSTOMER_NAME');
-      const iDate = hdrs.indexOf('DATE_ENTERED');
-      const iPart = hdrs.indexOf('PART_NUMBER');
-      const iMfr  = hdrs.indexOf('MANUFACTURER');
-      const iQty  = hdrs.indexOf('QTY');
-      const iPrice= hdrs.indexOf('TARGET_PRICE');
-      const iDesc = hdrs.indexOf('DESCRIPTION');
-      const iClosed=hdrs.indexOf('CLOSED');
+      const iName  = hdrs.indexOf('CUSTOMER_NAME');
+      const iDate  = hdrs.indexOf('DATE_ENTERED');
+      const iPart  = hdrs.indexOf('PART_NUMBER');
+      const iMfr   = hdrs.indexOf('MANUFACTURER');
+      const iQty   = hdrs.indexOf('QTY');
+      const iPrice = hdrs.indexOf('TARGET_PRICE');
+      const iDesc  = hdrs.indexOf('DESCRIPTION');
+      const iClosed= hdrs.indexOf('CLOSED');
+      const iRep   = hdrs.indexOf('SALES_REP');
       for (let r = 1; r < reqRows.length; r++) {
         const row = reqRows[r];
         const key = (row[iName] || '').trim();
         if (!key) continue;
         if (!state.historyCache[key]) state.historyCache[key] = { invoices: [], reqs: [], quotes: [] };
-        state.historyCache[key].reqs.push({
+        const reqObj = {
           date:   row[iDate]  || '',
           part:   row[iPart]  || '',
           mfr:    row[iMfr]   || '',
@@ -1326,7 +1327,11 @@ async function loadSupplementalData() {
           price:  row[iPrice] || '',
           desc:   row[iDesc]  || '',
           closed: row[iClosed]|| '',
-        });
+          rep:    (row[iRep]  || '').trim(),
+        };
+        state.historyCache[key].reqs.push(reqObj);
+        // Also push to flat cache for dashboard counting
+        state.reqsCache.push({ DATE: row[iDate] || '', SALES_REP: (row[iRep] || '').trim() });
       }
     }
 
@@ -1392,6 +1397,17 @@ async function loadSupplementalData() {
     if (orderRows.length > 1) {
       const hdrs = orderRows[0];
       state.ordersCache = orderRows.slice(1).map(r => {
+        const obj = {};
+        hdrs.forEach((h, i) => obj[h] = r[i] || '');
+        return obj;
+      });
+    }
+
+    // Load orders history (dated orders for booked calc)
+    const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A1:H200000");
+    if (ordHistRows.length > 1) {
+      const hdrs = ordHistRows[0];
+      state.ordersHistoryCache = ordHistRows.slice(1).map(r => {
         const obj = {};
         hdrs.forEach((h, i) => obj[h] = r[i] || '');
         return obj;
@@ -1609,8 +1625,10 @@ let state = {
   historyCache: {},       // keyed by customer name
   collectionsCache: {},   // keyed by customer name
   cacheLoaded: false,
-  ordersCache: [],   // open orders
-  gpCache: [],       // GP records
+  ordersCache: [],        // open orders (current backlog)
+  ordersHistoryCache: [], // orders placed by date (for booked calc)
+  gpCache: [],            // GP records
+  reqsCache: [],          // flat reqs for dashboard counting
   notesByAccount: {},  // keyed by account name
   loading: false,
   accessToken: null,
@@ -2444,12 +2462,26 @@ function refreshDashboard() {
   const gp        = gpFiltered.reduce((s,r) => s + parseMoney(r.GP), 0);
   const gpPct     = shipped > 0 ? (gp / shipped * 100) : 0;
 
-  // Filter open orders by rep
-  const ordersFiltered = state.ordersCache.filter(r => {
+  // Booked = orders placed in date range (from _ORDERS_HISTORY)
+  const ordersFiltered = state.ordersHistoryCache.length > 0
+    ? state.ordersHistoryCache.filter(r => {
+        const d = (r.ORDER_DATE || '').slice(0,10);
+        const repMatch = !repFilter || r.SALES_REP?.trim() === repFilter;
+        return d >= from && d <= to && repMatch;
+      })
+    : state.ordersCache.filter(r => {
+        const repMatch = !repFilter || r.SALES_REP?.trim() === repFilter;
+        return repMatch;
+      });
+  const booked = ordersFiltered.reduce((s,r) => s + parseMoney(r.EXTENDED_PRICE || r.ORDER_TOTAL), 0);
+  const bookedLabel = state.ordersHistoryCache.length > 0 ? 'Orders Booked' : 'Open Backlog';
+
+  // Reqs count for date range
+  const reqsFiltered = state.reqsCache.filter(r => {
+    const d = (r.DATE || '').slice(0,10);
     const repMatch = !repFilter || r.SALES_REP?.trim() === repFilter;
-    return repMatch;
+    return d >= from && d <= to && repMatch;
   });
-  const booked = ordersFiltered.reduce((s,r) => s + (parseFloat(r.EXTENDED_PRICE)||0), 0);
 
   // Account stats
   const accs      = state.accounts.filter(a => !repFilter || a.rep === repFilter);
@@ -2468,9 +2500,9 @@ function refreshDashboard() {
       <div class="stat-sub">${gpFiltered.length} invoices · ${from.slice(0,7)} → ${to.slice(0,7)}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Open Backlog</div>
+      <div class="stat-label">${bookedLabel}</div>
       <div class="stat-value accent" style="font-size:22px">$${formatNum(booked)}</div>
-      <div class="stat-sub">${ordersFiltered.length} open order lines</div>
+      <div class="stat-sub">${ordersFiltered.length} order lines</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">GP $</div>
@@ -2481,6 +2513,11 @@ function refreshDashboard() {
       <div class="stat-label">GP %</div>
       <div class="stat-value ${gpPct >= 30 ? 'green' : gpPct >= 15 ? 'orange' : 'red'}" style="font-size:22px">${gpPct.toFixed(1)}%</div>
       <div class="stat-sub">gross margin</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">RFQs</div>
+      <div class="stat-value accent">${reqsFiltered.length}</div>
+      <div class="stat-sub">requests for quote</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Accounts</div>
@@ -2504,20 +2541,9 @@ function refreshDashboard() {
     </div>
   `;
 
-  // Debug row — shows GP cache status so we can verify column names without DevTools
+  // Remove debug bar now that we're done debugging
   const debugEl = document.getElementById('dash-debug');
-  if (debugEl && state.isAdmin) {
-    const totalRows  = state.gpCache.length;
-    const repRows    = gpFiltered.length;
-    const sample     = state.gpCache.length > 0 ? state.gpCache[0] : {};
-    const sampleKeys = Object.keys(sample).join(' | ');
-    const sampleVals = `EXTENDED_PRICE="${sample.EXTENDED_PRICE}" GP="${sample.GP}" SALES_REP="${sample.SALES_REP}" INVOICE_DATE="${sample.INVOICE_DATE}"`;
-    debugEl.innerHTML = `<div style="color:#e8a020;font-size:11px;font-family:monospace;padding:4px 0">
-      🔍 _GP: ${totalRows} total rows | ${repRows} filtered for this rep<br>
-      Columns: ${sampleKeys}<br>
-      Sample row: ${sampleVals}
-    </div>`;
-  }
+  if (debugEl) debugEl.innerHTML = '';
 
   // Rep table — admin only and not viewing as a specific rep
   const repTableEl = document.getElementById('dash-rep-table');
@@ -2529,16 +2555,26 @@ function refreshDashboard() {
         const d = (r.INVOICE_DATE||'').slice(0,10);
         return d >= from && d <= to && r.SALES_REP?.trim() === rep;
       });
-      const ordR = state.ordersCache.filter(r => r.SALES_REP?.trim() === rep);
+      const ordR = state.ordersHistoryCache.length > 0
+        ? state.ordersHistoryCache.filter(r => {
+            const d = (r.ORDER_DATE||'').slice(0,10);
+            return d >= from && d <= to && r.SALES_REP?.trim() === rep;
+          })
+        : state.ordersCache.filter(r => r.SALES_REP?.trim() === rep);
+      const reqR = state.reqsCache.filter(r => {
+        const d = (r.DATE||'').slice(0,10);
+        return d >= from && d <= to && r.SALES_REP?.trim() === rep;
+      });
       const gpAmt  = gpR.reduce((s,r)  => s + parseMoney(r.GP), 0);
       const shipAmt= gpR.reduce((s,r)  => s + parseMoney(r.EXTENDED_PRICE), 0);
-      const bookAmt= ordR.reduce((s,r) => s + (parseFloat(r.EXTENDED_PRICE)||0), 0);
+      const bookAmt= ordR.reduce((s,r) => s + parseMoney(r.EXTENDED_PRICE || r.ORDER_TOTAL), 0);
       repStats[rep] = {
         accounts: ra.length,
         active:   ra.filter(a => !isInactive(a)).length,
         inactive: ra.filter(a => isInactive(a)).length,
         shipped:  shipAmt,
         booked:   bookAmt,
+        reqs:     reqR.length,
         gp:       gpAmt,
         gpPct:    shipAmt > 0 ? gpAmt/shipAmt*100 : 0,
       };
@@ -2555,6 +2591,7 @@ function refreshDashboard() {
             <th>Inactive</th>
             <th style="text-align:right">Shipped</th>
             <th style="text-align:right">Booked</th>
+            <th style="text-align:right">RFQs</th>
             <th style="text-align:right">GP $</th>
             <th style="text-align:right">GP %</th>
           </tr></thead>
@@ -2568,6 +2605,7 @@ function refreshDashboard() {
                 <td style="color:#e74c3c">${s.inactive}</td>
                 <td style="text-align:right;font-family:var(--font-mono);font-size:12px">$${formatNum(s.shipped)}</td>
                 <td style="text-align:right;font-family:var(--font-mono);font-size:12px">$${formatNum(s.booked)}</td>
+                <td style="text-align:right;font-family:var(--font-mono);font-size:12px">${s.reqs}</td>
                 <td style="text-align:right;font-family:var(--font-mono);font-size:12px;color:#52c27a">$${formatNum(s.gp)}</td>
                 <td style="text-align:right;font-family:var(--font-mono);font-size:12px;color:${s.gpPct>=30?'#52c27a':s.gpPct>=15?'#e67e22':'#e74c3c'}">${s.gpPct.toFixed(1)}%</td>
               </tr>`;

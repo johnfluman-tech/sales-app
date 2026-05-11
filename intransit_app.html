@@ -2005,7 +2005,6 @@ function renderAccountsView() {
           <thead>
             <tr>
               <th>Account</th>
-              <th>Contact</th>
               ${showRep ? '<th>Rep</th>' : ''}
               <th>Status</th>
               <th>Last Sale</th>
@@ -2045,7 +2044,6 @@ function renderAccountsView() {
 
     tr.innerHTML = `
       <td class="td-name">${escHtml(acc.name)}</td>
-      <td class="td-contact">${escHtml(acc.contactName) || '<span style="color:var(--text-muted)">—</span>'}</td>
       ${showRep ? `<td class="td-mono">${escHtml(acc.rep)}</td>` : ''}
       <td>${statusBadge(acc.status)}</td>
       <td class="td-mono">${acc.lastSaleDate ? acc.lastSaleDate.slice(0,10) : '—'}</td>

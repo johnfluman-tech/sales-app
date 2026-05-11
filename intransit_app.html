@@ -1069,7 +1069,8 @@ td {
   .detail-panel { width: 360px; min-width: 360px; }
 }
 </style>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
+<script src="https://apis.google.com/js/api.js" async></script>
 </head>
 <body>
 
@@ -1181,12 +1182,14 @@ const CONFIG = {
   CLIENT_ID: '379521778420-8gjfdn4ea5knllkdvd675klu80tcl8jb.apps.googleusercontent.com',  // Replace with your OAuth client ID
   SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
   ADMIN_EMAIL: 'john.fluman@intransittech.com',
-  REPS: ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor'],
+  REPS: ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan'],
   REP_EMAIL_MAP: {
     // Map @intransittech.com emails to CRM rep IDs
     // Update these with the actual email addresses
     'john.fluman@intransittech.com': 'ADMIN',
     // 'karen.xxx@intransittech.com': 'CKaren',
+    'john.fluman@intransittech.com': 'FJohn',
+    'anolan@intransittech.com': 'Anolan',
     // 'bill.xxx@intransittech.com': 'BillP',
     // etc — add each rep's email below
   },
@@ -1316,7 +1319,6 @@ let state = {
 //  GOOGLE AUTH
 // ══════════════════════════════════════════════════════════
 function handleGoogleCredential(response) {
-  // Decode JWT from Google sign-in
   const payload = JSON.parse(atob(response.credential.split('.')[1]));
   if (!payload.email.endsWith('@intransittech.com')) {
     alert('Access restricted to @intransittech.com accounts only.');
@@ -1325,22 +1327,69 @@ function handleGoogleCredential(response) {
   state.user = { email: payload.email, name: payload.name };
   localStorage.setItem('it_user', JSON.stringify(state.user));
   setRepFromEmail(payload.email);
-  // Get Sheets access token
-  handleLogin(payload.email);
+  // Load gapi and get token
+  loadGapi();
 }
 
-function handleLogin(loginHint) {
-  const params = new URLSearchParams({
-    client_id: CONFIG.CLIENT_ID,
-    redirect_uri: window.location.origin + window.location.pathname,
-    response_type: 'token',
-    scope: CONFIG.SCOPES + ' email profile',
-    hd: 'intransittech.com',
-    prompt: loginHint ? 'consent' : 'select_account',
-    include_granted_scopes: 'true',
+function loadGapi() {
+  if (window.gapi) {
+    gapi.load('client:auth2', initGapiClient);
+  } else {
+    setTimeout(loadGapi, 200);
+  }
+}
+
+async function initGapiClient() {
+  try {
+    // Load gapi client
+    await new Promise((resolve, reject) => {
+      gapi.load('client', { callback: resolve, onerror: reject });
+    });
+    await gapi.client.init({});
+
+    // Use Google Identity Services token client (popup, no redirect needed)
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CONFIG.CLIENT_ID,
+      scope: CONFIG.SCOPES,
+      hint: state.user?.email || '',
+      hosted_domain: 'intransittech.com',
+      callback: (tokenResponse) => {
+        if (tokenResponse.error) {
+          showToast('Sign-in error: ' + tokenResponse.error, 'error');
+          return;
+        }
+        state.accessToken = tokenResponse.access_token;
+        localStorage.setItem('it_token', state.accessToken);
+        completeLogin();
+      },
+    });
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  } catch(e) {
+    console.error('Auth error:', e);
+    showToast('Sign-in error: ' + (e.error || e.message || JSON.stringify(e)), 'error');
+  }
+}
+function completeLogin() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+  document.getElementById('sidebar-user-name').textContent = state.user?.name || state.user?.email || '—';
+  document.getElementById('sidebar-user-role').textContent =
+    state.isAdmin ? 'ADMIN — ALL REPS' :
+    state.repId ? 'REP — ' + state.repId : 'READ ONLY';
+  if (state.isAdmin) {
+    document.getElementById('nav-all').style.display = 'flex';
+    document.getElementById('filter-all').style.display = 'inline-block';
+  }
+  loadAllAccounts().then(() => {
+    renderAccountsView();
+    updateBadges();
+    initSecurity();
   });
-  if (loginHint) params.set('login_hint', loginHint);
-  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
+}
+
+function handleLogin() {
+  // Fallback — trigger GIS button click
+  document.querySelector('.g_id_signin')?.click();
 }
 
 function handleSignout() {
@@ -1348,7 +1397,8 @@ function handleSignout() {
   state.accessToken = null;
   localStorage.removeItem('it_token');
   localStorage.removeItem('it_user');
-  if (window.google) { try { google.accounts.id.disableAutoSelect(); } catch(e){} }
+  try { google.accounts.oauth2.revoke(state.accessToken, () => {}); } catch(e){}
+  try { google.accounts.id.disableAutoSelect(); } catch(e){}
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app').classList.remove('visible');
 }
@@ -1359,37 +1409,6 @@ function setRepFromEmail(email) {
 }
 
 async function checkAuth() {
-  // Check URL hash for OAuth access token
-  const hash = window.location.hash.substring(1);
-  const params = new URLSearchParams(hash);
-  const token = params.get('access_token');
-
-  if (token) {
-    state.accessToken = token;
-    localStorage.setItem('it_token', token);
-    window.location.hash = '';
-    const savedUser = localStorage.getItem('it_user');
-    if (savedUser) {
-      state.user = JSON.parse(savedUser);
-      setRepFromEmail(state.user.email);
-      return true;
-    }
-    // Fetch user info with the token
-    try {
-      const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
-        { headers: { Authorization: 'Bearer ' + token } });
-      const info = await r.json();
-      if (!info.email || !info.email.endsWith('@intransittech.com')) {
-        return false;
-      }
-      state.user = { email: info.email, name: info.name };
-      localStorage.setItem('it_user', JSON.stringify(state.user));
-      setRepFromEmail(info.email);
-      return true;
-    } catch(e) { return false; }
-  }
-
-  // Check saved session
   const savedToken = localStorage.getItem('it_token');
   const savedUser  = localStorage.getItem('it_user');
   if (savedToken && savedUser) {
@@ -1398,7 +1417,6 @@ async function checkAuth() {
     setRepFromEmail(state.user.email);
     return true;
   }
-
   return false;
 }
 
@@ -2374,32 +2392,8 @@ async function init() {
     return;
   }
 
-  // Show app
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app').classList.add('visible');
-
-  // Update sidebar user info
-  document.getElementById('sidebar-user-name').textContent =
-    state.user?.name || state.user?.email || '—';
-  document.getElementById('sidebar-user-role').textContent =
-    state.isAdmin ? 'ADMIN — ALL REPS' :
-    state.repId ? `REP — ${state.repId}` : 'READ ONLY';
-
-  // Show admin-only nav items
-  if (state.isAdmin) {
-    document.getElementById('nav-all').style.display = 'flex';
-    document.getElementById('filter-all').style.display = 'inline-block';
-  }
-
-  // Load data
-  await loadAllAccounts();
-
-  // Init security (watermark, session timer, event blockers)
-  initSecurity();
-
-  // Render initial view
-  renderAccountsView();
-  updateBadges();
+  // Saved session — show app directly
+  completeLogin();
 }
 
 init();

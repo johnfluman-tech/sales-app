@@ -1198,7 +1198,9 @@ td {
 //  CONFIGURATION
 // ══════════════════════════════════════════════════════════
 const CONFIG = {
-  SPREADSHEET_ID: '1xH_OC_fvSwQWZet95xBlJ951LsaQWru-glv2rkSnDm4',
+  SPREADSHEET_ID:         '1xH_OC_fvSwQWZet95xBlJ951LsaQWru-glv2rkSnDm4',
+  HISTORY_SPREADSHEET_ID: '192ELLBgiEUZ3z6ytkWXbmA24wS2BjHmclJdf_UF_c24',
+  ACTIVITY_SPREADSHEET_ID:'12dJ0eLFQse-_pi1k6rXc25yTkwwYTjMm32v11tGKeRo',
   CLIENT_ID: '379521778420-8gjfdn4ea5knllkdvd675klu80tcl8jb.apps.googleusercontent.com',  // Replace with your OAuth client ID
   SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
   ADMIN_EMAIL: 'john.fluman@intransittech.com',
@@ -1267,7 +1269,7 @@ async function loadSupplementalData() {
     }
 
     // Load invoice history
-    const invRows = await sheetsGet("'_INVOICE_HISTORY'!A1:L50000");
+    const invRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L50000");
     if (invRows.length > 1) {
       const hdrs = invRows[0];
       const iName  = hdrs.indexOf('CUSTOMER_NAME');
@@ -1300,7 +1302,7 @@ async function loadSupplementalData() {
     }
 
     // Load RFQs
-    const reqRows = await sheetsGet("'_REQS'!A1:P50000");
+    const reqRows = await sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000");
     if (reqRows.length > 1) {
       const hdrs = reqRows[0];
       const iName = hdrs.indexOf('CUSTOMER_NAME');
@@ -1329,7 +1331,7 @@ async function loadSupplementalData() {
     }
 
     // Load Quotes
-    const quoteRows = await sheetsGet("'_QUOTES'!A1:P50000");
+    const quoteRows = await sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_QUOTES'!A1:P50000");
     if (quoteRows.length > 1) {
       const hdrs = quoteRows[0];
       const iName = hdrs.indexOf('CUSTOMER_NAME');
@@ -1397,7 +1399,7 @@ async function loadSupplementalData() {
     }
 
     // Load GP data
-    const gpRows = await sheetsGet("'_GP'!A1:F200000");
+    const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:H200000");
     if (gpRows.length > 1) {
       const hdrs = gpRows[0];
       state.gpCache = gpRows.slice(1).map(r => {
@@ -1724,7 +1726,11 @@ async function loadUserInfo() {
   // Handled by GIS credential callback
 }
 async function sheetsGet(range) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}`;
+  return sheetsGetFrom(CONFIG.SPREADSHEET_ID, range);
+}
+
+async function sheetsGetFrom(spreadsheetId, range) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
   const res = await fetch(url, {
     headers: { Authorization: 'Bearer ' + state.accessToken }
   });

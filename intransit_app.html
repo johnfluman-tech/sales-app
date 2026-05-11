@@ -2431,7 +2431,7 @@ function refreshDashboard() {
     return d >= from && d <= to && repMatch;
   });
 
-  const shipped   = gpFiltered.reduce((s,r) => s + (parseFloat(r.EXTENDED_PRICE)||0), 0);
+  const shipped   = gpFiltered.reduce((s,r) => s + (parseFloat(r.INVOICE_TOTAL)||0), 0);
   const gp        = gpFiltered.reduce((s,r) => s + (parseFloat(r.GP)||0), 0);
   const gpPct     = shipped > 0 ? (gp / shipped * 100) : 0;
 
@@ -2456,17 +2456,17 @@ function refreshDashboard() {
     <div class="stat-card">
       <div class="stat-label">Total Shipped</div>
       <div class="stat-value green" style="font-size:22px">$${formatNum(shipped)}</div>
-      <div class="stat-sub">${from.slice(0,7)} → ${to.slice(0,7)}</div>
+      <div class="stat-sub">${gpFiltered.length} invoices · ${from.slice(0,7)} → ${to.slice(0,7)}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Open / Booked</div>
+      <div class="stat-label">Open Backlog</div>
       <div class="stat-value accent" style="font-size:22px">$${formatNum(booked)}</div>
       <div class="stat-sub">${ordersFiltered.length} open order lines</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">GP $</div>
       <div class="stat-value ${gp > 0 ? 'green' : 'red'}" style="font-size:22px">$${formatNum(gp)}</div>
-      <div class="stat-sub">${gpFiltered.length} invoice lines</div>
+      <div class="stat-sub">gross profit</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">GP %</div>
@@ -2507,7 +2507,7 @@ function refreshDashboard() {
       });
       const ordR = state.ordersCache.filter(r => r.SALES_REP?.trim() === rep);
       const gpAmt  = gpR.reduce((s,r)  => s + (parseFloat(r.GP)||0), 0);
-      const shipAmt= gpR.reduce((s,r)  => s + (parseFloat(r.EXTENDED_PRICE)||0), 0);
+      const shipAmt= gpR.reduce((s,r)  => s + (parseFloat(r.INVOICE_TOTAL)||0), 0);
       const bookAmt= ordR.reduce((s,r) => s + (parseFloat(r.EXTENDED_PRICE)||0), 0);
       repStats[rep] = {
         accounts: ra.length,

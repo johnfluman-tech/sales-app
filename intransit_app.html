@@ -1999,12 +1999,12 @@ function getViewAccounts() {
 }
 
 function isInactive(a) {
-  const s = a.status || '';
+  const s = (a.status || '').replace(/[^\x00-\x7F]/g, '').trim();
   return s.includes('Dormant') || s.includes('High Value') || s.includes('At Risk') || s.includes('Monitor');
 }
 
 function isDeclining(a) {
-  const s = a.status || '';
+  const s = (a.status || '').replace(/[^\x00-\x7F]/g, '').trim();
   return s.includes('Decline') || s.includes('Stalled');
 }
 

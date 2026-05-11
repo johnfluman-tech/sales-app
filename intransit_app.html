@@ -1233,6 +1233,251 @@ const SECURITY = {
   timeoutTimer: null,
 };
 
+// ══════════════════════════════════════════════════════════
+//  SUPPLEMENTAL DATA LOADING (Contacts, History, Collections)
+// ══════════════════════════════════════════════════════════
+async function loadSupplementalData() {
+  if (state.cacheLoaded) return;
+  try {
+    // Load contacts
+    const contactRows = await sheetsGet("'_CONTACTS'!A1:K50000");
+    if (contactRows.length > 1) {
+      const hdrs = contactRows[0];
+      const iName  = hdrs.indexOf('CUSTOMER_NAME');
+      const iCName = hdrs.indexOf('CONTACT_NAME');
+      const iTitle = hdrs.indexOf('TITLE');
+      const iEmail = hdrs.indexOf('EMAIL');
+      const iPhone = hdrs.indexOf('PHONE');
+      const iMob   = hdrs.indexOf('MOBILE');
+      const iType  = hdrs.indexOf('CONTACT_TYPE');
+      for (let r = 1; r < contactRows.length; r++) {
+        const row = contactRows[r];
+        const key = (row[iName] || '').trim();
+        if (!key) continue;
+        if (!state.contactsCache[key]) state.contactsCache[key] = [];
+        state.contactsCache[key].push({
+          name:  (row[iCName] || '').trim(),
+          title: (row[iTitle] || '').trim(),
+          email: (row[iEmail] || '').trim(),
+          phone: (row[iPhone] || '').trim(),
+          mobile:(row[iMob]   || '').trim(),
+          type:  (row[iType]  || '').trim(),
+        });
+      }
+    }
+
+    // Load invoice history
+    const invRows = await sheetsGet("'_INVOICE_HISTORY'!A1:L50000");
+    if (invRows.length > 1) {
+      const hdrs = invRows[0];
+      const iName  = hdrs.indexOf('CUSTOMER_NAME');
+      const iInv   = hdrs.indexOf('INVOICE_NUMBER');
+      const iDate  = hdrs.indexOf('INVOICE_DATE');
+      const iTotal = hdrs.indexOf('INVOICE_TOTAL');
+      const iPart  = hdrs.indexOf('PART_NUMBER');
+      const iDesc  = hdrs.indexOf('DESCRIPTION');
+      const iQty   = hdrs.indexOf('QTY');
+      const iPrice = hdrs.indexOf('UNIT_PRICE');
+      const iLine  = hdrs.indexOf('LINE_TOTAL');
+      const iCond  = hdrs.indexOf('CONDITION');
+      for (let r = 1; r < invRows.length; r++) {
+        const row = invRows[r];
+        const key = (row[iName] || '').trim();
+        if (!key) continue;
+        if (!state.historyCache[key]) state.historyCache[key] = { invoices: [], reqs: [], quotes: [] };
+        state.historyCache[key].invoices.push({
+          invoiceNum: row[iInv]   || '',
+          date:       row[iDate]  || '',
+          total:      parseFloat(row[iTotal]) || 0,
+          part:       row[iPart]  || '',
+          desc:       row[iDesc]  || '',
+          qty:        row[iQty]   || '',
+          price:      parseFloat(row[iPrice]) || 0,
+          lineTotal:  parseFloat(row[iLine])  || 0,
+          condition:  row[iCond]  || '',
+        });
+      }
+    }
+
+    // Load RFQs
+    const reqRows = await sheetsGet("'_REQS'!A1:P50000");
+    if (reqRows.length > 1) {
+      const hdrs = reqRows[0];
+      const iName = hdrs.indexOf('CUSTOMER_NAME');
+      const iDate = hdrs.indexOf('DATE_ENTERED');
+      const iPart = hdrs.indexOf('PART_NUMBER');
+      const iMfr  = hdrs.indexOf('MANUFACTURER');
+      const iQty  = hdrs.indexOf('QTY');
+      const iPrice= hdrs.indexOf('TARGET_PRICE');
+      const iDesc = hdrs.indexOf('DESCRIPTION');
+      const iClosed=hdrs.indexOf('CLOSED');
+      for (let r = 1; r < reqRows.length; r++) {
+        const row = reqRows[r];
+        const key = (row[iName] || '').trim();
+        if (!key) continue;
+        if (!state.historyCache[key]) state.historyCache[key] = { invoices: [], reqs: [], quotes: [] };
+        state.historyCache[key].reqs.push({
+          date:   row[iDate]  || '',
+          part:   row[iPart]  || '',
+          mfr:    row[iMfr]   || '',
+          qty:    row[iQty]   || '',
+          price:  row[iPrice] || '',
+          desc:   row[iDesc]  || '',
+          closed: row[iClosed]|| '',
+        });
+      }
+    }
+
+    // Load Quotes
+    const quoteRows = await sheetsGet("'_QUOTES'!A1:P50000");
+    if (quoteRows.length > 1) {
+      const hdrs = quoteRows[0];
+      const iName = hdrs.indexOf('CUSTOMER_NAME');
+      const iId   = hdrs.indexOf('QUOTE_ID');
+      const iDate = hdrs.indexOf('QUOTE_DATE');
+      const iPart = hdrs.indexOf('PART_NUMBER');
+      const iMfr  = hdrs.indexOf('MANUFACTURER');
+      const iQty  = hdrs.indexOf('QTY');
+      const iPrice= hdrs.indexOf('PRICE');
+      const iDesc = hdrs.indexOf('DESCRIPTION');
+      const iClosed=hdrs.indexOf('CLOSED');
+      for (let r = 1; r < quoteRows.length; r++) {
+        const row = quoteRows[r];
+        const key = (row[iName] || '').trim();
+        if (!key) continue;
+        if (!state.historyCache[key]) state.historyCache[key] = { invoices: [], reqs: [], quotes: [] };
+        state.historyCache[key].quotes.push({
+          quoteId: row[iId]   || '',
+          date:    row[iDate] || '',
+          part:    row[iPart] || '',
+          mfr:     row[iMfr]  || '',
+          qty:     row[iQty]  || '',
+          price:   parseFloat(row[iPrice]) || 0,
+          desc:    row[iDesc] || '',
+          closed:  row[iClosed]|| '',
+        });
+      }
+    }
+
+    // Load collections
+    const collRows = await sheetsGet("'_COLLECTIONS'!A1:M5000");
+    if (collRows.length > 1) {
+      const hdrs = collRows[0];
+      const iName = hdrs.indexOf('CUSTOMER_NAME');
+      const iBal  = hdrs.indexOf('CURRENT_BALANCE');
+      const iCred = hdrs.indexOf('CREDIT_LIMIT');
+      const iPay  = hdrs.indexOf('AVERAGE_PAY');
+      const iHold = hdrs.indexOf('CREDIT_HOLD');
+      const iNote = hdrs.indexOf('COLLECTION_NOTE');
+      const iRisk = hdrs.indexOf('RISK_FLAG');
+      for (let r = 1; r < collRows.length; r++) {
+        const row = collRows[r];
+        const key = (row[iName] || '').trim();
+        if (!key) continue;
+        state.collectionsCache[key] = {
+          balance:   parseFloat(row[iBal])  || 0,
+          credit:    parseFloat(row[iCred]) || 0,
+          avgPay:    parseFloat(row[iPay])  || 0,
+          creditHold:row[iHold] || '',
+          note:      row[iNote] || '',
+          risk:      row[iRisk] || '',
+        };
+      }
+    }
+
+    state.cacheLoaded = true;
+    console.log('Supplemental data loaded');
+  } catch(e) {
+    console.error('Could not load supplemental data:', e);
+  }
+}
+
+// ── CONTACTS TAB ──────────────────────────────────────────
+function renderContactsTab(acc) {
+  const contacts = state.contactsCache[acc.name.trim()] || [];
+  if (contacts.length === 0) {
+    return `<div class="note-empty">NO CONTACTS FOUND<br><span style="font-size:10px;margin-top:4px;display:block">Contacts load on first account click</span></div>`;
+  }
+
+  const purchasing = contacts.filter(c => c.type !== 'AP/Collections');
+  const ap = contacts.filter(c => c.type === 'AP/Collections');
+
+  const renderGroup = (list, label, color) => {
+    if (!list.length) return '';
+    return `
+      <div style="margin-bottom:14px">
+        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:${color};margin-bottom:8px;text-transform:uppercase">${label} (${list.length})</div>
+        ${list.map(c => `
+          <div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${color};margin-bottom:6px">
+            <div style="font-weight:500;font-size:13px">${escHtml(c.name)}</div>
+            ${c.title ? `<div style="font-size:11px;color:var(--text-muted);margin-top:1px">${escHtml(c.title)}</div>` : ''}
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+              ${c.email ? `<a class="contact-link contact-blur" href="mailto:${escHtml(c.email)}" style="font-size:11px">✉ ${escHtml(c.email)}</a>` : ''}
+              ${c.phone ? `<span class="contact-link contact-blur" style="font-size:11px">☎ ${escHtml(c.phone)}</span>` : ''}
+              ${c.mobile ? `<span class="contact-link contact-blur" style="font-size:11px">📱 ${escHtml(c.mobile)}</span>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>`;
+  };
+
+  return renderGroup(purchasing, '🛒 Purchasing Contacts', 'var(--blue-bright)') +
+         renderGroup(ap, '💰 AP / Collections Contacts', 'var(--accent)');
+}
+
+// ── HISTORY TAB ────────────────────────────────────────────
+function renderHistoryTab(acc) {
+  const h = state.historyCache[acc.name.trim()] || { invoices: [], reqs: [], quotes: [] };
+
+  const section = (title, color, items, renderFn) => {
+    if (!items.length) return `
+      <div style="margin-bottom:14px">
+        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:${color};margin-bottom:6px;text-transform:uppercase">${title}</div>
+        <div style="font-size:11px;color:var(--text-muted);padding:8px 0">None on record</div>
+      </div>`;
+    return `
+      <div style="margin-bottom:14px">
+        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:${color};margin-bottom:8px;text-transform:uppercase">${title} (${items.length})</div>
+        ${items.slice(0,20).map(renderFn).join('')}
+        ${items.length > 20 ? `<div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);padding:4px 0">+ ${items.length-20} more</div>` : ''}
+      </div>`;
+  };
+
+  const invHtml = section('📦 Recent Invoices', 'var(--green)', h.invoices,
+    i => `<div style="padding:8px 10px;background:var(--navy-mid);border:1px solid var(--border);margin-bottom:4px;font-size:12px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">${escHtml(i.date.slice(0,10))}</span>
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--green)">$${formatNum(i.lineTotal)}</span>
+      </div>
+      <div style="font-weight:500">${escHtml(i.part)}</div>
+      <div style="color:var(--text-muted);font-size:11px">${escHtml(i.desc)} &nbsp;·&nbsp; Qty: ${escHtml(String(i.qty))} &nbsp;·&nbsp; ${escHtml(i.condition)}</div>
+    </div>`
+  );
+
+  const reqHtml = section('📋 RFQ History', 'var(--blue-bright)', h.reqs,
+    r => `<div style="padding:8px 10px;background:var(--navy-mid);border:1px solid var(--border);margin-bottom:4px;font-size:12px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">${escHtml(String(r.date).slice(0,10))}</span>
+        <span style="font-family:var(--font-mono);font-size:10px;color:${r.closed==='Y'?'var(--text-muted)':'var(--accent)'}">${r.closed==='Y'?'Closed':'Open'}</span>
+      </div>
+      <div style="font-weight:500">${escHtml(r.part)}</div>
+      <div style="color:var(--text-muted);font-size:11px">${escHtml(r.mfr)} &nbsp;·&nbsp; Qty: ${escHtml(String(r.qty))} &nbsp;·&nbsp; Target: $${escHtml(String(r.price))}</div>
+    </div>`
+  );
+
+  const quoteHtml = section('💬 Quote History', 'var(--accent)', h.quotes,
+    q => `<div style="padding:8px 10px;background:var(--navy-mid);border:1px solid var(--border);margin-bottom:4px;font-size:12px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">${escHtml(String(q.date).slice(0,10))}</span>
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--accent)">$${formatNum(q.price)}</span>
+      </div>
+      <div style="font-weight:500">${escHtml(q.part)}</div>
+      <div style="color:var(--text-muted);font-size:11px">${escHtml(q.mfr)} &nbsp;·&nbsp; Qty: ${escHtml(String(q.qty))} &nbsp;·&nbsp; ${q.closed==='Y'?'Closed':'Open'}</div>
+    </div>`
+  );
+
+  return invHtml + reqHtml + quoteHtml;
+}
+
 function initSecurity() {
   // Set watermark with user email + date
   updateWatermark();
@@ -1336,6 +1581,10 @@ let state = {
   activeFilter: 'active',
   activeDetailTab: 'notes',
   viewAsRep: null,
+  contactsCache: {},      // keyed by customer name
+  historyCache: {},       // keyed by customer name
+  collectionsCache: {},   // keyed by customer name
+  cacheLoaded: false,
   notesByAccount: {},  // keyed by account name
   loading: false,
   accessToken: null,
@@ -1816,6 +2065,12 @@ function selectAccount(acc) {
   state.selectedAccount = acc;
   state.activeDetailTab = 'notes';
   trackAccountView(acc);
+  // Load supplemental data on first account click
+  if (!state.cacheLoaded) {
+    loadSupplementalData().then(() => {
+      if (state.selectedAccount?.name === acc.name) renderDetail(acc);
+    });
+  }
 
   // Update row highlight
   document.querySelectorAll('#account-tbody tr').forEach((tr, i) => {
@@ -1846,8 +2101,8 @@ function renderDetail(acc) {
       </div>`;
   }).join('');
 
-  const tabs = ['notes', 'email', 'collections', 'info'];
-  const tabLabels = { notes: 'Notes', email: 'Outreach', collections: 'Collections', info: 'Account' };
+  const tabs = ['notes', 'contacts', 'history', 'email', 'collections', 'info'];
+  const tabLabels = { notes: 'Notes', contacts: 'Contacts', history: 'History', email: 'Outreach', collections: 'Collections', info: 'Account' };
 
   const hasRemoveRequest = acc.removeFlag && acc.removeFlag.toUpperCase() !== 'YES' && acc.removeFlag.trim() !== '';
   const johnCanApprove = state.isAdmin && hasRemoveRequest;
@@ -1902,6 +2157,8 @@ function switchDetailTab(tab) {
 
 function renderDetailTab(acc, tab) {
   if (tab === 'notes') return renderNotesTab(acc);
+  if (tab === 'contacts') return renderContactsTab(acc);
+  if (tab === 'history') return renderHistoryTab(acc);
   if (tab === 'email') return renderEmailTab(acc);
   if (tab === 'collections') return renderCollectionsTab(acc);
   if (tab === 'info') return renderInfoTab(acc);
@@ -2011,15 +2268,25 @@ function renderEmailTab(acc) {
 }
 
 function renderCollectionsTab(acc) {
+  const c = state.collectionsCache[acc.name.trim()];
+  if (!c) {
+    return `<div class="note-empty">NO OPEN BALANCE<br><span style="font-size:10px;margin-top:4px;display:block;color:var(--green)">✓ Account is current</span></div>`;
+  }
+  const riskColor = c.risk.includes('HIGH') ? 'var(--red)' : c.risk.includes('WATCH') ? 'var(--orange)' : 'var(--accent)';
   return `
-    <div class="collections-note">
-      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:6px">ACCOUNT BALANCE</div>
-      <div class="balance-display">—</div>
-      <div style="font-size:12px;color:var(--text-muted)">Balance data pulls from CUSTBAL in SQL via the local API.</div>
+    <div style="padding:14px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${riskColor};margin-bottom:12px">
+      ${c.risk ? `<div style="font-family:var(--font-mono);font-size:11px;color:${riskColor};margin-bottom:8px">${escHtml(c.risk)}</div>` : ''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+        <div><span style="color:var(--text-muted)">Balance</span><br><span style="font-family:var(--font-mono);font-size:16px;color:${riskColor}">$${formatNum(c.balance)}</span></div>
+        <div><span style="color:var(--text-muted)">Credit Limit</span><br><span style="font-family:var(--font-mono);font-size:16px">$${formatNum(c.credit)}</span></div>
+        <div><span style="color:var(--text-muted)">Avg Days to Pay</span><br><span style="font-family:var(--font-mono)">${c.avgPay || '—'}</span></div>
+        <div><span style="color:var(--text-muted)">Credit Hold</span><br><span style="font-family:var(--font-mono);color:${c.creditHold==='Y'?'var(--red)':'var(--green)'}">${c.creditHold==='Y'?'🔴 ON HOLD':'✓ Clear'}</span></div>
+      </div>
     </div>
-    <div class="note-empty" style="font-size:12px;padding:16px 0">
-      Collections history coming in next update.
-    </div>`;
+    ${c.note ? `
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase">Latest Collection Note</div>
+    <div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);font-size:12px;color:var(--text-dim);line-height:1.5">${escHtml(c.note)}</div>
+    ` : ''}`;
 }
 
 function renderInfoTab(acc) {

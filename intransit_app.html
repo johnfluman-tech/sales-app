@@ -2387,6 +2387,9 @@ function renderDashboard() {
         <div class="stat-card"><div class="stat-label">Loading...</div></div>
       </div>
 
+      <!-- Debug info (admin only) -->
+      <div id="dash-debug" style="margin-bottom:8px;padding:6px 10px;background:var(--navy-mid);border:1px solid var(--border)"></div>
+
       <!-- Rep table (admin only) -->
       <div id="dash-rep-table"></div>
 
@@ -2431,8 +2434,8 @@ function refreshDashboard() {
     return d >= from && d <= to && repMatch;
   });
 
-  const shipped   = gpFiltered.reduce((s,r) => s + (parseFloat(r.INVOICE_TOTAL)||0), 0);
-  const gp        = gpFiltered.reduce((s,r) => s + (parseFloat(r.GP)||0), 0);
+  const shipped   = gpFiltered.reduce((s,r) => s + parseMoney(r.EXTENDED_PRICE), 0);
+  const gp        = gpFiltered.reduce((s,r) => s + parseMoney(r.GP), 0);
   const gpPct     = shipped > 0 ? (gp / shipped * 100) : 0;
 
   // Filter open orders by rep
@@ -2495,6 +2498,21 @@ function refreshDashboard() {
     </div>
   `;
 
+  // Debug row — shows GP cache status so we can verify column names without DevTools
+  const debugEl = document.getElementById('dash-debug');
+  if (debugEl && state.isAdmin) {
+    const totalRows  = state.gpCache.length;
+    const repRows    = gpFiltered.length;
+    const sample     = state.gpCache.length > 0 ? state.gpCache[0] : {};
+    const sampleKeys = Object.keys(sample).join(' | ');
+    const sampleVals = `EXTENDED_PRICE="${sample.EXTENDED_PRICE}" GP="${sample.GP}" SALES_REP="${sample.SALES_REP}" INVOICE_DATE="${sample.INVOICE_DATE}"`;
+    debugEl.innerHTML = `<div style="color:#e8a020;font-size:11px;font-family:monospace;padding:4px 0">
+      🔍 _GP: ${totalRows} total rows | ${repRows} filtered for this rep<br>
+      Columns: ${sampleKeys}<br>
+      Sample row: ${sampleVals}
+    </div>`;
+  }
+
   // Rep table — admin only and not viewing as a specific rep
   const repTableEl = document.getElementById('dash-rep-table');
   if (repTableEl && state.isAdmin && !state.viewAsRep) {
@@ -2506,8 +2524,8 @@ function refreshDashboard() {
         return d >= from && d <= to && r.SALES_REP?.trim() === rep;
       });
       const ordR = state.ordersCache.filter(r => r.SALES_REP?.trim() === rep);
-      const gpAmt  = gpR.reduce((s,r)  => s + (parseFloat(r.GP)||0), 0);
-      const shipAmt= gpR.reduce((s,r)  => s + (parseFloat(r.INVOICE_TOTAL)||0), 0);
+      const gpAmt  = gpR.reduce((s,r)  => s + parseMoney(r.GP), 0);
+      const shipAmt= gpR.reduce((s,r)  => s + parseMoney(r.EXTENDED_PRICE), 0);
       const bookAmt= ordR.reduce((s,r) => s + (parseFloat(r.EXTENDED_PRICE)||0), 0);
       repStats[rep] = {
         accounts: ra.length,

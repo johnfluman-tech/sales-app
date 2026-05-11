@@ -1,0 +1,2408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Intransit Sales Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy: #0d1b2a;
+  --navy-light: #162032;
+  --navy-mid: #1e2f42;
+  --blue: #1a6fb5;
+  --blue-bright: #2589d8;
+  --accent: #e8a020;
+  --accent-dim: #b87c14;
+  --red: #c0392b;
+  --orange: #d35400;
+  --green: #1e8449;
+  --gray: #8a9bb0;
+  --gray-light: #b8c4d0;
+  --border: rgba(255,255,255,0.08);
+  --border-light: rgba(255,255,255,0.04);
+  --text: #e8edf2;
+  --text-dim: #8a9bb0;
+  --text-muted: #546478;
+  --surface: #162032;
+  --surface-hover: #1e2f42;
+  --yellow-bg: rgba(232,160,32,0.08);
+  --font-main: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-main);
+  background: var(--navy);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── LOGIN ─────────────────────────────────────────────────── */
+#login-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--navy);
+}
+
+.login-box {
+  width: 360px;
+  padding: 48px 40px;
+  background: var(--navy-light);
+  border: 1px solid var(--border);
+}
+
+.login-logo {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.login-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.login-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 36px;
+  line-height: 1.6;
+}
+
+.login-divider {
+  width: 32px;
+  height: 2px;
+  background: var(--accent);
+  margin-bottom: 32px;
+}
+
+.google-btn {
+  width: 100%;
+  padding: 13px 20px;
+  background: var(--blue);
+  border: none;
+  color: white;
+  font-family: var(--font-main);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: background 0.15s;
+  letter-spacing: 0.02em;
+}
+.google-btn:hover { background: var(--blue-bright); }
+.google-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+.login-note {
+  margin-top: 20px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+/* ── APP SHELL ─────────────────────────────────────────────── */
+#app { display: none; height: 100vh; flex-direction: row; }
+#app.visible { display: flex; }
+
+/* ── SIDEBAR ────────────────────────────────────────────────── */
+.sidebar {
+  width: 220px;
+  min-width: 220px;
+  background: var(--navy-light);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-brand {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.25em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.sidebar-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sidebar-user {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.sidebar-user-name {
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-user-role {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  margin-top: 2px;
+}
+
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+
+.nav-section-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  padding: 12px 18px 6px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-dim);
+  transition: all 0.1s;
+  border-left: 2px solid transparent;
+}
+.nav-item:hover { background: var(--surface-hover); color: var(--text); }
+.nav-item.active { background: var(--surface-hover); color: var(--text); border-left-color: var(--accent); }
+.nav-item .nav-icon { font-size: 14px; width: 16px; text-align: center; }
+.nav-badge {
+  margin-left: auto;
+  background: var(--blue);
+  color: white;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 1px 6px;
+  border-radius: 2px;
+  min-width: 20px;
+  text-align: center;
+}
+.nav-badge.red { background: var(--red); }
+.nav-badge.orange { background: var(--orange); }
+
+.sidebar-footer {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.signout-btn {
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-main);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.signout-btn:hover { border-color: var(--gray); color: var(--text); }
+
+/* ── MAIN PANEL ─────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  height: 52px;
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.topbar-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+}
+
+.topbar-search {
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-main);
+  font-size: 13px;
+  padding: 7px 12px;
+  width: 240px;
+  outline: none;
+}
+.topbar-search::placeholder { color: var(--text-muted); }
+.topbar-search:focus { border-color: var(--blue); }
+
+.filter-btn {
+  padding: 7px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-btn:hover, .filter-btn.active { border-color: var(--accent); color: var(--accent); }
+
+/* ── CONTENT AREA ────────────────────────────────────────────── */
+.content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+
+/* ── ACCOUNT TABLE ────────────────────────────────────────────── */
+.account-list-panel {
+  flex: 1;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+
+.table-wrap { width: 100%; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+thead tr {
+  background: var(--navy-mid);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+thead th {
+  padding: 10px 14px;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 400;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+}
+thead th:hover { color: var(--text-dim); }
+
+tbody tr {
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: background 0.08s;
+}
+tbody tr:hover { background: var(--surface-hover); }
+tbody tr.selected { background: var(--navy-mid); border-left: 2px solid var(--accent); }
+
+td {
+  padding: 10px 14px;
+  vertical-align: middle;
+  color: var(--text);
+}
+
+.td-name {
+  font-weight: 500;
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-contact {
+  color: var(--text-dim);
+  font-size: 12px;
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.td-amount {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: right;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  border-radius: 2px;
+}
+.status-active { background: rgba(30,132,73,0.2); color: #52c27a; }
+.status-dormant { background: rgba(44,44,44,0.4); color: #888; }
+.status-high-value { background: rgba(192,57,43,0.2); color: #e74c3c; }
+.status-at-risk { background: rgba(211,84,0,0.2); color: #e67e22; }
+.status-monitor { background: rgba(180,140,0,0.2); color: #d4ac0d; }
+.status-declining { background: rgba(192,57,43,0.15); color: #e57a72; }
+
+/* ── ACCOUNT DETAIL PANEL ─────────────────────────────────────── */
+.detail-panel {
+  width: 420px;
+  min-width: 420px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--navy-light);
+}
+
+.detail-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  gap: 8px;
+}
+
+.detail-empty-icon { font-size: 32px; opacity: 0.3; }
+.detail-empty-text { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; }
+
+.detail-header {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.detail-account-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+  line-height: 1.3;
+}
+
+.detail-meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.detail-meta-item {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.detail-meta-item span {
+  color: var(--text-dim);
+}
+
+.detail-contact-card {
+  margin: 14px 20px 0;
+  padding: 12px 14px;
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--blue);
+  flex-shrink: 0;
+}
+
+.contact-card-name { font-weight: 500; font-size: 13px; color: var(--text); }
+.contact-card-title { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.contact-card-links { display: flex; gap: 10px; margin-top: 8px; }
+
+.contact-link {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--blue-bright);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.contact-link:hover { color: var(--accent); }
+
+/* Revenue mini chart */
+.revenue-strip {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.revenue-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.revenue-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 40px;
+}
+
+.rev-bar-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; }
+.rev-bar {
+  width: 100%;
+  background: var(--blue);
+  min-height: 2px;
+  transition: height 0.3s;
+  position: relative;
+}
+.rev-bar.current-year { background: var(--accent); }
+.rev-bar-year { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); }
+
+/* Detail tabs */
+.detail-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.detail-tab {
+  flex: 1;
+  padding: 10px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+.detail-tab:hover { color: var(--text-dim); }
+.detail-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+/* ── NOTES ────────────────────────────────────────────────────── */
+.note-entry {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--blue);
+}
+
+.note-entry.locked { border-left-color: var(--text-muted); }
+
+.note-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.note-author {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+
+.note-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.note-status-pill {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  letter-spacing: 0.05em;
+}
+
+.note-locked-icon {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.note-text {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.note-empty {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px 0;
+  letter-spacing: 0.08em;
+}
+
+/* ── NOTE INPUT ────────────────────────────────────────────────── */
+.note-input-area {
+  border-top: 1px solid var(--border);
+  padding: 14px 20px;
+  flex-shrink: 0;
+  background: var(--navy-light);
+}
+
+.note-input-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.note-textarea {
+  width: 100%;
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-main);
+  font-size: 13px;
+  padding: 10px 12px;
+  resize: none;
+  height: 72px;
+  outline: none;
+  line-height: 1.5;
+}
+.note-textarea:focus { border-color: var(--blue); }
+.note-textarea::placeholder { color: var(--text-muted); }
+
+.note-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.note-select {
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 10px;
+  outline: none;
+  cursor: pointer;
+}
+.note-select:focus { border-color: var(--blue); }
+
+.note-date-input {
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 10px;
+  outline: none;
+  width: 130px;
+}
+.note-date-input:focus { border-color: var(--blue); }
+
+.save-note-btn {
+  margin-left: auto;
+  padding: 7px 18px;
+  background: var(--accent);
+  border: none;
+  color: var(--navy);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.save-note-btn:hover { background: #f0b030; }
+.save-note-btn:disabled { background: var(--text-muted); cursor: not-allowed; }
+
+/* ── EMAIL DRAFT ────────────────────────────────────────────────── */
+.email-draft-area { padding: 0; }
+
+.email-gen-btn {
+  width: 100%;
+  padding: 12px;
+  background: var(--blue);
+  border: none;
+  color: white;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  margin-bottom: 14px;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.email-gen-btn:hover { background: var(--blue-bright); }
+.email-gen-btn:disabled { background: var(--text-muted); cursor: not-allowed; }
+
+.email-spinner {
+  width: 12px; height: 12px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: none;
+}
+.email-spinner.visible { display: block; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.email-subject-wrap {
+  margin-bottom: 10px;
+}
+
+.email-field-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.email-subject-input {
+  width: 100%;
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-main);
+  font-size: 13px;
+  padding: 8px 12px;
+  outline: none;
+}
+.email-subject-input:focus { border-color: var(--blue); }
+
+.email-body-textarea {
+  width: 100%;
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-main);
+  font-size: 13px;
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 220px;
+  outline: none;
+  line-height: 1.6;
+}
+.email-body-textarea:focus { border-color: var(--blue); }
+
+.email-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.email-copy-btn {
+  flex: 1;
+  padding: 9px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.05em;
+}
+.email-copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.email-open-btn {
+  flex: 1;
+  padding: 9px;
+  background: var(--green);
+  border: none;
+  color: white;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+  letter-spacing: 0.05em;
+}
+.email-open-btn:hover { background: #22a35a; }
+
+/* ── DASHBOARD ────────────────────────────────────────────────── */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: var(--navy-light);
+  padding: 20px 22px;
+}
+
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1;
+}
+
+.stat-value.red { color: #e74c3c; }
+.stat-value.orange { color: #e67e22; }
+.stat-value.green { color: #52c27a; }
+.stat-value.accent { color: var(--accent); }
+
+.stat-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ── REP LEADERBOARD ────────────────────────────────────────────── */
+.rep-table-wrap {
+  border: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+
+.section-header {
+  padding: 12px 18px;
+  background: var(--navy-mid);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+/* ── LOADING ────────────────────────────────────────────────────── */
+#loading-screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--navy);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+  z-index: 100;
+}
+#loading-screen.visible { display: flex; }
+
+.loading-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+}
+
+.loading-bar-wrap {
+  width: 200px;
+  height: 2px;
+  background: var(--border);
+}
+
+.loading-bar {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.4s;
+}
+
+/* ── TOAST ────────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  padding: 12px 18px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  z-index: 200;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.2s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.error { border-left-color: var(--red); }
+.toast.success { border-left-color: var(--green); }
+
+/* ── REMOVE FLAG ────────────────────────────────────────────────── */
+.remove-request-area {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: rgba(192,57,43,0.08);
+  border: 1px solid rgba(192,57,43,0.2);
+}
+
+.remove-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #e74c3c;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.remove-reason-input {
+  width: 100%;
+  background: var(--navy-mid);
+  border: 1px solid rgba(192,57,43,0.3);
+  color: var(--text);
+  font-family: var(--font-main);
+  font-size: 12px;
+  padding: 8px 10px;
+  outline: none;
+  margin-bottom: 8px;
+}
+.remove-reason-input::placeholder { color: var(--text-muted); }
+
+.remove-request-btn {
+  padding: 7px 16px;
+  background: transparent;
+  border: 1px solid rgba(192,57,43,0.4);
+  color: #e74c3c;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  transition: all 0.15s;
+}
+.remove-request-btn:hover { background: rgba(192,57,43,0.15); }
+
+/* JOHN APPROVAL */
+.john-approve-area {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: rgba(30,132,73,0.08);
+  border: 1px solid rgba(30,132,73,0.2);
+}
+
+.approve-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #52c27a;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.approve-text {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.approve-btn {
+  padding: 7px 16px;
+  background: var(--green);
+  border: none;
+  color: white;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  transition: background 0.15s;
+}
+.approve-btn:hover { background: #22a35a; }
+
+
+/* ── WATERMARK ──────────────────────────────────────────────────── */
+#watermark {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#watermark::before {
+  content: attr(data-text);
+  position: absolute;
+  top: 0; left: 0;
+  width: 200%;
+  height: 200%;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: rgba(255,255,255,0.04);
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  line-height: 3.5;
+  word-spacing: 80px;
+  transform: rotate(-25deg) translateX(-25%) translateY(-10%);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Disable text selection on sensitive data */
+.td-contact, .contact-link, .contact-card-links {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Blur emails/phones until hover */
+.contact-blur {
+  filter: blur(3px);
+  transition: filter 0.2s;
+  cursor: pointer;
+}
+.contact-blur:hover { filter: blur(0); }
+
+/* Activity warning banner */
+#activity-warning {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  background: var(--red);
+  color: white;
+  text-align: center;
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  z-index: 10000;
+}
+#activity-warning.show { display: block; }
+
+/* ── SCROLLBARS ─────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── COLLECTIONS TAB ─────────────────────────────────────────────── */
+.collections-note {
+  padding: 12px 14px;
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.balance-display {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  color: var(--accent);
+  margin: 8px 0;
+}
+
+/* ── RESPONSIVE HIDE ─────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .detail-panel { width: 360px; min-width: 360px; }
+}
+</style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<!-- WATERMARK -->
+<div id="watermark" data-text=""></div>
+
+<!-- ACTIVITY WARNING -->
+<div id="activity-warning">
+  ⚠ UNUSUAL ACTIVITY DETECTED — This session has been flagged and logged. Contact john.fluman@intransittech.com if this is an error.
+</div>
+
+<!-- LOADING -->
+<div id="loading-screen">
+  <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.3em; color: var(--accent); margin-bottom: 4px;">INTRANSIT TECHNOLOGIES</div>
+  <div class="loading-text" id="loading-msg">INITIALIZING...</div>
+  <div class="loading-bar-wrap"><div class="loading-bar" id="loading-bar"></div></div>
+</div>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">Intransit Technologies</div>
+    <div class="login-title">Sales Intelligence</div>
+    <div class="login-divider"></div>
+    <div class="login-sub">Sign in with your @intransittech.com account to access your account dashboard.</div>
+    <div id="g_id_onload"
+         data-client_id="379521778420-8gjfdn4ea5knllkdvd675klu80tcl8jb.apps.googleusercontent.com"
+         data-callback="handleGoogleCredential"
+         data-hosted_domain="intransittech.com"
+         data-ux_mode="popup"
+         data-auto_prompt="false">
+    </div>
+    <div class="g_id_signin"
+         data-type="standard"
+         data-theme="filled_blue"
+         data-text="sign_in_with"
+         data-size="large"
+         data-width="280">
+    </div>
+    <div class="login-note">@intransittech.com accounts only</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">Intransit</div>
+      <div class="sidebar-title">Sales Intelligence</div>
+    </div>
+    <div class="sidebar-user">
+      <div class="sidebar-user-name" id="sidebar-user-name">—</div>
+      <div class="sidebar-user-role" id="sidebar-user-role">LOADING...</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-section-label">Views</div>
+      <div class="nav-item active" data-view="accounts" onclick="switchView('accounts')">
+        <span class="nav-icon">◈</span> My Accounts
+        <span class="nav-badge" id="badge-accounts">—</span>
+      </div>
+      <div class="nav-item" data-view="inactive" onclick="switchView('inactive')">
+        <span class="nav-icon">◉</span> Inactive
+        <span class="nav-badge red" id="badge-inactive">—</span>
+      </div>
+      <div class="nav-item" data-view="followup" onclick="switchView('followup')">
+        <span class="nav-icon">◎</span> Follow-ups Due
+        <span class="nav-badge orange" id="badge-followup">—</span>
+      </div>
+      <div class="nav-item" id="nav-dashboard" data-view="dashboard" onclick="switchView('dashboard')">
+        <span class="nav-icon">▦</span> Dashboard
+      </div>
+      <div class="nav-item" id="nav-all" data-view="all" onclick="switchView('all')" style="display:none">
+        <span class="nav-icon">⊞</span> All Reps
+        <span class="nav-badge" id="badge-all">—</span>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <button class="signout-btn" onclick="handleSignout()">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="topbar-title">My Accounts</div>
+      <input class="topbar-search" type="text" placeholder="Search accounts..." id="search-input" oninput="filterAccounts()">
+      <button class="filter-btn" id="filter-all" onclick="setFilter('all')" style="display:none">ALL</button>
+      <button class="filter-btn active" id="filter-active" onclick="setFilter('active')">ACTIVE</button>
+      <button class="filter-btn" id="filter-inactive-btn" onclick="setFilter('inactive')">INACTIVE</button>
+      <button class="filter-btn" id="filter-declining" onclick="setFilter('declining')">DECLINING</button>
+    </div>
+
+    <div class="content" id="main-content">
+      <!-- Account list + detail panel injected here -->
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  CONFIGURATION
+// ══════════════════════════════════════════════════════════
+const CONFIG = {
+  SPREADSHEET_ID: '1xH_OC_fvSwQWZet95xBlJ951LsaQWru-glv2rkSnDm4',
+  CLIENT_ID: '379521778420-8gjfdn4ea5knllkdvd675klu80tcl8jb.apps.googleusercontent.com',  // Replace with your OAuth client ID
+  SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
+  ADMIN_EMAIL: 'john.fluman@intransittech.com',
+  REPS: ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor'],
+  REP_EMAIL_MAP: {
+    // Map @intransittech.com emails to CRM rep IDs
+    // Update these with the actual email addresses
+    'john.fluman@intransittech.com': 'ADMIN',
+    // 'karen.xxx@intransittech.com': 'CKaren',
+    // 'bill.xxx@intransittech.com': 'BillP',
+    // etc — add each rep's email below
+  },
+  API_BASE: 'http://localhost:5050',  // Local Python API on the server
+};
+
+// ══════════════════════════════════════════════════════
+//  SECURITY SYSTEM
+// ══════════════════════════════════════════════════════
+const SECURITY = {
+  SESSION_TIMEOUT_MS: 30 * 60 * 1000,   // 30 min inactivity
+  MAX_ACCOUNTS_PER_SESSION: 60,           // flag if user views > 60 accounts
+  activityLog: [],
+  accountsViewed: new Set(),
+  lastActivity: Date.now(),
+  timeoutTimer: null,
+};
+
+function initSecurity() {
+  // Set watermark with user email + date
+  updateWatermark();
+
+  // Activity tracking — reset timer on any interaction
+  ['click','keydown','mousemove','scroll'].forEach(evt => {
+    document.addEventListener(evt, () => {
+      SECURITY.lastActivity = Date.now();
+      resetSessionTimer();
+    }, { passive: true });
+  });
+
+  // Start session timer
+  resetSessionTimer();
+
+  // Disable right-click context menu
+  document.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    showToast('Right-click disabled for data protection.', 'error');
+  });
+
+  // Disable common keyboard shortcuts for saving/printing
+  document.addEventListener('keydown', e => {
+    const blocked = (
+      (e.ctrlKey && ['s','p','a'].includes(e.key.toLowerCase())) ||
+      (e.key === 'F12') ||
+      (e.ctrlKey && e.shiftKey && e.key === 'I')
+    );
+    if (blocked) {
+      e.preventDefault();
+      showToast('Action disabled for data protection.', 'error');
+      logSecurityEvent('BLOCKED_SHORTCUT', e.key);
+    }
+  });
+
+  // Log print attempts
+  window.addEventListener('beforeprint', () => {
+    logSecurityEvent('PRINT_ATTEMPT', 'User attempted to print');
+    showToast('Printing disabled for data protection.', 'error');
+  });
+}
+
+function updateWatermark() {
+  const email = state.user?.email || 'unknown';
+  const date  = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const text  = (email + '  —  ' + date + '     ').repeat(40);
+  document.getElementById('watermark').setAttribute('data-text', text);
+}
+
+function resetSessionTimer() {
+  clearTimeout(SECURITY.timeoutTimer);
+  SECURITY.timeoutTimer = setTimeout(() => {
+    logSecurityEvent('SESSION_TIMEOUT', 'Auto sign-out after 30 min inactivity');
+    showToast('Session expired due to inactivity. Signing out...', 'error');
+    setTimeout(handleSignout, 2000);
+  }, SECURITY.SESSION_TIMEOUT_MS);
+}
+
+function trackAccountView(acc) {
+  SECURITY.accountsViewed.add(acc.name + '|' + acc.rep);
+  logSecurityEvent('VIEW_ACCOUNT', acc.name);
+
+  // Flag unusual bulk viewing
+  if (SECURITY.accountsViewed.size > SECURITY.MAX_ACCOUNTS_PER_SESSION) {
+    document.getElementById('activity-warning').classList.add('show');
+    logSecurityEvent('HIGH_VOLUME_WARNING', `${SECURITY.accountsViewed.size} accounts viewed this session`);
+  }
+}
+
+function logSecurityEvent(type, detail) {
+  const entry = {
+    time:  new Date().toISOString(),
+    user:  state.user?.email || 'unknown',
+    type,
+    detail: String(detail).slice(0, 200),
+  };
+  SECURITY.activityLog.push(entry);
+
+  // Write to Google Sheet _LOG tab asynchronously (best effort)
+  if (state.accessToken && ['HIGH_VOLUME_WARNING','PRINT_ATTEMPT','BLOCKED_SHORTCUT','SESSION_TIMEOUT'].includes(type)) {
+    sheetsAppend("'_LOG'!A1", [[
+      entry.time,
+      entry.user,
+      'SECURITY: ' + type,
+      entry.detail,
+    ]]).catch(() => {});
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+let state = {
+  user: null,
+  repId: null,
+  isAdmin: false,
+  accounts: [],
+  filteredAccounts: [],
+  selectedAccount: null,
+  activeView: 'accounts',
+  activeFilter: 'active',
+  activeDetailTab: 'notes',
+  notesByAccount: {},  // keyed by account name
+  loading: false,
+  accessToken: null,
+};
+
+// ══════════════════════════════════════════════════════════
+//  GOOGLE AUTH
+// ══════════════════════════════════════════════════════════
+function handleGoogleCredential(response) {
+  // Decode JWT from Google sign-in
+  const payload = JSON.parse(atob(response.credential.split('.')[1]));
+  if (!payload.email.endsWith('@intransittech.com')) {
+    alert('Access restricted to @intransittech.com accounts only.');
+    return;
+  }
+  state.user = { email: payload.email, name: payload.name };
+  localStorage.setItem('it_user', JSON.stringify(state.user));
+  setRepFromEmail(payload.email);
+  // Get Sheets access token
+  handleLogin(payload.email);
+}
+
+function handleLogin(loginHint) {
+  const params = new URLSearchParams({
+    client_id: CONFIG.CLIENT_ID,
+    redirect_uri: window.location.origin + window.location.pathname,
+    response_type: 'token',
+    scope: CONFIG.SCOPES + ' email profile',
+    hd: 'intransittech.com',
+    prompt: loginHint ? 'consent' : 'select_account',
+    include_granted_scopes: 'true',
+  });
+  if (loginHint) params.set('login_hint', loginHint);
+  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
+}
+
+function handleSignout() {
+  state.user = null;
+  state.accessToken = null;
+  localStorage.removeItem('it_token');
+  localStorage.removeItem('it_user');
+  if (window.google) { try { google.accounts.id.disableAutoSelect(); } catch(e){} }
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').classList.remove('visible');
+}
+
+function setRepFromEmail(email) {
+  state.isAdmin = (email === CONFIG.ADMIN_EMAIL);
+  state.repId   = CONFIG.REP_EMAIL_MAP[email] || null;
+}
+
+async function checkAuth() {
+  // Check URL hash for OAuth access token
+  const hash = window.location.hash.substring(1);
+  const params = new URLSearchParams(hash);
+  const token = params.get('access_token');
+
+  if (token) {
+    state.accessToken = token;
+    localStorage.setItem('it_token', token);
+    window.location.hash = '';
+    const savedUser = localStorage.getItem('it_user');
+    if (savedUser) {
+      state.user = JSON.parse(savedUser);
+      setRepFromEmail(state.user.email);
+      return true;
+    }
+    // Fetch user info with the token
+    try {
+      const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
+        { headers: { Authorization: 'Bearer ' + token } });
+      const info = await r.json();
+      if (!info.email || !info.email.endsWith('@intransittech.com')) {
+        return false;
+      }
+      state.user = { email: info.email, name: info.name };
+      localStorage.setItem('it_user', JSON.stringify(state.user));
+      setRepFromEmail(info.email);
+      return true;
+    } catch(e) { return false; }
+  }
+
+  // Check saved session
+  const savedToken = localStorage.getItem('it_token');
+  const savedUser  = localStorage.getItem('it_user');
+  if (savedToken && savedUser) {
+    state.accessToken = savedToken;
+    state.user = JSON.parse(savedUser);
+    setRepFromEmail(state.user.email);
+    return true;
+  }
+
+  return false;
+}
+
+async function loadUserInfo() {
+  // Handled by GIS credential callback
+}
+async function sheetsGet(range) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}`;
+  const res = await fetch(url, {
+    headers: { Authorization: 'Bearer ' + state.accessToken }
+  });
+  if (!res.ok) {
+    if (res.status === 401) { handleSignout(); throw new Error('Session expired'); }
+    throw new Error('Sheets API error ' + res.status);
+  }
+  const data = await res.json();
+  return data.values || [];
+}
+
+async function sheetsUpdate(range, values) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization: 'Bearer ' + state.accessToken,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ values })
+  });
+  if (!res.ok) throw new Error('Sheets update error ' + res.status);
+  return res.json();
+}
+
+async function sheetsAppend(range, values) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + state.accessToken,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ values })
+  });
+  if (!res.ok) throw new Error('Sheets append error ' + res.status);
+  return res.json();
+}
+
+// ══════════════════════════════════════════════════════════
+//  DATA LOADING
+// ══════════════════════════════════════════════════════════
+async function loadAllAccounts() {
+  setLoading(true, 'LOADING ACCOUNTS...', 20);
+  state.accounts = [];
+
+  const tabs = state.isAdmin
+    ? CONFIG.REPS
+    : (state.repId ? [state.repId] : []);
+
+  if (tabs.length === 0) {
+    setLoading(false);
+    return;
+  }
+
+  let progress = 20;
+  const step = 60 / tabs.length;
+
+  for (const tab of tabs) {
+    try {
+      const rows = await sheetsGet(`'${tab}'!A1:Z2000`);
+      if (rows.length < 5) continue;
+
+      // Find header row (has CUSTOMER_NAME)
+      let headerIdx = -1;
+      for (let i = 0; i < Math.min(rows.length, 6); i++) {
+        if (rows[i].includes('CUSTOMER_NAME')) { headerIdx = i; break; }
+      }
+      if (headerIdx === -1) continue;
+
+      const headers = rows[headerIdx];
+      const getIdx = (name) => headers.indexOf(name);
+
+      const iName    = getIdx('CUSTOMER_NAME');
+      const iRep     = getIdx('SALES_REP');
+      const iStatus  = getIdx('STATUS');
+      const iDate    = getIdx('LAST_SALE_DATE');
+      const iDays    = getIdx('DAYS_INACTIVE');
+      const iTotal   = getIdx('TOTAL_2020_2026');
+      const iCName   = getIdx('CONTACT_NAME');
+      const iCTitle  = getIdx('CONTACT_TITLE');
+      const iCEmail  = getIdx('CONTACT_EMAIL');
+      const iCPhone  = getIdx('CONTACT_PHONE');
+      const iCMobile = getIdx('CONTACT_MOBILE');
+      const iNote    = getIdx('REP_NOTE');
+      const iFollow  = getIdx('FOLLOW_UP_DATE');
+      const iRepStat = getIdx('REP_STATUS');
+      const iRemove  = getIdx('REMOVE_FLAG');
+      const iJohn    = getIdx('JOHN_APPROVAL');
+
+      // Find year columns
+      const years = [];
+      headers.forEach((h, i) => {
+        if (/^\d{4}$/.test(h)) years.push({ year: h, idx: i });
+      });
+
+      for (let r = headerIdx + 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row[iName] || !row[iName].trim()) continue;
+
+        const yearData = {};
+        years.forEach(y => { yearData[y.year] = parseMoney(row[y.idx]); });
+
+        const acc = {
+          name:          (row[iName] || '').trim(),
+          rep:           row[iRep]     || tab,
+          status:        row[iStatus]  || '',
+          lastSaleDate:  row[iDate]    || '',
+          daysInactive:  parseInt(row[iDays]) || 0,
+          total:         parseMoney(row[iTotal]),
+          contactName:   row[iCName]   || '',
+          contactTitle:  row[iCTitle]  || '',
+          contactEmail:  row[iCEmail]  || '',
+          contactPhone:  row[iCPhone]  || '',
+          contactMobile: row[iCMobile] || '',
+          repNote:       row[iNote]    || '',
+          followUpDate:  row[iFollow]  || '',
+          repStatus:     row[iRepStat] || '',
+          removeFlag:    row[iRemove]  || '',
+          johnApproval:  row[iJohn]    || '',
+          years:         yearData,
+          rowIndex:      r,
+          tabName:       tab,
+          headers:       headers,
+        };
+
+        state.accounts.push(acc);
+      }
+
+      // Load note history for this tab
+      await loadNoteHistory(tab);
+
+    } catch(e) {
+      console.error(`Error loading tab ${tab}:`, e);
+    }
+
+    progress += step;
+    setLoading(true, `LOADING ${tab.toUpperCase()}...`, progress);
+  }
+
+  setLoading(true, 'BUILDING VIEW...', 90);
+  await new Promise(r => setTimeout(r, 100));
+  setLoading(false);
+}
+
+async function loadNoteHistory(tab) {
+  try {
+    const rows = await sheetsGet(`'_NOTES_BACKUP'!A1:Z5000`);
+    if (rows.length < 2) return;
+    const headers = rows[0];
+    const iTs     = headers.indexOf('BACKUP_TIMESTAMP');
+    const iName   = headers.indexOf('CUSTOMER_NAME');
+    const iRep    = headers.indexOf('SALES_REP');
+    const iNote   = headers.indexOf('REP_NOTE');
+    const iFollow = headers.indexOf('FOLLOW_UP_DATE');
+    const iStat   = headers.indexOf('REP_STATUS');
+    const iRemove = headers.indexOf('REMOVE_FLAG');
+
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      const key = (row[iName] || '').trim() + '|' + (row[iRep] || '').trim();
+      if (!state.notesByAccount[key]) state.notesByAccount[key] = [];
+      if (row[iNote] && row[iNote].trim()) {
+        state.notesByAccount[key].push({
+          timestamp:    row[iTs]     || '',
+          note:         row[iNote]   || '',
+          followUpDate: row[iFollow] || '',
+          repStatus:    row[iStat]   || '',
+          removeFlag:   row[iRemove] || '',
+        });
+      }
+    }
+  } catch(e) {
+    // _NOTES_BACKUP may not exist yet — silent
+  }
+}
+
+function parseMoney(val) {
+  if (!val) return 0;
+  return parseFloat(String(val).replace(/[$,]/g, '')) || 0;
+}
+
+// ══════════════════════════════════════════════════════════
+//  FILTERING & VIEWS
+// ══════════════════════════════════════════════════════════
+function setFilter(f) {
+  state.activeFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('filter-' + (f === 'inactive' ? 'inactive-btn' : f));
+  if (btn) btn.classList.add('active');
+  renderAccountsView();
+}
+
+function switchView(view) {
+  state.activeView = view;
+  state.selectedAccount = null;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelector(`[data-view="${view}"]`)?.classList.add('active');
+
+  const titles = {
+    accounts: 'My Accounts',
+    inactive: 'Inactive Accounts',
+    followup: 'Follow-ups Due',
+    dashboard: 'Dashboard',
+    all: 'All Accounts — All Reps',
+  };
+  document.getElementById('topbar-title').textContent = titles[view] || view;
+
+  if (view === 'dashboard') {
+    renderDashboard();
+  } else {
+    renderAccountsView();
+  }
+}
+
+function filterAccounts() {
+  renderAccountsView();
+}
+
+function getViewAccounts() {
+  const search = document.getElementById('search-input')?.value.toLowerCase() || '';
+  let accs = [...state.accounts];
+
+  // View filter
+  if (state.activeView === 'inactive') {
+    accs = accs.filter(a => isInactive(a));
+  } else if (state.activeView === 'followup') {
+    const today = new Date().toISOString().slice(0, 10);
+    accs = accs.filter(a => {
+      if (!a.followUpDate) return false;
+      const d = parseDate(a.followUpDate);
+      return d && d <= today;
+    });
+  } else if (state.activeView === 'all') {
+    // all accounts
+  } else {
+    // 'accounts' — default
+  }
+
+  // Status filter
+  if (state.activeFilter === 'active') {
+    accs = accs.filter(a => !isInactive(a) && !isDeclining(a));
+  } else if (state.activeFilter === 'inactive') {
+    accs = accs.filter(a => isInactive(a));
+  } else if (state.activeFilter === 'declining') {
+    accs = accs.filter(a => isDeclining(a));
+  }
+
+  // Search
+  if (search) {
+    accs = accs.filter(a =>
+      a.name.toLowerCase().includes(search) ||
+      a.contactName.toLowerCase().includes(search) ||
+      a.contactEmail.toLowerCase().includes(search) ||
+      a.rep.toLowerCase().includes(search)
+    );
+  }
+
+  return accs;
+}
+
+function isInactive(a) {
+  const s = a.status || '';
+  return s.includes('Dormant') || s.includes('High Value') || s.includes('At Risk') || s.includes('Monitor');
+}
+
+function isDeclining(a) {
+  const s = a.status || '';
+  return s.includes('Decline') || s.includes('Stalled');
+}
+
+function parseDate(str) {
+  if (!str) return null;
+  const parts = str.split('/');
+  if (parts.length === 3) {
+    return `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
+  }
+  return str.slice(0, 10);
+}
+
+// ══════════════════════════════════════════════════════════
+//  RENDER — ACCOUNTS VIEW
+// ══════════════════════════════════════════════════════════
+function renderAccountsView() {
+  const accs = getViewAccounts();
+  state.filteredAccounts = accs;
+
+  const showRep = state.isAdmin || state.activeView === 'all';
+
+  const content = document.getElementById('main-content');
+  content.innerHTML = `
+    <div class="account-list-panel" id="account-list">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Contact</th>
+              ${showRep ? '<th>Rep</th>' : ''}
+              <th>Status</th>
+              <th>Last Sale</th>
+              <th style="text-align:right">Total</th>
+              <th>Follow-up</th>
+            </tr>
+          </thead>
+          <tbody id="account-tbody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="detail-panel" id="detail-panel">
+      <div class="detail-empty">
+        <div class="detail-empty-icon">◈</div>
+        <div class="detail-empty-text">SELECT AN ACCOUNT</div>
+      </div>
+    </div>
+  `;
+
+  const tbody = document.getElementById('account-tbody');
+  if (accs.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted);font-family:var(--font-mono);font-size:11px;">NO ACCOUNTS MATCH</td></tr>`;
+    return;
+  }
+
+  accs.forEach((acc, idx) => {
+    const tr = document.createElement('tr');
+    tr.onclick = () => selectAccount(acc);
+    if (state.selectedAccount?.name === acc.name && state.selectedAccount?.rep === acc.rep) {
+      tr.classList.add('selected');
+    }
+
+    const followUpDisplay = acc.followUpDate
+      ? `<span style="color:var(--accent);font-family:var(--font-mono);font-size:11px">${acc.followUpDate}</span>`
+      : '<span style="color:var(--text-muted)">—</span>';
+
+    tr.innerHTML = `
+      <td class="td-name">${escHtml(acc.name)}</td>
+      <td class="td-contact">${escHtml(acc.contactName) || '<span style="color:var(--text-muted)">—</span>'}</td>
+      ${showRep ? `<td class="td-mono">${escHtml(acc.rep)}</td>` : ''}
+      <td>${statusBadge(acc.status)}</td>
+      <td class="td-mono">${acc.lastSaleDate ? acc.lastSaleDate.slice(0,10) : '—'}</td>
+      <td class="td-amount">${acc.total > 0 ? '$' + formatNum(acc.total) : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td>${followUpDisplay}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  updateBadges();
+}
+
+// ══════════════════════════════════════════════════════════
+//  RENDER — ACCOUNT DETAIL
+// ══════════════════════════════════════════════════════════
+function selectAccount(acc) {
+  state.selectedAccount = acc;
+  state.activeDetailTab = 'notes';
+  trackAccountView(acc);
+
+  // Update row highlight
+  document.querySelectorAll('#account-tbody tr').forEach((tr, i) => {
+    tr.classList.toggle('selected',
+      state.filteredAccounts[i]?.name === acc.name &&
+      state.filteredAccounts[i]?.rep === acc.rep
+    );
+  });
+
+  renderDetail(acc);
+}
+
+function renderDetail(acc) {
+  const panel = document.getElementById('detail-panel');
+  if (!panel) return;
+
+  const years = Object.keys(acc.years).sort();
+  const maxVal = Math.max(...Object.values(acc.years), 1);
+
+  const barsHtml = years.map(y => {
+    const val = acc.years[y] || 0;
+    const pct = Math.round((val / maxVal) * 100);
+    const isCur = y === String(new Date().getFullYear());
+    return `
+      <div class="rev-bar-wrap">
+        <div class="rev-bar ${isCur ? 'current-year' : ''}" style="height:${Math.max(pct * 0.4, val > 0 ? 4 : 2)}px" title="${y}: $${formatNum(val)}"></div>
+        <div class="rev-bar-year">${y.slice(2)}</div>
+      </div>`;
+  }).join('');
+
+  const tabs = ['notes', 'email', 'collections', 'info'];
+  const tabLabels = { notes: 'Notes', email: 'Outreach', collections: 'Collections', info: 'Account' };
+
+  const hasRemoveRequest = acc.removeFlag && acc.removeFlag.toUpperCase() !== 'YES' && acc.removeFlag.trim() !== '';
+  const johnCanApprove = state.isAdmin && hasRemoveRequest;
+
+  panel.innerHTML = `
+    <div class="detail-header">
+      <div class="detail-account-name">${escHtml(acc.name)}</div>
+      <div>${statusBadge(acc.status)}</div>
+      <div class="detail-meta">
+        <div class="detail-meta-item">Rep: <span>${escHtml(acc.rep)}</span></div>
+        <div class="detail-meta-item">Last sale: <span>${acc.lastSaleDate ? acc.lastSaleDate.slice(0,10) : 'never'}</span></div>
+        <div class="detail-meta-item">Days inactive: <span>${acc.daysInactive || 0}</span></div>
+        <div class="detail-meta-item">Total: <span>$${formatNum(acc.total)}</span></div>
+      </div>
+    </div>
+
+    ${acc.contactName ? `
+    <div class="detail-contact-card" style="margin:14px 20px 0">
+      <div class="contact-card-name">${escHtml(acc.contactName)}</div>
+      <div class="contact-card-title">${escHtml(acc.contactTitle)}</div>
+      <div class="contact-card-links">
+        ${acc.contactEmail ? `<a class="contact-link contact-blur" href="mailto:${escHtml(acc.contactEmail)}" title="Click to email">✉ ${escHtml(acc.contactEmail)}</a>` : ''}
+        ${acc.contactPhone ? `<span class="contact-link contact-blur" title="Hover to reveal">☎ ${escHtml(acc.contactPhone)}</span>` : ''}
+        ${acc.contactMobile ? `<span class="contact-link contact-blur" title="Hover to reveal">📱 ${escHtml(acc.contactMobile)}</span>` : ''}
+      </div>
+    </div>` : ''}
+
+    <div class="revenue-strip" style="margin-top:14px">
+      <div class="revenue-label">Revenue 2020–${new Date().getFullYear()}</div>
+      <div class="revenue-bars">${barsHtml}</div>
+    </div>
+
+    <div class="detail-tabs">
+      ${tabs.map(t => `
+        <div class="detail-tab ${t === state.activeDetailTab ? 'active' : ''}"
+             onclick="switchDetailTab('${t}')">${tabLabels[t]}</div>
+      `).join('')}
+    </div>
+
+    <div class="detail-body" id="detail-body">
+      ${renderDetailTab(acc, state.activeDetailTab)}
+    </div>
+
+    ${state.activeDetailTab === 'notes' ? renderNoteInput(acc) : ''}
+  `;
+}
+
+function switchDetailTab(tab) {
+  state.activeDetailTab = tab;
+  if (state.selectedAccount) renderDetail(state.selectedAccount);
+}
+
+function renderDetailTab(acc, tab) {
+  if (tab === 'notes') return renderNotesTab(acc);
+  if (tab === 'email') return renderEmailTab(acc);
+  if (tab === 'collections') return renderCollectionsTab(acc);
+  if (tab === 'info') return renderInfoTab(acc);
+  return '';
+}
+
+function renderNotesTab(acc) {
+  const key = acc.name.trim() + '|' + acc.rep.trim();
+  const history = (state.notesByAccount[key] || []).slice().reverse();
+
+  // Also include current note from sheet if not already in history
+  let allNotes = [...history];
+  if (acc.repNote && acc.repNote.trim()) {
+    const alreadyIn = allNotes.some(n => n.note === acc.repNote);
+    if (!alreadyIn) {
+      allNotes.unshift({
+        timestamp: 'Current',
+        note: acc.repNote,
+        followUpDate: acc.followUpDate,
+        repStatus: acc.repStatus,
+        removeFlag: acc.removeFlag,
+        isCurrent: true,
+      });
+    }
+  }
+
+  if (allNotes.length === 0) {
+    return `<div class="note-empty">NO NOTES YET</div>`;
+  }
+
+  return allNotes.map(n => {
+    const statusColor = { Working: '#52c27a', Quoted: '#e67e22', Dead: '#e74c3c', Hold: '#8a9bb0' }[n.repStatus] || '#546478';
+    return `
+      <div class="note-entry ${n.isCurrent ? '' : 'locked'}">
+        <div class="note-meta">
+          <span class="note-author">${escHtml(acc.rep)}</span>
+          ${n.repStatus ? `<span class="note-status-pill" style="background:${statusColor}22;color:${statusColor}">${escHtml(n.repStatus)}</span>` : ''}
+          <span class="note-time">${escHtml(n.timestamp)}</span>
+          ${!n.isCurrent ? '<span class="note-locked-icon">🔒 locked</span>' : ''}
+        </div>
+        <div class="note-text">${escHtml(n.note)}</div>
+        ${n.followUpDate ? `<div style="margin-top:5px;font-family:var(--font-mono);font-size:10px;color:var(--accent)">Follow-up: ${escHtml(n.followUpDate)}</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function renderNoteInput(acc) {
+  const canEdit = state.isAdmin || acc.rep === state.repId;
+  if (!canEdit) return '';
+
+  const hasRemoveRequest = acc.removeFlag && acc.removeFlag.toUpperCase() !== 'YES' && acc.removeFlag.trim();
+
+  return `
+    <div class="note-input-area">
+      <div class="note-input-label">Add Note</div>
+      <textarea class="note-textarea" id="note-text-input"
+        placeholder="Type your note here... It will be timestamped and locked when saved."></textarea>
+      <div class="note-controls">
+        <select class="note-select" id="note-status-select">
+          <option value="">— Status —</option>
+          <option value="Working">Working</option>
+          <option value="Quoted">Quoted</option>
+          <option value="Dead">Dead</option>
+          <option value="Hold">Hold</option>
+        </select>
+        <input class="note-date-input" type="date" id="note-followup-date"
+               placeholder="Follow-up date" value="${acc.followUpDate ? toInputDate(acc.followUpDate) : ''}">
+        <button class="save-note-btn" onclick="saveNote()">SAVE & LOCK</button>
+      </div>
+      ${state.isAdmin && hasRemoveRequest ? `
+        <div class="john-approve-area" style="margin-top:12px">
+          <div class="approve-label">Remove Request Pending</div>
+          <div class="approve-text">Rep has requested removal: <strong>${escHtml(acc.removeFlag)}</strong></div>
+          <button class="approve-btn" onclick="approveRemoval()">APPROVE REMOVAL</button>
+        </div>` : ''}
+      ${canEdit && !state.isAdmin ? `
+        <div class="remove-request-area" style="margin-top:12px">
+          <div class="remove-label">Request Account Removal</div>
+          <input class="remove-reason-input" type="text" id="remove-reason"
+                 placeholder="Reason for removal (e.g. Company closed, merged...)"
+                 value="${acc.removeFlag && acc.removeFlag.toUpperCase() !== 'YES' ? escHtml(acc.removeFlag) : ''}">
+          <button class="remove-request-btn" onclick="requestRemoval()">REQUEST REMOVAL</button>
+        </div>` : ''}
+    </div>`;
+}
+
+function renderEmailTab(acc) {
+  return `
+    <div class="email-draft-area">
+      <button class="email-gen-btn" id="email-gen-btn" onclick="generateEmail()">
+        <div class="email-spinner" id="email-spinner"></div>
+        ✦ GENERATE OUTREACH EMAIL WITH AI
+      </button>
+      <div id="email-fields" style="display:none">
+        <div class="email-subject-wrap">
+          <div class="email-field-label">Subject</div>
+          <input class="email-subject-input" type="text" id="email-subject" placeholder="Subject line...">
+        </div>
+        <div class="email-field-label" style="margin-bottom:4px">Body</div>
+        <textarea class="email-body-textarea" id="email-body" placeholder="Email body will appear here..."></textarea>
+        <div class="email-actions">
+          <button class="email-copy-btn" onclick="copyEmail()">COPY TO CLIPBOARD</button>
+          <button class="email-open-btn" onclick="openInEmail()">OPEN IN EMAIL</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderCollectionsTab(acc) {
+  return `
+    <div class="collections-note">
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:6px">ACCOUNT BALANCE</div>
+      <div class="balance-display">—</div>
+      <div style="font-size:12px;color:var(--text-muted)">Balance data pulls from CUSTBAL in SQL via the local API.</div>
+    </div>
+    <div class="note-empty" style="font-size:12px;padding:16px 0">
+      Collections history coming in next update.
+    </div>`;
+}
+
+function renderInfoTab(acc) {
+  const years = Object.keys(acc.years).sort();
+  return `
+    <div style="margin-bottom:14px">
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:8px">REVENUE BY YEAR</div>
+      ${years.map(y => `
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-light);font-size:12px">
+          <span style="font-family:var(--font-mono);color:var(--text-muted)">${y}</span>
+          <span style="font-family:var(--font-mono);color:${acc.years[y] > 0 ? 'var(--text)' : 'var(--text-muted)'}">
+            ${acc.years[y] > 0 ? '$' + formatNum(acc.years[y]) : '—'}
+          </span>
+        </div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px;font-weight:500;margin-top:4px">
+        <span style="font-family:var(--font-mono);color:var(--accent)">TOTAL</span>
+        <span style="font-family:var(--font-mono);color:var(--accent)">$${formatNum(acc.total)}</span>
+      </div>
+    </div>
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:8px">ACCOUNT DETAILS</div>
+    <div style="font-size:12px;display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;gap:8px"><span style="color:var(--text-muted);width:90px">Rep</span><span>${escHtml(acc.rep)}</span></div>
+      <div style="display:flex;gap:8px"><span style="color:var(--text-muted);width:90px">Last order</span><span>${acc.lastSaleDate || '—'}</span></div>
+      <div style="display:flex;gap:8px"><span style="color:var(--text-muted);width:90px">Days quiet</span><span>${acc.daysInactive || 0}</span></div>
+      <div style="display:flex;gap:8px"><span style="color:var(--text-muted);width:90px">Rep status</span><span>${escHtml(acc.repStatus) || '—'}</span></div>
+      <div style="display:flex;gap:8px"><span style="color:var(--text-muted);width:90px">Follow-up</span><span style="color:var(--accent)">${escHtml(acc.followUpDate) || '—'}</span></div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  RENDER — DASHBOARD
+// ══════════════════════════════════════════════════════════
+function renderDashboard() {
+  const accs = state.accounts;
+  const inactive = accs.filter(a => isInactive(a));
+  const active   = accs.filter(a => !isInactive(a) && !isDeclining(a));
+  const declining = accs.filter(a => isDeclining(a));
+  const withFollowup = accs.filter(a => a.followUpDate);
+  const today = new Date().toISOString().slice(0, 10);
+  const dueToday = accs.filter(a => {
+    if (!a.followUpDate) return false;
+    const d = parseDate(a.followUpDate);
+    return d && d <= today;
+  });
+
+  const totalRevenue = accs.reduce((s, a) => s + a.total, 0);
+
+  // Per-rep stats
+  const repStats = {};
+  CONFIG.REPS.forEach(r => {
+    const ra = accs.filter(a => a.rep === r);
+    repStats[r] = {
+      total: ra.length,
+      active: ra.filter(a => !isInactive(a)).length,
+      inactive: ra.filter(a => isInactive(a)).length,
+      revenue: ra.reduce((s, a) => s + a.total, 0),
+    };
+  });
+
+  const content = document.getElementById('main-content');
+  content.innerHTML = `
+    <div style="flex:1;overflow-y:auto;padding:24px">
+      <div class="dashboard-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Accounts</div>
+          <div class="stat-value accent">${accs.length}</div>
+          <div class="stat-sub">across all reps</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Inactive</div>
+          <div class="stat-value red">${inactive.length}</div>
+          <div class="stat-sub">${Math.round(inactive.length/Math.max(accs.length,1)*100)}% of accounts</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Declining</div>
+          <div class="stat-value orange">${declining.length}</div>
+          <div class="stat-sub">need attention</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Follow-ups Due</div>
+          <div class="stat-value ${dueToday.length > 0 ? 'orange' : 'green'}">${dueToday.length}</div>
+          <div class="stat-sub">as of today</div>
+        </div>
+      </div>
+
+      <div class="stat-card" style="margin-bottom:24px">
+        <div class="stat-label">Total Revenue 2020–${new Date().getFullYear()}</div>
+        <div class="stat-value" style="font-size:32px">$${formatNum(totalRevenue)}</div>
+      </div>
+
+      <div class="rep-table-wrap">
+        <div class="section-header">REP SUMMARY</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Rep</th>
+              <th>Accounts</th>
+              <th>Active</th>
+              <th>Inactive</th>
+              <th style="text-align:right">Total Revenue</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${CONFIG.REPS.map(r => {
+              const s = repStats[r];
+              return `<tr onclick="filterByRep('${r}')" style="cursor:pointer">
+                <td style="font-family:var(--font-mono);font-size:12px">${r}</td>
+                <td>${s.total}</td>
+                <td style="color:#52c27a">${s.active}</td>
+                <td style="color:#e74c3c">${s.inactive}</td>
+                <td style="text-align:right;font-family:var(--font-mono);font-size:12px">$${formatNum(s.revenue)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function filterByRep(rep) {
+  switchView('all');
+  document.getElementById('search-input').value = rep;
+  filterAccounts();
+}
+
+// ══════════════════════════════════════════════════════════
+//  NOTE SAVING
+// ══════════════════════════════════════════════════════════
+async function saveNote() {
+  const acc = state.selectedAccount;
+  if (!acc) return;
+
+  const text = document.getElementById('note-text-input')?.value.trim();
+  if (!text) { showToast('Please enter a note first', 'error'); return; }
+
+  const status   = document.getElementById('note-status-select')?.value || '';
+  const followUp = document.getElementById('note-followup-date')?.value || '';
+  const followUpDisplay = followUp
+    ? `${followUp.slice(5,7)}/${followUp.slice(8,10)}/${followUp.slice(0,4)}`
+    : '';
+
+  const btn = document.querySelector('.save-note-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
+
+  try {
+    // Find the row range for this account in the Sheet
+    const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
+    const rows = await sheetsGet(range);
+    const row = rows[0] || [];
+
+    const headers = acc.headers;
+    const iNote   = headers.indexOf('REP_NOTE');
+    const iFollow = headers.indexOf('FOLLOW_UP_DATE');
+    const iStat   = headers.indexOf('REP_STATUS');
+
+    // Build updated row
+    const newRow = [...row];
+    while (newRow.length < headers.length) newRow.push('');
+    if (iNote >= 0)   newRow[iNote]   = text;
+    if (iFollow >= 0) newRow[iFollow] = followUpDisplay;
+    if (iStat >= 0)   newRow[iStat]   = status;
+
+    await sheetsUpdate(range, [newRow]);
+
+    // Update local state
+    acc.repNote      = text;
+    acc.followUpDate = followUpDisplay;
+    acc.repStatus    = status;
+
+    // Add to local note history
+    const key = acc.name.trim() + '|' + acc.rep.trim();
+    if (!state.notesByAccount[key]) state.notesByAccount[key] = [];
+    const ts = new Date().toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit'
+    });
+    state.notesByAccount[key].push({
+      timestamp: ts,
+      note: text,
+      followUpDate: followUpDisplay,
+      repStatus: status,
+    });
+
+    showToast('Note saved and locked ✓', 'success');
+    renderDetail(acc);
+    updateBadges();
+
+  } catch(e) {
+    console.error(e);
+    showToast('Error saving note: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'SAVE & LOCK'; }
+  }
+}
+
+async function requestRemoval() {
+  const acc = state.selectedAccount;
+  if (!acc) return;
+  const reason = document.getElementById('remove-reason')?.value.trim();
+  if (!reason) { showToast('Please enter a reason for removal', 'error'); return; }
+
+  try {
+    const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
+    const rows = await sheetsGet(range);
+    const row = rows[0] || [];
+    const newRow = [...row];
+    while (newRow.length < acc.headers.length) newRow.push('');
+    const iRemove = acc.headers.indexOf('REMOVE_FLAG');
+    if (iRemove >= 0) newRow[iRemove] = reason;
+    await sheetsUpdate(range, [newRow]);
+    acc.removeFlag = reason;
+    showToast('Removal request sent to John ✓', 'success');
+    renderDetail(acc);
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+async function approveRemoval() {
+  const acc = state.selectedAccount;
+  if (!acc || !state.isAdmin) return;
+
+  try {
+    const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
+    const rows = await sheetsGet(range);
+    const row = rows[0] || [];
+    const newRow = [...row];
+    while (newRow.length < acc.headers.length) newRow.push('');
+    const iJohn = acc.headers.indexOf('JOHN_APPROVAL');
+    if (iJohn >= 0) newRow[iJohn] = 'YES';
+    await sheetsUpdate(range, [newRow]);
+    acc.johnApproval = 'YES';
+    showToast('Account approved for removal. Will be excluded next script run.', 'success');
+    renderDetail(acc);
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  AI EMAIL GENERATION
+// ══════════════════════════════════════════════════════════
+async function generateEmail() {
+  const acc = state.selectedAccount;
+  if (!acc) return;
+
+  const btn = document.getElementById('email-gen-btn');
+  const spinner = document.getElementById('email-spinner');
+  if (btn) { btn.disabled = true; spinner?.classList.add('visible'); btn.childNodes[btn.childNodes.length-1].textContent = ' GENERATING...'; }
+
+  try {
+    // Build context from what we have
+    const revenueContext = Object.entries(acc.years)
+      .filter(([y, v]) => v > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([y, v]) => `${y}: $${formatNum(v)}`)
+      .join(', ');
+
+    const prompt = `You are writing a professional sales outreach email for ${acc.rep} at Intransit Technologies, an industrial parts and electronics distributor serving manufacturing companies in Mexico and the US.
+
+Account: ${acc.name}
+Contact: ${acc.contactName}${acc.contactTitle ? ' (' + acc.contactTitle + ')' : ''}
+Account status: ${acc.status}
+Days since last order: ${acc.daysInactive}
+Last order date: ${acc.lastSaleDate || 'unknown'}
+Revenue history: ${revenueContext || 'First contact'}
+Total lifetime revenue: $${formatNum(acc.total)}
+
+Write a SHORT, professional re-engagement email (3-4 paragraphs max). Be specific about their history with us. Be warm but direct. Mention you want to reconnect and see how you can help. Do NOT use generic phrases like "I hope this email finds you well." Do NOT be overly formal. Write in the voice of a knowledgeable sales rep who has an existing relationship with this customer.
+
+Return ONLY a JSON object with two keys: "subject" and "body". No preamble, no markdown.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+
+    let parsed;
+    try {
+      const clean = text.replace(/```json|```/g, '').trim();
+      parsed = JSON.parse(clean);
+    } catch(e) {
+      // Try to extract subject/body manually
+      const subMatch = text.match(/"subject"\s*:\s*"([^"]+)"/);
+      const bodyMatch = text.match(/"body"\s*:\s*"([\s\S]+?)"\s*\}/);
+      parsed = {
+        subject: subMatch?.[1] || 'Following up — ' + acc.name,
+        body: bodyMatch?.[1]?.replace(/\\n/g, '\n') || text,
+      };
+    }
+
+    document.getElementById('email-fields').style.display = 'block';
+    document.getElementById('email-subject').value = parsed.subject || '';
+    document.getElementById('email-body').value = parsed.body || '';
+
+  } catch(e) {
+    console.error(e);
+    showToast('Error generating email: ' + e.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      spinner?.classList.remove('visible');
+      btn.innerHTML = '<div class="email-spinner" id="email-spinner"></div> ✦ REGENERATE EMAIL';
+    }
+  }
+}
+
+function copyEmail() {
+  const subject = document.getElementById('email-subject')?.value || '';
+  const body    = document.getElementById('email-body')?.value    || '';
+  navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
+    .then(() => showToast('Copied to clipboard ✓', 'success'))
+    .catch(() => showToast('Could not copy', 'error'));
+}
+
+function openInEmail() {
+  const acc     = state.selectedAccount;
+  const subject = encodeURIComponent(document.getElementById('email-subject')?.value || '');
+  const body    = encodeURIComponent(document.getElementById('email-body')?.value    || '');
+  const to      = acc?.contactEmail ? encodeURIComponent(acc.contactEmail) : '';
+  window.open(`mailto:${to}?subject=${subject}&body=${body}`);
+}
+
+// ══════════════════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════════════════
+function statusBadge(status) {
+  const s = status || '';
+  let cls = 'status-active', label = 'Active';
+  if (s.includes('Long Dormant'))       { cls = 'status-dormant';    label = '⚫ Long Dormant'; }
+  else if (s.includes('High Value'))    { cls = 'status-high-value'; label = '🔴 High Value Lost'; }
+  else if (s.includes('At Risk'))       { cls = 'status-at-risk';    label = '🟠 At Risk'; }
+  else if (s.includes('Monitor'))       { cls = 'status-monitor';    label = '🟡 Monitor'; }
+  else if (s.includes('Decline') || s.includes('Stalled')) { cls = 'status-declining'; label = '🔴 ' + s.replace(/[🔴🟠⚫🟡]/g,'').trim(); }
+  else if (s.includes('Active'))        { cls = 'status-active';     label = 'Active'; }
+  else if (s) { cls = 'status-active'; label = s; }
+  return `<span class="status-badge ${cls}">${escHtml(label)}</span>`;
+}
+
+function formatNum(n) {
+  return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toInputDate(str) {
+  if (!str) return '';
+  const p = str.split('/');
+  if (p.length === 3) return `${p[2]}-${p[0].padStart(2,'0')}-${p[1].padStart(2,'0')}`;
+  return str.slice(0,10);
+}
+
+function setLoading(show, msg, pct) {
+  const el = document.getElementById('loading-screen');
+  el.classList.toggle('visible', show);
+  if (msg) document.getElementById('loading-msg').textContent = msg;
+  if (pct !== undefined) document.getElementById('loading-bar').style.width = pct + '%';
+}
+
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+function updateBadges() {
+  const accs = state.accounts;
+  const inactive = accs.filter(a => isInactive(a)).length;
+  const today = new Date().toISOString().slice(0, 10);
+  const due = accs.filter(a => {
+    if (!a.followUpDate) return false;
+    const d = parseDate(a.followUpDate);
+    return d && d <= today;
+  }).length;
+
+  document.getElementById('badge-accounts').textContent = accs.length;
+  document.getElementById('badge-inactive').textContent = inactive;
+  document.getElementById('badge-followup').textContent = due || '0';
+  document.getElementById('badge-all').textContent = accs.length;
+}
+
+// ══════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════
+async function init() {
+  setLoading(true, 'CHECKING SESSION...', 10);
+
+  const authed = await checkAuth();
+
+  if (!authed) {
+    setLoading(false);
+    return;
+  }
+
+  // Show app
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+
+  // Update sidebar user info
+  document.getElementById('sidebar-user-name').textContent =
+    state.user?.name || state.user?.email || '—';
+  document.getElementById('sidebar-user-role').textContent =
+    state.isAdmin ? 'ADMIN — ALL REPS' :
+    state.repId ? `REP — ${state.repId}` : 'READ ONLY';
+
+  // Show admin-only nav items
+  if (state.isAdmin) {
+    document.getElementById('nav-all').style.display = 'flex';
+    document.getElementById('filter-all').style.display = 'inline-block';
+  }
+
+  // Load data
+  await loadAllAccounts();
+
+  // Init security (watermark, session timer, event blockers)
+  initSecurity();
+
+  // Render initial view
+  renderAccountsView();
+  updateBadges();
+}
+
+init();
+</script>
+</body>
+</html>

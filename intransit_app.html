@@ -1147,6 +1147,26 @@ td {
         <span class="nav-icon">⊞</span> All Reps
         <span class="nav-badge" id="badge-all">—</span>
       </div>
+
+      <div id="view-as-section" style="display:none">
+        <div class="nav-section-label">View As Rep</div>
+        <div style="padding:0 12px 8px">
+          <select id="view-as-select" onchange="switchViewAs(this.value)"
+            style="width:100%;background:var(--navy-mid);border:1px solid var(--border);
+                   color:var(--text);font-family:var(--font-mono);font-size:11px;
+                   padding:7px 10px;outline:none;cursor:pointer;">
+            <option value="">— Admin View —</option>
+            <option value="CKaren">CKaren</option>
+            <option value="BillP">BillP</option>
+            <option value="PIan">PIan</option>
+            <option value="RMauricio">RMauricio</option>
+            <option value="LMancera">LMancera</option>
+            <option value="bcastor">bcastor</option>
+            <option value="FJohn">FJohn</option>
+            <option value="Anolan">Anolan</option>
+          </select>
+        </div>
+      </div>
     </div>
     <div class="sidebar-footer">
       <button class="signout-btn" onclick="handleSignout()">Sign Out</button>
@@ -1315,6 +1335,7 @@ let state = {
   activeView: 'accounts',
   activeFilter: 'active',
   activeDetailTab: 'notes',
+  viewAsRep: null,
   notesByAccount: {},  // keyed by account name
   loading: false,
   accessToken: null,
@@ -1384,6 +1405,7 @@ function completeLogin() {
   if (state.isAdmin) {
     document.getElementById('nav-all').style.display = 'flex';
     document.getElementById('filter-all').style.display = 'inline-block';
+    document.getElementById('view-as-section').style.display = 'block';
   }
   loadAllAccounts().then(() => {
     renderAccountsView();
@@ -1652,6 +1674,13 @@ function filterAccounts() {
 function getViewAccounts() {
   const search = document.getElementById('search-input')?.value.toLowerCase() || '';
   let accs = [...state.accounts];
+
+  // View-as-rep filter (admin only)
+  if (state.isAdmin && state.viewAsRep) {
+    accs = accs.filter(a => a.rep === state.viewAsRep);
+  } else if (!state.isAdmin && state.repId) {
+    accs = accs.filter(a => a.rep === state.repId);
+  }
 
   // View filter
   if (state.activeView === 'inactive') {
@@ -2108,6 +2137,20 @@ function renderDashboard() {
         </table>
       </div>
     </div>`;
+}
+
+function switchViewAs(rep) {
+  state.viewAsRep = rep || null;
+  const label = document.getElementById('sidebar-user-role');
+  if (rep) {
+    label.textContent = 'ADMIN — VIEWING AS ' + rep;
+    label.style.color = 'var(--accent)';
+  } else {
+    label.textContent = 'ADMIN — ALL REPS';
+    label.style.color = '';
+  }
+  state.selectedAccount = null;
+  switchView(rep ? 'accounts' : 'accounts');
 }
 
 function filterByRep(rep) {

@@ -1369,27 +1369,31 @@ async function loadSupplementalData() {
     }
 
     // Load collections
-    const collRows = await sheetsGet("'_COLLECTIONS'!A1:M5000");
+    const collRows = await sheetsGet("'_COLLECTIONS'!A1:P5000");
     if (collRows.length > 1) {
       const hdrs = collRows[0];
-      const iName = hdrs.indexOf('CUSTOMER_NAME');
-      const iBal  = hdrs.indexOf('CURRENT_BALANCE');
-      const iCred = hdrs.indexOf('CREDIT_LIMIT');
-      const iPay  = hdrs.indexOf('AVERAGE_PAY');
-      const iHold = hdrs.indexOf('CREDIT_HOLD');
-      const iNote = hdrs.indexOf('COLLECTION_NOTE');
-      const iRisk = hdrs.indexOf('RISK_FLAG');
+      const iName     = hdrs.indexOf('CUSTOMER_NAME');
+      const iBal      = hdrs.indexOf('CURRENT_BALANCE');
+      const iCred     = hdrs.indexOf('CREDIT_LIMIT');
+      const iPay      = hdrs.indexOf('AVG_DAYS_TO_PAY');
+      const iTerms    = hdrs.indexOf('PAYMENT_TERMS');
+      const iDaysPast = hdrs.indexOf('DAYS_PAST_DUE');
+      const iNote     = hdrs.indexOf('COLLECTION_NOTE');
+      const iRisk     = hdrs.indexOf('RISK_FLAG');
+      const iAppHold  = hdrs.indexOf('APP_HOLD');
       for (let r = 1; r < collRows.length; r++) {
         const row = collRows[r];
         const key = (row[iName] || '').trim();
         if (!key) continue;
         state.collectionsCache[key] = {
-          balance:   parseFloat(row[iBal])  || 0,
-          credit:    parseFloat(row[iCred]) || 0,
-          avgPay:    parseFloat(row[iPay])  || 0,
-          creditHold:row[iHold] || '',
-          note:      row[iNote] || '',
-          risk:      row[iRisk] || '',
+          balance:    parseFloat(row[iBal])      || 0,
+          credit:     parseFloat(row[iCred])     || 0,
+          avgPay:     parseFloat(row[iPay])      || 0,
+          terms:      row[iTerms]                || '',
+          daysPastDue:parseInt(row[iDaysPast])   || 0,
+          note:       row[iNote]                 || '',
+          risk:       row[iRisk]                 || '',
+          appHold:    row[iAppHold]              || '',
         };
       }
     }
@@ -2348,11 +2352,13 @@ function renderCollectionsTab(acc) {
   return `
     <div style="padding:14px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${riskColor};margin-bottom:12px">
       ${c.risk ? `<div style="font-family:var(--font-mono);font-size:11px;color:${riskColor};margin-bottom:8px">${escHtml(c.risk)}</div>` : ''}
+      ${c.appHold === 'YES' ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--red);margin-bottom:8px">⚠ ACCOUNT ON HOLD</div>` : ''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
         <div><span style="color:var(--text-muted)">Balance</span><br><span style="font-family:var(--font-mono);font-size:16px;color:${riskColor}">$${formatNum(c.balance)}</span></div>
         <div><span style="color:var(--text-muted)">Credit Limit</span><br><span style="font-family:var(--font-mono);font-size:16px">$${formatNum(c.credit)}</span></div>
-        <div><span style="color:var(--text-muted)">Avg Days to Pay</span><br><span style="font-family:var(--font-mono)">${c.avgPay || '—'}</span></div>
-        <div><span style="color:var(--text-muted)">Credit Hold</span><br><span style="font-family:var(--font-mono);color:${c.creditHold==='Y'?'var(--red)':'var(--green)'}">${c.creditHold==='Y'?'🔴 ON HOLD':'✓ Clear'}</span></div>
+        <div><span style="color:var(--text-muted)">Avg Days to Pay</span><br><span style="font-family:var(--font-mono)">${c.avgPay ? Math.round(c.avgPay) + ' days' : '—'}</span></div>
+        <div><span style="color:var(--text-muted)">Days Past Due</span><br><span style="font-family:var(--font-mono);color:${c.daysPastDue>30?'var(--red)':c.daysPastDue>0?'var(--orange)':'var(--green)'}">${c.daysPastDue > 0 ? c.daysPastDue + ' days' : '✓ Current'}</span></div>
+        <div><span style="color:var(--text-muted)">Terms</span><br><span style="font-family:var(--font-mono)">${escHtml(c.terms||'—')}</span></div>
       </div>
     </div>
     ${c.note ? `
@@ -2882,7 +2888,7 @@ function renderCollectionsView() {
   collList.sort((a, b) => b.balance - a.balance);
 
   const totalAR    = collList.reduce((s, c) => s + c.balance, 0);
-  const onHold     = collList.filter(c => c.creditHold === 'Y').length;
+  const onHold     = collList.filter(c => c.appHold === 'YES').length;
   const highRisk   = collList.filter(c => c.risk?.includes('HIGH')).length;
   const watchCount = collList.filter(c => c.risk?.includes('WATCH')).length;
 
@@ -2932,7 +2938,7 @@ function renderCollectionsView() {
         <div id="coll-list" style="width:380px;flex-shrink:0;overflow-y:auto;max-height:700px">
           ${collList.map(c => {
             const riskColor = c.risk?.includes('HIGH') ? 'var(--red)' : c.risk?.includes('WATCH') ? 'var(--orange)' : 'var(--accent)';
-            const holdBadge = c.creditHold === 'Y' ? `<span style="background:rgba(192,57,43,0.2);color:var(--red);font-size:9px;font-family:var(--font-mono);padding:2px 5px;margin-left:6px">HOLD</span>` : '';
+            const holdBadge = c.appHold === 'YES' ? `<span style="background:rgba(192,57,43,0.2);color:var(--red);font-size:9px;font-family:var(--font-mono);padding:2px 5px;margin-left:6px">HOLD</span>` : '';
             const collNote = state.collectionsNotes[c.name] || {};
             const hasNote = collNote.note;
             return `<div class="coll-item" data-name="${escHtml(c.name)}" data-rep="${escHtml(c.rep)}" data-risk="${escHtml(c.risk||'')}"
@@ -3014,12 +3020,35 @@ function selectCollectionsAccount(name) {
       </div>
       <div style="background:var(--navy-mid);border:1px solid var(--border);padding:12px">
         <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">AVG DAYS TO PAY</div>
-        <div style="font-size:20px;font-family:var(--font-mono);color:${(c.avgPay||0)>45?'var(--red)':(c.avgPay||0)>30?'var(--orange)':'var(--green)'}">${c.avgPay||'—'}</div>
+        <div style="font-size:20px;font-family:var(--font-mono);color:${(c.avgPay||0)>45?'var(--red)':(c.avgPay||0)>30?'var(--orange)':'var(--green)'}">${c.avgPay ? Math.round(c.avgPay) : '—'}</div>
       </div>
     </div>
 
-    <!-- Credit hold + risk -->
-    ${c.creditHold==='Y' ? `<div style="background:rgba(192,57,43,0.15);border:1px solid var(--red);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--red);font-family:var(--font-mono)">⚠ ACCOUNT ON CREDIT HOLD</div>` : ''}
+    <!-- Terms + Days Past Due -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div style="background:var(--navy-mid);border:1px solid var(--border);padding:10px 12px">
+        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">PAYMENT TERMS</div>
+        <div style="font-size:14px;font-family:var(--font-mono)">${escHtml(c.terms||'—')}</div>
+      </div>
+      <div style="background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${c.daysPastDue>30?'var(--red)':c.daysPastDue>0?'var(--orange)':'var(--border)'};padding:10px 12px">
+        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">DAYS PAST DUE</div>
+        <div style="font-size:14px;font-family:var(--font-mono);color:${c.daysPastDue>30?'var(--red)':c.daysPastDue>0?'var(--orange)':'var(--green)'}">
+          ${c.daysPastDue > 0 ? c.daysPastDue + ' days' : '✓ Current'}
+        </div>
+      </div>
+    </div>
+
+    <!-- App-managed hold — admin only toggle -->
+    ${c.appHold === 'YES' ? `<div style="background:rgba(192,57,43,0.15);border:1px solid var(--red);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--red);font-family:var(--font-mono);display:flex;justify-content:space-between;align-items:center">
+      <span>⚠ ACCOUNT ON HOLD</span>
+      ${state.isAdmin ? `<button onclick="toggleAppHold('${escHtml(name)}',false)" style="background:transparent;border:1px solid var(--red);color:var(--red);font-family:var(--font-mono);font-size:10px;padding:4px 10px;cursor:pointer">REMOVE HOLD</button>` : ''}
+    </div>` : state.isAdmin ? `<div style="margin-bottom:12px">
+      <button onclick="toggleAppHold('${escHtml(name)}',true)" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:10px;padding:6px 12px;cursor:pointer;letter-spacing:0.1em">
+        PLACE ON HOLD
+      </button>
+    </div>` : ''}
+
+    <!-- Risk flag -->
     ${c.risk ? `<div style="background:rgba(232,160,32,0.08);border:1px solid var(--border);padding:8px 12px;margin-bottom:12px;font-size:11px;font-family:var(--font-mono);color:${riskColor}">${escHtml(c.risk)}</div>` : ''}
 
     <!-- AP Contacts -->
@@ -3136,7 +3165,9 @@ Account: ${name}
 Outstanding balance: $${formatNum(c.balance)}
 Credit limit: $${formatNum(c.credit)}
 Average days to pay: ${c.avgPay || 'unknown'}
-Credit hold: ${c.creditHold === 'Y' ? 'YES — account is on hold' : 'No'}
+Credit hold: ${c.appHold === 'YES' ? 'YES — account is on hold' : 'No'}
+Days past due: ${c.daysPastDue > 0 ? c.daysPastDue + ' days past due' : 'Current'}
+Payment terms: ${c.terms || 'unknown'}
 Collections status: ${collNote.status || 'Not set'}
 Promised payment date: ${collNote.promisedDate || 'None on record'}
 Recent note: ${collNote.note?.slice(0,200) || 'None'}
@@ -3167,6 +3198,32 @@ Return ONLY a JSON object with keys "subject" and "body". No preamble.`;
     showToast('Email generated ✓', 'success');
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
+  }
+}
+
+async function toggleAppHold(name, setHold) {
+  if (!state.isAdmin) { showToast('Only admins can manage holds', 'error'); return; }
+  try {
+    // Update in sheet _COLLECTIONS tab
+    const rows = await sheetsGet("'_COLLECTIONS'!A1:P5000");
+    if (rows.length < 2) { showToast('Could not load collections data', 'error'); return; }
+    const hdrs = rows[0];
+    const iName    = hdrs.indexOf('CUSTOMER_NAME');
+    const iAppHold = hdrs.indexOf('APP_HOLD');
+    if (iAppHold === -1) { showToast('APP_HOLD column not found — run the script first', 'error'); return; }
+    const rowIdx = rows.findIndex((r, i) => i > 0 && (r[iName]||'').trim() === name.trim());
+    if (rowIdx === -1) { showToast('Account not found in collections sheet', 'error'); return; }
+    const row = [...rows[rowIdx]];
+    while (row.length <= iAppHold) row.push('');
+    row[iAppHold] = setHold ? 'YES' : '';
+    await sheetsUpdate(`'_COLLECTIONS'!A${rowIdx+1}:P${rowIdx+1}`, [row]);
+    // Update local cache
+    if (state.collectionsCache[name]) state.collectionsCache[name].appHold = setHold ? 'YES' : '';
+    showToast(setHold ? `${name} placed on hold ✓` : `Hold removed for ${name} ✓`, 'success');
+    renderCollectionsView();
+    selectCollectionsAccount(name);
+  } catch(e) {
+    showToast('Error updating hold: ' + e.message, 'error');
   }
 }
 

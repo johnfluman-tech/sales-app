@@ -1385,6 +1385,28 @@ async function loadSupplementalData() {
       }
     }
 
+    // Load open orders
+    const orderRows = await sheetsGet("'_OPEN_ORDERS'!A1:N50000");
+    if (orderRows.length > 1) {
+      const hdrs = orderRows[0];
+      state.ordersCache = orderRows.slice(1).map(r => {
+        const obj = {};
+        hdrs.forEach((h, i) => obj[h] = r[i] || '');
+        return obj;
+      });
+    }
+
+    // Load GP data
+    const gpRows = await sheetsGet("'_GP'!A1:F200000");
+    if (gpRows.length > 1) {
+      const hdrs = gpRows[0];
+      state.gpCache = gpRows.slice(1).map(r => {
+        const obj = {};
+        hdrs.forEach((h, i) => obj[h] = r[i] || '');
+        return obj;
+      });
+    }
+
     state.cacheLoaded = true;
     console.log('Supplemental data loaded');
   } catch(e) {
@@ -1585,6 +1607,8 @@ let state = {
   historyCache: {},       // keyed by customer name
   collectionsCache: {},   // keyed by customer name
   cacheLoaded: false,
+  ordersCache: [],   // open orders
+  gpCache: [],       // GP records
   notesByAccount: {},  // keyed by account name
   loading: false,
   accessToken: null,
@@ -1910,6 +1934,11 @@ function switchView(view) {
   document.getElementById('topbar-title').textContent = titles[view] || view;
 
   if (view === 'dashboard') {
+    if (!state.cacheLoaded) {
+      loadSupplementalData().then(() => {
+        if (state.activeView === 'dashboard') renderDashboard();
+      });
+    }
     renderDashboard();
   } else {
     renderAccountsView();
@@ -2318,90 +2347,213 @@ function renderInfoTab(acc) {
 //  RENDER — DASHBOARD
 // ══════════════════════════════════════════════════════════
 function renderDashboard() {
-  const accs = state.accounts;
-  const inactive = accs.filter(a => isInactive(a));
-  const active   = accs.filter(a => !isInactive(a) && !isDeclining(a));
-  const declining = accs.filter(a => isDeclining(a));
-  const withFollowup = accs.filter(a => a.followUpDate);
-  const today = new Date().toISOString().slice(0, 10);
-  const dueToday = accs.filter(a => {
-    if (!a.followUpDate) return false;
-    const d = parseDate(a.followUpDate);
-    return d && d <= today;
-  });
+  // Determine which rep we are showing
+  const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
+  const repLabel  = repFilter || (state.isAdmin ? 'All Reps' : state.repId);
 
-  const totalRevenue = accs.reduce((s, a) => s + a.total, 0);
-
-  // Per-rep stats
-  const repStats = {};
-  CONFIG.REPS.forEach(r => {
-    const ra = accs.filter(a => a.rep === r);
-    repStats[r] = {
-      total: ra.length,
-      active: ra.filter(a => !isInactive(a)).length,
-      inactive: ra.filter(a => isInactive(a)).length,
-      revenue: ra.reduce((s, a) => s + a.total, 0),
-    };
-  });
+  // Default date range — current month
+  const now   = new Date();
+  const y     = now.getFullYear();
+  const m     = String(now.getMonth() + 1).padStart(2,'0');
+  const defFrom = `${y}-${m}-01`;
+  const defTo   = now.toISOString().slice(0,10);
 
   const content = document.getElementById('main-content');
   content.innerHTML = `
     <div style="flex:1;overflow-y:auto;padding:24px">
-      <div class="dashboard-grid">
-        <div class="stat-card">
-          <div class="stat-label">Total Accounts</div>
-          <div class="stat-value accent">${accs.length}</div>
-          <div class="stat-sub">across all reps</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Inactive</div>
-          <div class="stat-value red">${inactive.length}</div>
-          <div class="stat-sub">${Math.round(inactive.length/Math.max(accs.length,1)*100)}% of accounts</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Declining</div>
-          <div class="stat-value orange">${declining.length}</div>
-          <div class="stat-sub">need attention</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Follow-ups Due</div>
-          <div class="stat-value ${dueToday.length > 0 ? 'orange' : 'green'}">${dueToday.length}</div>
-          <div class="stat-sub">as of today</div>
-        </div>
+
+      <!-- Date range controls -->
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;color:var(--text-muted)">DATE RANGE</div>
+        <button class="filter-btn active" onclick="setDashPeriod('mtd',this)">MTD</button>
+        <button class="filter-btn" onclick="setDashPeriod('ytd',this)">YTD</button>
+        <button class="filter-btn" onclick="setDashPeriod('q1',this)">Q1</button>
+        <button class="filter-btn" onclick="setDashPeriod('q2',this)">Q2</button>
+        <button class="filter-btn" onclick="setDashPeriod('q3',this)">Q3</button>
+        <button class="filter-btn" onclick="setDashPeriod('q4',this)">Q4</button>
+        <button class="filter-btn" onclick="setDashPeriod('custom',this)">CUSTOM</button>
+        <input type="date" id="dash-from" value="${defFrom}"
+          style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:6px 8px;outline:none"
+          onchange="refreshDashboard()">
+        <span style="color:var(--text-muted);font-size:11px">to</span>
+        <input type="date" id="dash-to" value="${defTo}"
+          style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:6px 8px;outline:none"
+          onchange="refreshDashboard()">
+        <div style="margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--accent)">${repLabel}</div>
       </div>
 
-      <div class="stat-card" style="margin-bottom:24px">
-        <div class="stat-label">Total Revenue 2020–${new Date().getFullYear()}</div>
-        <div class="stat-value" style="font-size:32px">$${formatNum(totalRevenue)}</div>
+      <!-- KPI cards -->
+      <div id="dash-kpis" class="dashboard-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+        <div class="stat-card"><div class="stat-label">Loading...</div></div>
       </div>
 
-      <div class="rep-table-wrap">
-        <div class="section-header">REP SUMMARY</div>
+      <!-- Rep table (admin only) -->
+      <div id="dash-rep-table"></div>
+
+      <!-- Account summary -->
+      <div id="dash-accounts"></div>
+    </div>`;
+
+  refreshDashboard();
+}
+
+function setDashPeriod(period, btn) {
+  const now = new Date();
+  const y = now.getFullYear();
+  let from, to = now.toISOString().slice(0,10);
+
+  if (period === 'mtd') {
+    from = `${y}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  } else if (period === 'ytd') {
+    from = `${y}-01-01`;
+  } else if (period === 'q1') { from = `${y}-01-01`; to = `${y}-03-31`; }
+  else if (period === 'q2') { from = `${y}-04-01`; to = `${y}-06-30`; }
+  else if (period === 'q3') { from = `${y}-07-01`; to = `${y}-09-30`; }
+  else if (period === 'q4') { from = `${y}-10-01`; to = `${y}-12-31`; }
+  else { return; } // custom — just let user pick dates
+
+  document.getElementById('dash-from').value = from;
+  document.getElementById('dash-to').value   = to;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  refreshDashboard();
+}
+
+function refreshDashboard() {
+  const from = document.getElementById('dash-from')?.value || '';
+  const to   = document.getElementById('dash-to')?.value   || '';
+  const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
+
+  // Filter GP data by date and rep
+  const gpFiltered = state.gpCache.filter(r => {
+    const d = (r.INVOICE_DATE || '').slice(0,10);
+    const repMatch = !repFilter || r.SALES_REP?.trim() === repFilter;
+    return d >= from && d <= to && repMatch;
+  });
+
+  const shipped   = gpFiltered.reduce((s,r) => s + (parseFloat(r.EXTENDED_PRICE)||0), 0);
+  const gp        = gpFiltered.reduce((s,r) => s + (parseFloat(r.GP)||0), 0);
+  const gpPct     = shipped > 0 ? (gp / shipped * 100) : 0;
+
+  // Filter open orders by rep
+  const ordersFiltered = state.ordersCache.filter(r => {
+    const repMatch = !repFilter || r.SALES_REP?.trim() === repFilter;
+    return repMatch;
+  });
+  const booked = ordersFiltered.reduce((s,r) => s + (parseFloat(r.EXTENDED_PRICE)||0), 0);
+
+  // Account stats
+  const accs      = state.accounts.filter(a => !repFilter || a.rep === repFilter);
+  const inactive  = accs.filter(a => isInactive(a));
+  const declining = accs.filter(a => isDeclining(a));
+  const today     = new Date().toISOString().slice(0,10);
+  const due       = accs.filter(a => { const d = parseDate(a.followUpDate); return d && d <= today; });
+
+  const kpiEl = document.getElementById('dash-kpis');
+  if (!kpiEl) return;
+
+  kpiEl.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Total Shipped</div>
+      <div class="stat-value green" style="font-size:22px">$${formatNum(shipped)}</div>
+      <div class="stat-sub">${from.slice(0,7)} → ${to.slice(0,7)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Open / Booked</div>
+      <div class="stat-value accent" style="font-size:22px">$${formatNum(booked)}</div>
+      <div class="stat-sub">${ordersFiltered.length} open order lines</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">GP $</div>
+      <div class="stat-value ${gp > 0 ? 'green' : 'red'}" style="font-size:22px">$${formatNum(gp)}</div>
+      <div class="stat-sub">${gpFiltered.length} invoice lines</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">GP %</div>
+      <div class="stat-value ${gpPct >= 30 ? 'green' : gpPct >= 15 ? 'orange' : 'red'}" style="font-size:22px">${gpPct.toFixed(1)}%</div>
+      <div class="stat-sub">gross margin</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Accounts</div>
+      <div class="stat-value accent">${accs.length}</div>
+      <div class="stat-sub">assigned</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Inactive</div>
+      <div class="stat-value red">${inactive.length}</div>
+      <div class="stat-sub">${Math.round(inactive.length/Math.max(accs.length,1)*100)}% of accounts</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Declining</div>
+      <div class="stat-value orange">${declining.length}</div>
+      <div class="stat-sub">need attention</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Follow-ups Due</div>
+      <div class="stat-value ${due.length > 0 ? 'orange' : 'green'}">${due.length}</div>
+      <div class="stat-sub">as of today</div>
+    </div>
+  `;
+
+  // Rep table — admin only and not viewing as a specific rep
+  const repTableEl = document.getElementById('dash-rep-table');
+  if (repTableEl && state.isAdmin && !state.viewAsRep) {
+    const repStats = {};
+    CONFIG.REPS.forEach(rep => {
+      const ra  = state.accounts.filter(a => a.rep === rep);
+      const gpR = state.gpCache.filter(r => {
+        const d = (r.INVOICE_DATE||'').slice(0,10);
+        return d >= from && d <= to && r.SALES_REP?.trim() === rep;
+      });
+      const ordR = state.ordersCache.filter(r => r.SALES_REP?.trim() === rep);
+      const gpAmt  = gpR.reduce((s,r)  => s + (parseFloat(r.GP)||0), 0);
+      const shipAmt= gpR.reduce((s,r)  => s + (parseFloat(r.EXTENDED_PRICE)||0), 0);
+      const bookAmt= ordR.reduce((s,r) => s + (parseFloat(r.EXTENDED_PRICE)||0), 0);
+      repStats[rep] = {
+        accounts: ra.length,
+        active:   ra.filter(a => !isInactive(a)).length,
+        inactive: ra.filter(a => isInactive(a)).length,
+        shipped:  shipAmt,
+        booked:   bookAmt,
+        gp:       gpAmt,
+        gpPct:    shipAmt > 0 ? gpAmt/shipAmt*100 : 0,
+      };
+    });
+
+    repTableEl.innerHTML = `
+      <div class="rep-table-wrap" style="margin-bottom:20px">
+        <div class="section-header">REP PERFORMANCE — ${from.slice(0,7)} to ${to.slice(0,7)}</div>
         <table>
-          <thead>
-            <tr>
-              <th>Rep</th>
-              <th>Accounts</th>
-              <th>Active</th>
-              <th>Inactive</th>
-              <th style="text-align:right">Total Revenue</th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th>Rep</th>
+            <th>Accounts</th>
+            <th>Active</th>
+            <th>Inactive</th>
+            <th style="text-align:right">Shipped</th>
+            <th style="text-align:right">Booked</th>
+            <th style="text-align:right">GP $</th>
+            <th style="text-align:right">GP %</th>
+          </tr></thead>
           <tbody>
-            ${CONFIG.REPS.map(r => {
-              const s = repStats[r];
-              return `<tr onclick="filterByRep('${r}')" style="cursor:pointer">
-                <td style="font-family:var(--font-mono);font-size:12px">${r}</td>
-                <td>${s.total}</td>
+            ${CONFIG.REPS.map(rep => {
+              const s = repStats[rep];
+              return `<tr onclick="filterByRep('${rep}')" style="cursor:pointer">
+                <td style="font-family:var(--font-mono);font-size:12px">${rep}</td>
+                <td>${s.accounts}</td>
                 <td style="color:#52c27a">${s.active}</td>
                 <td style="color:#e74c3c">${s.inactive}</td>
-                <td style="text-align:right;font-family:var(--font-mono);font-size:12px">$${formatNum(s.revenue)}</td>
+                <td style="text-align:right;font-family:var(--font-mono);font-size:12px">$${formatNum(s.shipped)}</td>
+                <td style="text-align:right;font-family:var(--font-mono);font-size:12px">$${formatNum(s.booked)}</td>
+                <td style="text-align:right;font-family:var(--font-mono);font-size:12px;color:#52c27a">$${formatNum(s.gp)}</td>
+                <td style="text-align:right;font-family:var(--font-mono);font-size:12px;color:${s.gpPct>=30?'#52c27a':s.gpPct>=15?'#e67e22':'#e74c3c'}">${s.gpPct.toFixed(1)}%</td>
               </tr>`;
             }).join('')}
           </tbody>
         </table>
-      </div>
-    </div>`;
+      </div>`;
+  } else if (repTableEl) {
+    repTableEl.innerHTML = '';
+  }
 }
 
 function switchViewAs(rep) {

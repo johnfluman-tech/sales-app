@@ -4420,62 +4420,59 @@ async function refreshDashboard() {
       return cust.includes('deleted') || desc.includes('cost adj') || desc.includes('inventory adj');
     };
 
-    acctEl.innerHTML = `
-    <div style="margin-top:4px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div class="section-label">Invoice Detail — ${from.slice(5)} → ${to.slice(5)}
-          <span style="font-size:11px;font-weight:400;color:var(--text-3);margin-left:8px">${sorted.length} invoices</span>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="text" placeholder="Search invoice, customer, part…" id="dash-inv-search"
-            oninput="filterDashInvoices(this.value)"
-            style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px 10px;outline:none;border-radius:var(--r);font-family:var(--font);width:220px">
-          <button onclick="exportDashInvoices()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r)">⬇ EXPORT CSV</button>
-        </div>
-      </div>
-      <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">
-        <table class="data-table" id="dash-inv-table" style="width:100%">
-          <thead><tr>
-            <th>Invoice #</th>
-            <th>Date</th>
-            ${repFilter ? '' : '<th>Rep</th>'}
-            <th>Customer</th>
-            <th class="right">Shipped $</th>
-            <th class="right">GP $</th>
-            <th class="right">GP %</th>
-          </tr></thead>
-          <tbody id="dash-inv-body">
-' + sorted.map(r => {
-              const invNum   = r.INVOICE_NUMBER || r.invoice_number || '—';
-              const invDate  = normDate(r[gpDateCol] || r.INVOICE_DATE || '').slice(5);
-              const repName  = (r[gpSalesRepCol] || r.SALES_REP || '').trim();
-              const customer = r.CUSTOMER_NAME || r.customer || '—';
-              const shipAmt  = parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE || 0);
-              const gpAmt    = parseMoney(r[gpGPCol] || r.GP || 0);
-              const gpPctRow = shipAmt > 0 ? (gpAmt / shipAmt * 100) : 0;
-              const costAdj  = isCostAdj(r);
-              const rowColor = costAdj ? 'rgba(249,115,22,0.06)' : '';
-              const gpColor  = gpPctRow >= 30 ? 'var(--green)' : gpPctRow >= 15 ? 'var(--gold)' : gpPctRow > 0 ? 'var(--red)' : 'var(--text-3)';
-              return '<tr style="background:' + rowColor + '" data-search="' + escHtml((invNum+' '+customer+' '+repName).toLowerCase()) + '">' +
-                '<td class="mono" style="font-size:11px;color:var(--text-2)">' + escHtml(String(invNum).replace('.0','')) + (costAdj ? ' <span style="font-size:9px;color:var(--orange);font-family:var(--mono)">COST ADJ</span>' : '') + '</td>' +
-                '<td class="mono" style="font-size:11px;color:var(--text-3)">' + escHtml(invDate) + '</td>' +
-                (repFilter ? '' : '<td class="mono" style="font-size:11px;color:var(--accent)">' + escHtml(repName) + '</td>') +
-                '<td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(customer) + '">' + escHtml(customer.slice(0,35)) + (customer.length>35?'…':'') + '</td>' +
-                '<td class="mono right" style="font-size:11px">' + (shipAmt !== 0 ? '$'+formatNum(Math.abs(shipAmt)) : '—') + '</td>' +
-                '<td class="mono right" style="font-size:11px;color:' + (gpAmt < 0 ? 'var(--red)' : '') + '">' + (gpAmt !== 0 ? (gpAmt<0?'-':'')+'$'+formatNum(Math.abs(gpAmt)) : '—') + '</td>' +
-                '<td class="mono right" style="font-size:11px;color:' + gpColor + '">' + (gpPctRow !== 0 ? gpPctRow.toFixed(1)+'%' : '—') + '</td>' +
-              '</tr>';
-            }).join('') + '
-          </tbody>
-        </table>
-        ${sorted.length === 0 ? '<div style="padding:32px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">No invoices in this date range</div>' : ''}
-      </div>
-      <div style="display:flex;justify-content:flex-end;gap:24px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--text-3)">
-        <span>Total: <strong style="color:var(--text)">$${formatNum(shipped)}</strong></span>
-        <span>GP: <strong style="color:var(--green)">$${formatNum(gp)}</strong></span>
-        <span>GP%: <strong style="color:${gpPct >= 30 ? 'var(--green)' : gpPct >= 15 ? 'var(--gold)' : 'var(--red)'}">` + `${gpPct.toFixed(1)}%</strong></span>
-      </div>
-    </div>`;
+    // Build invoice rows using string concatenation — no nested template literals
+    const invRows = sorted.map(r => {
+      const invNum   = r.INVOICE_NUMBER || r.invoice_number || '—';
+      const invDate  = normDate(r[gpDateCol] || r.INVOICE_DATE || '').slice(5);
+      const repName  = (r[gpSalesRepCol] || r.SALES_REP || '').trim();
+      const customer = r.CUSTOMER_NAME || r.customer || '—';
+      const shipAmt  = parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE || 0);
+      const gpAmt    = parseMoney(r[gpGPCol] || r.GP || 0);
+      const gpPctRow = shipAmt > 0 ? (gpAmt / shipAmt * 100) : 0;
+      const costAdj  = isCostAdj(r);
+      const rowColor = costAdj ? 'rgba(249,115,22,0.06)' : '';
+      const gpColor  = gpPctRow >= 30 ? 'var(--green)' : gpPctRow >= 15 ? 'var(--gold)' : gpPctRow > 0 ? 'var(--red)' : 'var(--text-3)';
+      return '<tr style="background:' + rowColor + '" data-search="' + escHtml((invNum+' '+customer+' '+repName).toLowerCase()) + '">' +
+        '<td class="mono" style="font-size:11px;color:var(--text-2)">' + escHtml(String(invNum).replace('.0','')) + (costAdj ? ' <span style="font-size:9px;color:var(--orange);font-family:var(--mono)">COST ADJ</span>' : '') + '</td>' +
+        '<td class="mono" style="font-size:11px;color:var(--text-3)">' + escHtml(invDate) + '</td>' +
+        (repFilter ? '' : '<td class="mono" style="font-size:11px;color:var(--accent)">' + escHtml(repName) + '</td>') +
+        '<td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(customer) + '">' + escHtml(customer.slice(0,40)) + (customer.length>40?'…':'') + '</td>' +
+        '<td class="mono right" style="font-size:11px">' + (shipAmt !== 0 ? '$'+formatNum(Math.abs(shipAmt)) : '—') + '</td>' +
+        '<td class="mono right" style="font-size:11px;color:' + (gpAmt < 0 ? 'var(--red)' : '') + '">' + (gpAmt !== 0 ? (gpAmt<0?'-':'')+'$'+formatNum(Math.abs(gpAmt)) : '—') + '</td>' +
+        '<td class="mono right" style="font-size:11px;color:' + gpColor + '">' + (gpPctRow !== 0 ? gpPctRow.toFixed(1)+'%' : '—') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    const repColHdr = repFilter ? '' : '<th>Rep</th>';
+    const gpPctColor = gpPct >= 30 ? 'var(--green)' : gpPct >= 15 ? 'var(--gold)' : 'var(--red)';
+
+    acctEl.innerHTML =
+      '<div style="margin-top:4px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+        '<div class="section-label">Invoice Detail — ' + from.slice(5) + ' → ' + to.slice(5) +
+          ' <span style="font-size:11px;font-weight:400;color:var(--text-3);margin-left:8px">' + sorted.length + ' invoices</span></div>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<input type="text" placeholder="Search invoice, customer, part…" id="dash-inv-search" oninput="filterDashInvoices(this.value)" ' +
+            'style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px 10px;outline:none;border-radius:var(--r);font-family:var(--font);width:220px">' +
+          '<button onclick="exportDashInvoices()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r)">⬇ EXPORT CSV</button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">' +
+        '<table class="data-table" id="dash-inv-table" style="width:100%">' +
+          '<thead><tr>' +
+            '<th>Invoice #</th><th>Date</th>' + repColHdr +
+            '<th>Customer</th><th class="right">Shipped $</th><th class="right">GP $</th><th class="right">GP %</th>' +
+          '</tr></thead>' +
+          '<tbody id="dash-inv-body">' + invRows + '</tbody>' +
+        '</table>' +
+        (sorted.length === 0 ? '<div style="padding:32px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">No invoices in this date range</div>' : '') +
+      '</div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:24px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--text-3)">' +
+        '<span>Total: <strong style="color:var(--text)">$' + formatNum(shipped) + '</strong></span>' +
+        '<span>GP: <strong style="color:var(--green)">$' + formatNum(gp) + '</strong></span>' +
+        '<span>GP%: <strong style="color:' + gpPctColor + '">' + gpPct.toFixed(1) + '%</strong></span>' +
+      '</div>' +
+    '</div>';
   }
 }
 

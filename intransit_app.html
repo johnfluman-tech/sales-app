@@ -1344,6 +1344,20 @@ Return ONLY the JSON, no other text.`;
                 <div style="font-size:11px;color:var(--text-dim);line-height:1.5">${escHtml(a.detail)}</div>
               </div>
             </div>`).join('')}
+
+          <!-- Q&A follow-up -->
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+            <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:6px">✦ ASK A FOLLOW-UP QUESTION</div>
+            <div id="nba-qa-history-${safeId}" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;max-height:200px;overflow-y:auto"></div>
+            <div style="display:flex;gap:6px">
+              <input type="text" id="nba-qa-input-${safeId}"
+                placeholder="e.g. How many locations does this account have? What parts should I pitch?"
+                class="field-input" style="flex:1;font-size:12px;padding:7px 10px"
+                onkeydown="if(event.key==='Enter')askNBAQuestion('${escHtml(accountName)}','${safeId}')">
+              <button onclick="askNBAQuestion('${escHtml(accountName)}','${safeId}')"
+                class="btn btn-gold btn-sm" style="white-space:nowrap">ASK</button>
+            </div>
+          </div>
         </div>`;
     } else {
       resultDiv.innerHTML = `<div class="nba-result"><div class="nba-result-header">ANALYSIS COMPLETE</div><div style="font-size:11px;color:var(--text-dim)">${escHtml(text)}</div></div>`;
@@ -1353,6 +1367,72 @@ Return ONLY the JSON, no other text.`;
   }
 }
 
+
+// ── NBA FOLLOW-UP Q&A ──────────────────────────────────────
+async function askNBAQuestion(accountName, safeId) {
+  const input   = document.getElementById('nba-qa-input-'+safeId);
+  const history = document.getElementById('nba-qa-history-'+safeId);
+  if (!input || !history) return;
+  const question = input.value.trim();
+  if (!question) return;
+
+  const apiKey = getAnthropicKey();
+  if (!apiKey) return;
+
+  // Add user question to history
+  history.innerHTML += `<div style="background:var(--s3);border:1px solid var(--border);border-radius:var(--r);padding:7px 10px;font-size:12px">
+    <span style="font-family:var(--mono);font-size:9px;color:var(--blue-b);margin-right:6px">YOU</span>${escHtml(question)}</div>`;
+  const thinkingId = 'nba-thinking-'+Date.now();
+  history.innerHTML += `<div id="${thinkingId}" style="font-size:11px;color:var(--text-3);padding:6px 10px;font-style:italic">Thinking...</div>`;
+  history.scrollTop = history.scrollHeight;
+  input.value = '';
+  input.disabled = true;
+
+  const acc = state.accounts.find(a => a.name === accountName) || {};
+  const h   = state.historyCache[accountName.trim()] || { invoices:[], reqs:[], quotes:[] };
+  const contacts = state.contactsCache[accountName.trim()] || [];
+  const partCounts = {};
+  h.invoices.forEach(inv => { if (inv.part) partCounts[inv.part] = (partCounts[inv.part]||0)+1; });
+  const topParts = Object.entries(partCounts).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([p])=>p).join(', ');
+
+  const context = `You are a sales intelligence assistant for Intransit Technologies.
+Account: ${accountName}
+Status: ${acc.status||'Unknown'} | Days inactive: ${acc.daysInactive||0} | Last sale: ${acc.lastSale||'Unknown'}
+Revenue this year: $${Number(acc[`Y${new Date().getFullYear()}`]||0).toLocaleString()} | Lifetime: $${Number(acc.total||0).toLocaleString()}
+Top parts purchased: ${topParts||'none on record'}
+Recent RFQs: ${h.reqs.slice(0,5).map(r=>r.part||r.desc||'').filter(Boolean).join(', ')||'none'}
+Open quotes: ${h.quotes.filter(q=>!q.closed).length}
+Contacts: ${contacts.map(c=>c.name+(c.title?' ('+c.title+')':'')).join(', ')||'none'}
+Answer the rep's question concisely and specifically. If you don't know something (like number of locations), say so clearly and suggest how they might find out.`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5', max_tokens: 400,
+        messages: [{ role: 'user', content: context + '\n\nQuestion: ' + question }]
+      })
+    });
+    const data = await resp.json();
+    const answer = data.content?.[0]?.text || 'No response';
+    const thinkEl = document.getElementById(thinkingId);
+    if (thinkEl) thinkEl.outerHTML = `<div style="background:rgba(52,152,219,0.06);border:1px solid var(--blue);border-left:3px solid var(--blue-b);border-radius:var(--r);padding:8px 10px;font-size:12px;line-height:1.5;color:var(--text)">
+      <span style="font-family:var(--mono);font-size:9px;color:var(--blue-b);margin-right:6px;display:block;margin-bottom:4px">✦ AI</span>${escHtml(answer)}</div>`;
+  } catch(e) {
+    const thinkEl = document.getElementById(thinkingId);
+    if (thinkEl) thinkEl.outerHTML = `<div style="color:var(--red);font-size:11px;padding:6px">Error: ${escHtml(e.message)}</div>`;
+  } finally {
+    input.disabled = false;
+    input.focus();
+    history.scrollTop = history.scrollHeight;
+  }
+}
 
 // ── HISTORY TAB ────────────────────────────────────────────
 function renderHistoryTab(acc) {
@@ -2082,8 +2162,8 @@ function renderDetail(acc) {
       </div>`;
   }).join('');
 
-  const tabs = ['notes', 'contacts', 'history', 'email', 'collections', 'info'];
-  const tabLabels = { notes: 'Notes', contacts: 'Contacts', history: 'History', email: 'Outreach', collections: 'Collections', info: 'Account' };
+  const tabs = ['notes', 'contacts', 'history', 'email', 'collections', 'research', 'info'];
+  const tabLabels = { notes: 'Notes', contacts: 'Contacts', history: 'History', email: 'Outreach', collections: 'Collections', research: '✦ Research', info: 'Account' };
 
   const hasRemoveRequest = acc.removeFlag && acc.removeFlag.toUpperCase() !== 'YES' && acc.removeFlag.trim() !== '';
   const johnCanApprove = state.isAdmin && hasRemoveRequest;
@@ -2143,6 +2223,7 @@ function renderDetailTab(acc, tab) {
   if (tab === 'email') return renderEmailTab(acc);
   if (tab === 'collections') return renderCollectionsTab(acc);
   if (tab === 'info') return renderInfoTab(acc);
+  if (tab === 'research') return renderResearchTab(acc);
   return '';
 }
 
@@ -2229,6 +2310,18 @@ function renderNoteInput(acc) {
 function renderEmailTab(acc) {
   return `
     <div class="email-draft-area">
+
+      <!-- Research context / custom prompt -->
+      <div style="margin-bottom:12px">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:5px">
+          TELL AI WHAT TO FOCUS ON (optional — paste research, mention specific parts, events, etc.)
+        </div>
+        <textarea id="email-custom-prompt" rows="3"
+          class="field-input field-textarea"
+          placeholder="e.g. They have 3 plants in Mexico and use our bearings for production lines. Ask about their Q3 expansion project. Reference invoice #174140..."
+          style="font-size:12px;resize:vertical;min-height:64px;margin-bottom:0"></textarea>
+      </div>
+
       <button class="email-gen-btn" id="email-gen-btn" onclick="generateEmail()">
         <div class="email-spinner" id="email-spinner"></div>
         ✦ GENERATE OUTREACH EMAIL WITH AI
@@ -2302,6 +2395,205 @@ function renderInfoTab(acc) {
 // ══════════════════════════════════════════════════════════
 //  RENDER — DASHBOARD
 // ══════════════════════════════════════════════════════════
+function renderResearchTab(acc) {
+  const safeId = btoa(encodeURIComponent(acc.name)).replace(/[=+/]/g,'');
+  const h = state.historyCache[acc.name.trim()] || { invoices:[], reqs:[], quotes:[] };
+  const contacts = state.contactsCache[acc.name.trim()] || [];
+  const partCounts = {};
+  h.invoices.forEach(inv => { if(inv.part) partCounts[inv.part] = (partCounts[inv.part]||0)+1; });
+  const topParts = Object.entries(partCounts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([p])=>p).join(', ');
+
+  const suggestedQs = [
+    'What does this company make / what industry are they in?',
+    'How many locations or plants do they have?',
+    'Who are their key customers or end markets?',
+    'What parts or components would a company like this typically need?',
+    'Find any recent news about this company',
+    'Who are their main competitors?',
+    'What is their typical procurement process?',
+    'What is their approximate annual revenue or company size?',
+  ];
+
+  return `
+    <div style="display:flex;flex-direction:column;height:100%;padding:16px 18px;gap:14px">
+
+      <!-- Account context summary -->
+      <div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:12px 16px">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;color:var(--text-3);margin-bottom:8px">ACCOUNT CONTEXT LOADED</div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:11px">
+          <span><span style="color:var(--text-3)">Account:</span> <strong>${escHtml(acc.name)}</strong></span>
+          <span><span style="color:var(--text-3)">Status:</span> <span style="color:var(--accent)">${escHtml((acc.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim())}</span></span>
+          <span><span style="color:var(--text-3)">Lifetime:</span> <strong>$${formatNum(acc.total||0)}</strong></span>
+          <span><span style="color:var(--text-3)">Last sale:</span> ${escHtml(String(acc.lastSale||'Unknown'))}</span>
+          ${topParts ? `<span><span style="color:var(--text-3)">Top parts:</span> <span style="font-family:var(--mono);font-size:10px">${escHtml(topParts)}</span></span>` : ''}
+          ${contacts.length ? `<span><span style="color:var(--text-3)">Contacts:</span> ${contacts.slice(0,2).map(c=>escHtml(c.name)).join(', ')}${contacts.length>2?' +'+( contacts.length-2)+' more':''}</span>` : ''}
+        </div>
+      </div>
+
+      <!-- Suggested questions -->
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:8px">SUGGESTED QUESTIONS — click to ask</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${suggestedQs.map(q => `
+            <button onclick="document.getElementById('research-input-${safeId}').value=${JSON.stringify(q)};askResearchQuestion('${escHtml(acc.name)}','${safeId}')"
+              style="background:var(--s2);border:1px solid var(--border);color:var(--text-2);font-size:11px;padding:5px 10px;cursor:pointer;border-radius:var(--r);text-align:left;transition:border-color 0.15s"
+              onmouseover="this.style.borderColor='var(--blue-b)'" onmouseout="this.style.borderColor='var(--border)'">
+              ${escHtml(q)}
+            </button>`).join('')}
+        </div>
+      </div>
+
+      <!-- Chat history -->
+      <div id="research-history-${safeId}"
+        style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:120px;max-height:420px;padding:2px">
+        <div style="font-size:12px;color:var(--text-3);padding:20px 0;text-align:center">
+          Ask anything about <strong>${escHtml(acc.name)}</strong> — the AI has access to their full account history and can search the web for additional context.
+        </div>
+      </div>
+
+      <!-- Input -->
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <textarea id="research-input-${safeId}" rows="2"
+          class="field-input field-textarea"
+          placeholder="Ask anything — locations, industry, competitors, what parts they need, recent news..."
+          style="flex:1;font-size:12px;resize:none;line-height:1.5"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();askResearchQuestion('${escHtml(acc.name)}','${safeId}')}"></textarea>
+        <button onclick="askResearchQuestion('${escHtml(acc.name)}','${safeId}')"
+          class="btn btn-gold" style="white-space:nowrap;align-self:stretch;padding:0 18px">
+          ✦ ASK
+        </button>
+      </div>
+      <div style="font-size:10px;color:var(--text-3);font-family:var(--mono);margin-top:-8px">
+        Enter to send · Shift+Enter for new line · AI uses account history + web search
+      </div>
+
+    </div>`;
+}
+
+async function askResearchQuestion(accountName, safeId) {
+  const input   = document.getElementById('research-input-'+safeId);
+  const history = document.getElementById('research-history-'+safeId);
+  if (!input || !history) return;
+  const question = input.value.trim();
+  if (!question) return;
+
+  const apiKey = getAnthropicKey();
+  if (!apiKey) return;
+
+  // Clear placeholder on first question
+  const placeholder = history.querySelector('div[style*="text-align:center"]');
+  if (placeholder) placeholder.remove();
+
+  // Add user bubble
+  history.innerHTML += `
+    <div style="display:flex;justify-content:flex-end">
+      <div style="background:var(--blue-b);color:#fff;border-radius:var(--r2) var(--r2) 2px var(--r2);padding:9px 13px;font-size:12px;max-width:85%;line-height:1.5">
+        ${escHtml(question)}
+      </div>
+    </div>`;
+  const thinkId = 'res-think-'+Date.now();
+  history.innerHTML += `<div id="${thinkId}" style="display:flex;gap:8px;align-items:center">
+    <div style="width:28px;height:28px;border-radius:50%;background:rgba(52,152,219,0.15);border:1px solid var(--blue);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">✦</div>
+    <div style="font-size:12px;color:var(--text-3);font-style:italic">Researching...</div>
+  </div>`;
+  history.scrollTop = history.scrollHeight;
+  input.value = '';
+  input.disabled = true;
+
+  // Build account context
+  const acc = state.accounts.find(a => a.name === accountName) || {};
+  const h   = state.historyCache[accountName.trim()] || { invoices:[], reqs:[], quotes:[] };
+  const contacts = state.contactsCache[accountName.trim()] || [];
+  const partCounts = {};
+  h.invoices.forEach(inv => { if(inv.part) partCounts[inv.part] = (partCounts[inv.part]||0)+1; });
+  const topParts = Object.entries(partCounts).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([p])=>p).join(', ');
+  const curYear = new Date().getFullYear();
+
+  const systemPrompt = `You are a sales research assistant for Intransit Technologies, an aerospace and industrial parts distributor. You help sales reps learn about their accounts so they can have smarter conversations and win more business.
+
+ACCOUNT DATA FROM CRM:
+Account name: ${accountName}
+Status: ${acc.status||'Unknown'}
+Days inactive: ${acc.daysInactive||0}
+Last sale: ${acc.lastSale||'Unknown'}
+Revenue ${curYear-1}: $${Number(acc[`Y${curYear-1}`]||0).toLocaleString()}
+Revenue ${curYear} YTD: $${Number(acc[`Y${curYear}`]||0).toLocaleString()}
+Lifetime revenue: $${Number(acc.total||0).toLocaleString()}
+Top purchased parts: ${topParts||'none on record'}
+Recent RFQs: ${h.reqs.slice(0,5).map(r=>r.part||r.desc||'').filter(Boolean).join(', ')||'none'}
+Open quotes: ${h.quotes.filter(q=>!q.closed).length}
+Contacts on file: ${contacts.map(c=>c.name+(c.title?' ('+c.title+')':'')).join(', ')||'none'}
+
+Use the web_search tool to find current information when needed. Be specific and actionable. If you find multiple locations, list them. If you find news, summarize it. Always tie your research back to how it can help the sales rep sell more.`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1200,
+        system: systemPrompt,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages: [{ role: 'user', content: question }]
+      })
+    });
+    const data = await resp.json();
+
+    // Extract text from potentially multi-block response
+    let answer = '';
+    if (data.content) {
+      data.content.forEach(block => {
+        if (block.type === 'text') answer += block.text;
+      });
+    }
+    if (!answer && data.error) answer = 'API Error: ' + (data.error.message || JSON.stringify(data.error));
+    if (!answer) answer = 'No response received.';
+
+    const thinkEl = document.getElementById(thinkId);
+    if (thinkEl) thinkEl.outerHTML = `
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <div style="width:28px;height:28px;border-radius:50%;background:rgba(52,152,219,0.15);border:1px solid var(--blue-b);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;margin-top:2px">✦</div>
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:2px var(--r2) var(--r2) var(--r2);padding:10px 14px;font-size:12px;line-height:1.6;color:var(--text);max-width:90%;flex:1;white-space:pre-wrap">${escHtml(answer)}</div>
+      </div>`;
+
+    // Add "Use in email" button after each answer
+    history.innerHTML += `
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button onclick="useResearchInEmail('${escHtml(accountName)}',${JSON.stringify(question)},${JSON.stringify(answer.slice(0,500))})"
+          class="btn btn-ghost btn-sm">USE IN OUTREACH EMAIL →</button>
+      </div>`;
+
+  } catch(e) {
+    const thinkEl = document.getElementById(thinkId);
+    if (thinkEl) thinkEl.outerHTML = `<div style="color:var(--red);font-size:11px;padding:6px 10px">Error: ${escHtml(e.message)}</div>`;
+  } finally {
+    input.disabled = false;
+    input.focus();
+    history.scrollTop = history.scrollHeight;
+  }
+}
+
+function useResearchInEmail(accountName, question, answerSnippet) {
+  // Switch to email tab and pre-fill the custom prompt with research context
+  state.activeDetailTab = 'email';
+  if (state.selectedAccount) renderDetail(state.selectedAccount);
+  // After render, find the prompt field and fill it
+  setTimeout(() => {
+    const promptEl = document.getElementById('email-custom-prompt');
+    if (promptEl) {
+      promptEl.value = `Based on this research: "${answerSnippet}" — write an email that references this context naturally.`;
+      promptEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      promptEl.focus();
+    }
+  }, 200);
+}
+
 function renderDashboard() {
   // Determine which rep we are showing
   const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
@@ -2838,6 +3130,7 @@ async function generateEmail() {
 
   try {
     // Build context from what we have
+    const customContext = document.getElementById('email-custom-prompt')?.value.trim() || '';
     const revenueContext = Object.entries(acc.years)
       .filter(([y, v]) => v > 0)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -2853,7 +3146,7 @@ Days since last order: ${acc.daysInactive}
 Last order date: ${acc.lastSaleDate || 'unknown'}
 Revenue history: ${revenueContext || 'First contact'}
 Total lifetime revenue: $${formatNum(acc.total)}
-
+${customContext ? '\nADDITIONAL CONTEXT / RESEARCH NOTES:\n' + customContext + '\n' : ''}
 Write a SHORT, professional re-engagement email (3-4 paragraphs max). Be specific about their history with us. Be warm but direct. Mention you want to reconnect and see how you can help. Do NOT use generic phrases like "I hope this email finds you well." Do NOT be overly formal. Write in the voice of a knowledgeable sales rep who has an existing relationship with this customer.
 
 Return ONLY a JSON object with two keys: "subject" and "body". No preamble, no markdown.`;
@@ -3144,7 +3437,19 @@ function getSignatureForCurrentRep() {
 }
 
 function getDisclaimer() {
-  const email = state.user?.email || 'john.fluman@intransittech.com';
+  // Use the viewed-as rep's email, not necessarily John's login email
+  const repId = state.viewAsRep || state.repId;
+  const repEmails = {
+    CKaren: 'kmancebo@intransittech.com',
+    BillP:  'bill.pratt@intransittech.com',
+    PIan:   'ian.pitman@intransittech.com',
+    RMauricio: 'mrangel@intransittech.com',
+    LMancera: 'lmancera@intransittech.com',
+    bcastor: 'brandonar@intransittech.com',
+    FJohn:  'john.fluman@intransittech.com',
+    Anolan: 'anolan@intransittech.com',
+  };
+  const email = (repId && repEmails[repId]) || state.user?.email || 'john.fluman@intransittech.com';
   return `CONFIDENTIALITY NOTICE: This email and any attachments are intended solely for the named recipient(s) and may contain confidential, proprietary, or legally privileged information belonging to Intransit Technologies Corp. Unauthorized review, use, disclosure, dissemination, or copying of this communication is strictly prohibited. If you have received this message in error, please notify the sender immediately at ${email}, permanently delete this message and all copies from your system, and do not retain, print, or forward any portion of its contents. Thank you.`;
 }
 function renderCollectionsView() {
@@ -4070,7 +4375,22 @@ function selectContactCard(el, accountName, contactName) {
           <div style="font-size:10px;color:var(--text-3);margin-top:3px">Hold Ctrl/Cmd to select multiple</div>
         </div>` : ''}
 
-        <!-- Email type buttons -->
+        <!-- AI custom prompt -->
+        <div style="margin-bottom:10px">
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);margin-bottom:4px">
+            TELL AI WHAT YOU WANT (optional — or just pick a type below)
+          </div>
+          <div style="display:flex;gap:8px">
+            <textarea id="ct-email-prompt-${safeId}" rows="2" class="field-input field-textarea"
+              placeholder="e.g. Ask if they need bearings for the new production line. Mention we have the PN they quoted last month..."
+              style="font-size:12px;resize:vertical;flex:1;min-height:52px"></textarea>
+            <button onclick="generateContactEmail('${escHtml(accountName)}','${escHtml(contactName||'')}','${safeId}','custom')"
+              class="btn btn-gold" style="white-space:nowrap;align-self:stretch">✦ GENERATE</button>
+          </div>
+        </div>
+
+        <!-- Quick type buttons -->
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);margin-bottom:6px">OR PICK A QUICK TYPE</div>
         <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
           <button onclick="generateContactEmail('${escHtml(accountName)}','${escHtml(contactName||'')}','${safeId}','reengagement')"
             class="btn btn-primary" style="flex:1;white-space:nowrap">✦ RE-ENGAGEMENT</button>
@@ -4282,7 +4602,10 @@ async function generateContactEmail(accountName, contactName, safeId, emailType)
   const recentNote = ctNotes.slice(-1)[0]?.note || '';
   const repName = acc?.rep || state.repId || '';
 
-  const typeDesc = {
+  const customPrompt = document.getElementById('ct-email-prompt-'+safeId)?.value.trim() || '';
+  const typeDesc = emailType === 'custom' && customPrompt
+    ? 'a professional outreach email with the following specific guidance from the rep: ' + customPrompt
+    : {
     reengagement: 'a warm re-engagement email — reference their history with Intransit, ask how you can help, mention specific parts they have bought before',
     followup: 'a concise follow-up email — reference a recent interaction or quote, check in on status, offer to help move things forward',
     intro: 'a professional introduction email — introduce yourself as their rep at Intransit, briefly explain what Intransit does, invite them to reach out with any needs',

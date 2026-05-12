@@ -520,6 +520,21 @@ body::before {
 .apk-card[data-col="solid"]  { border-left: 2px solid var(--gold); }
 .apk-card[data-col="center"] { border-left: 2px solid var(--blue-b); }
 .apk-card[data-col="ring"]   { border-left: 2px solid var(--green); }
+/* Transfer browse modal */
+#transfer-modal-overlay {
+  position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9000;display:flex;align-items:center;justify-content:center;
+}
+#transfer-modal {
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r);width:760px;max-width:95vw;max-height:88vh;
+  display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5);
+}
+.transfer-modal-row {
+  display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:0;
+  padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;
+}
+.transfer-modal-row:hover { background:var(--s2); }
+.transfer-modal-row.hidden-row { opacity:0.4; }
+
 .apk-transfer-panel {
   width: 190px; min-width: 150px; border-left: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden; background: var(--s0);
@@ -2019,6 +2034,7 @@ let state = {
   collectionsInvoicesCache: {}, // keyed by customer name — open invoices
   signaturesCache: {},          // keyed by rep ID — email signatures
   notesByAccount: {},  // keyed by account name
+  hiddenTransferAccounts: {},  // keyed by repId → Set of account names hidden from transfer panel
   loading: false,
   accessToken: null,
   _cacheLoadingPromise: null,
@@ -2864,20 +2880,7 @@ function renderNoteInput(acc) {
 
 
 function renderEmailTab(acc) {
-  // 3-tier contact lookup: exact → case-insensitive → partial
-  const _lookupName = acc.name.trim();
-  let _rawContacts = state.contactsCache[_lookupName] || [];
-  if (!_rawContacts.length) {
-    const _lower = _lookupName.toLowerCase();
-    const _ciKey = Object.keys(state.contactsCache).find(k => k.trim().toLowerCase() === _lower);
-    if (_ciKey) _rawContacts = state.contactsCache[_ciKey] || [];
-  }
-  if (!_rawContacts.length) {
-    const _start = _lookupName.toLowerCase().slice(0, 12);
-    const _partKey = Object.keys(state.contactsCache).find(k => k.trim().toLowerCase().startsWith(_start));
-    if (_partKey) _rawContacts = state.contactsCache[_partKey] || [];
-  }
-  const contacts = _rawContacts.filter(ct => ct.email);
+  const contacts = (state.contactsCache[acc.name.trim()] || []).filter(ct => ct.email);
   const apContacts = contacts.filter(ct => ct.type === 'AP/Collections');
   const primaryContact = contacts[0] || null;
   const apEmails = [...new Set(apContacts.map(ct => ct.email).filter(Boolean))];
@@ -3277,9 +3280,8 @@ function openAccountFromContact(accountName) {
 
 
 async function renderRemovalsView() {
-  // Block when not admin OR when admin is impersonating a rep
-  if (!state.isAdmin || state.viewAsRep) {
-    document.getElementById('main-content').innerHTML = '<div style="padding:40px;color:var(--text-3);font-family:var(--mono)">🔒 Admin access only. Not available when viewing as a rep.</div>';
+  if (!state.isAdmin) {
+    document.getElementById('main-content').innerHTML = '<div style="padding:40px;color:var(--text-3)">Admin only.</div>';
     return;
   }
   const el = document.getElementById('main-content');
@@ -3303,14 +3305,16 @@ async function renderRemovalsView() {
   }
 
   // ── 2. LOG-BASED REQUESTS (hold, transfer) ───────────────────────────────
-  let holdReqs = [], transferReqs = [], logError = '';
+  let holdReqs = [], transferReqs = [], hideReqs = [], logError = '';
   try {
     const logRows = await sheetsGet("'_LOG'!A1:E2000");
     dLog('_LOG rows loaded: ' + logRows.length);
     holdReqs     = logRows.filter((r,i) => i>0 && (r[2]||'')==='HOLD_REQUEST').slice().reverse().slice(0,30);
     transferReqs = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_REQUEST').slice().reverse().slice(0,30);
+    hideReqs     = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_HIDE_REQUEST').slice().reverse().slice(0,50);
     dLog('Hold requests in log: ' + holdReqs.length);
     dLog('Transfer requests in log: ' + transferReqs.length);
+    dLog('Hide requests in log: ' + hideReqs.length);
   } catch(e) {
     logError = e.message;
     dLog('_LOG failed to load: ' + e.message, false);
@@ -3468,7 +3472,36 @@ async function renderRemovalsView() {
         </div>`}
       </div>
 
-      <!-- ④ NDA LOG ─────────────────────────────────────────────────── -->
+      <!-- ④ TRANSFER HIDE REQUESTS ──────────────────────────────────── -->
+      <div style="margin-bottom:28px">
+        <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+          ✕ Transfer List — Hide Requests
+          <span style="background:${hideReqs.length?'var(--orange)':'var(--s2)'};color:${hideReqs.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${hideReqs.length}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Reps have asked to permanently hide these accounts from their transfer list. No action needed — they are already hidden locally. This is for your visibility only.</div>
+        ${hideReqs.length ? `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${hideReqs.map(r => {
+            const msg = r[3]||'';
+            const rep = (r[1]||'').replace('@intransittech.com','');
+            const accMatch = msg.match(/hide from transfer list: (.+)$/);
+            const accName = accMatch?.[1] || msg.slice(0,60);
+            return `<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div style="font-size:13px;font-weight:600">${escHtml(accName)}</div>
+                <div style="font-size:11px;color:var(--text-3);margin-top:3px">Hidden by: <span style="color:var(--orange)">${escHtml(rep)}</span> · <span style="font-family:var(--mono)">${fmt(r[0])}</span></div>
+              </div>
+              <div style="font-size:10px;color:var(--text-3);font-family:var(--mono);text-align:right">No action needed —<br>hidden in their browser</div>
+            </div>`;
+          }).join('')}
+        </div>` : `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)">
+          <div style="font-size:22px;margin-bottom:8px">✓</div>
+          <div style="font-family:var(--mono);font-size:11px">No hide requests</div>
+        </div>`}
+      </div>
+
+      <!-- ⑤ NDA LOG ─────────────────────────────────────────────────── -->
       <div>
         <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
           🔒 NDA Acceptance Log
@@ -3937,16 +3970,8 @@ function switchViewAs(rep) {
     label.textContent = 'ADMIN — ALL REPS';
     label.style.color = '';
   }
-  // Security: hide admin-only Requests nav when impersonating a rep
-  const removalsNav = document.getElementById('nav-removals');
-  if (removalsNav) removalsNav.style.display = rep ? 'none' : 'block';
   state.selectedAccount = null;
-  // If currently on removals view while switching to rep view, go to accounts
-  if (rep && state.activeView === 'removals') {
-    switchView('accounts');
-  } else {
-    switchView(rep ? 'accounts' : 'accounts');
-  }
+  switchView(rep ? 'accounts' : 'accounts');
 }
 
 function filterByRep(rep) {
@@ -6049,6 +6074,7 @@ async function renderAttackPlan() {
     });
   }
   window.apkState = planState;
+  apkLoadHiddenTransferAccounts();
   apkRender(repAccs, otherAccs, repFilter);
 }
 
@@ -6117,9 +6143,12 @@ function apkRender(repAccs, otherAccs, rep) {
         <div style="width:190px;flex-shrink:0;padding-bottom:10px;border-left:1px solid var(--border);padding-left:10px">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--orange);letter-spacing:0.08em">⇄ TRANSFER</span>
-            ${state.isAdmin ? `<button onclick="switchView('removals')" style="font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r)">REQUESTS</button>` : ''}
+            <div style="display:flex;gap:4px">
+              <button onclick="apkOpenTransferModal()" style="font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.15);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r)">VIEW ALL</button>
+              ${state.isAdmin ? `<button onclick="switchView('removals')" style="font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r)">REQUESTS</button>` : ''}
+            </div>
           </div>
-          <div style="font-size:11px;color:var(--text-3);margin-top:2px">${state.isAdmin ? 'Other reps\' inactive accounts' : 'Click to request'}</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px">Other reps' inactive accounts</div>
         </div>
       </div>
 
@@ -6136,14 +6165,26 @@ function apkRender(repAccs, otherAccs, rep) {
 
         <!-- Transfer panel -->
         <div style="width:190px;flex-shrink:0;border-left:1px solid var(--border);overflow-y:auto;background:var(--s1)" id="apk-transfer">
-          ${otherAccs.length ? otherAccs.map(acc => `
+          ${(() => {
+            const repId = window.apkRep || '';
+            const hiddenSet = state.hiddenTransferAccounts[repId] || new Set();
+            const visible = otherAccs.filter(a => !hiddenSet.has(a.name));
+            const hiddenCount = otherAccs.filter(a => hiddenSet.has(a.name)).length;
+            if (!visible.length && !hiddenCount) return '<div style="font-size:11px;color:var(--text-3);padding:14px;text-align:center">No inactive accounts from other reps</div>';
+            return (visible.length ? visible.map(acc => `
             <div onclick="apkRequestTransfer('${escHtml(acc.name)}')"
               style="padding:9px 11px;border-bottom:1px solid var(--border);cursor:pointer;border-left:3px solid var(--orange)"
               onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
               <div style="font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(acc.name)}">${escHtml(acc.name)}</div>
               <div style="font-family:var(--mono);font-size:10px;color:var(--orange)">$${formatNum(acc.total || 0)}</div>
               <div style="font-size:9px;color:var(--text-3)">${escHtml(acc.rep)}</div>
-            </div>`).join('') : '<div style="font-size:11px;color:var(--text-3);padding:14px;text-align:center">No inactive accounts from other reps</div>'}
+            </div>`).join('') : '') +
+            `<div style="padding:8px 11px;text-align:center">
+              <button onclick="apkOpenTransferModal()" style="font-size:10px;font-family:var(--mono);padding:4px 10px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r);width:100%">
+                VIEW ALL${hiddenCount ? ` (${hiddenCount} hidden)` : ''}
+              </button>
+            </div>`;
+          })()}
         </div>
       </div>
 
@@ -6332,6 +6373,233 @@ function apkRequestTransfer(name) {
     'Rep ' + (window.apkRep || '') + ' requests: ' + name + '. Note: ' + (reason || 'none')
   ]]).then(() => showToast('Transfer request sent ✓', 'success'))
     .catch(e => showToast('Error: ' + e.message, 'error'));
+}
+
+function apkRequestHideTransfer(name) {
+  if (!confirm('Hide "' + name + '" from your transfer list?\n\nThis sends John a request. Until he approves, it will be shown as hidden.')) return;
+  const repId = window.apkRep || state.repId || '';
+  // Mark locally hidden immediately
+  if (!state.hiddenTransferAccounts[repId]) state.hiddenTransferAccounts[repId] = new Set();
+  state.hiddenTransferAccounts[repId].add(name);
+  // Persist to localStorage
+  try {
+    const key = 'it_hidden_transfer_' + repId;
+    const arr = Array.from(state.hiddenTransferAccounts[repId]);
+    localStorage.setItem(key, JSON.stringify(arr));
+  } catch(e) {}
+  // Log request
+  sheetsAppend("'_LOG'!A1", [[
+    new Date().toISOString(), state.user?.email || repId, 'TRANSFER_HIDE_REQUEST',
+    'Rep ' + repId + ' requests hide from transfer list: ' + name
+  ]]).then(() => showToast('Hide request sent to John ✓', 'success'))
+    .catch(e => showToast('Error: ' + e.message, 'error'));
+  // Re-render transfer panel
+  const repAccs = state.accounts.filter(a => a.rep === repId);
+  const otherAccs = state.accounts.filter(a => a.rep !== repId && isInactive(a)).sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,50);
+  const panel = document.getElementById('apk-transfer');
+  if (panel) apkRenderTransferPanel(panel, otherAccs, repId);
+  // Re-render modal if open
+  const modal = document.getElementById('transfer-modal-body');
+  if (modal) apkRenderTransferModalBody();
+}
+
+function apkLoadHiddenTransferAccounts() {
+  // Load from localStorage for current rep
+  const repId = window.apkRep || state.repId || '';
+  if (!repId) return;
+  try {
+    const key = 'it_hidden_transfer_' + repId;
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      const arr = JSON.parse(stored);
+      state.hiddenTransferAccounts[repId] = new Set(arr);
+    }
+  } catch(e) {}
+}
+
+function apkRenderTransferPanel(panelEl, otherAccs, repId) {
+  const hiddenSet = state.hiddenTransferAccounts[repId] || new Set();
+  const visible = otherAccs.filter(a => !hiddenSet.has(a.name));
+  const hiddenCount = otherAccs.filter(a => hiddenSet.has(a.name)).length;
+  if (!visible.length && !hiddenCount) {
+    panelEl.innerHTML = '<div style="font-size:11px;color:var(--text-3);padding:14px;text-align:center">No inactive accounts from other reps</div>';
+    return;
+  }
+  panelEl.innerHTML = (visible.length ? visible.map(acc => `
+    <div onclick="apkRequestTransfer('${escHtml(acc.name)}')"
+      style="padding:9px 11px;border-bottom:1px solid var(--border);cursor:pointer;border-left:3px solid var(--orange)"
+      onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+      <div style="font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(acc.name)}">${escHtml(acc.name)}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--orange)">$${formatNum(acc.total || 0)}</div>
+      <div style="font-size:9px;color:var(--text-3)">${escHtml(acc.rep)}</div>
+    </div>`).join('') : '') +
+    `<div style="padding:8px 11px;text-align:center">
+      <button onclick="apkOpenTransferModal()" style="font-size:10px;font-family:var(--mono);padding:4px 10px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r);width:100%">
+        VIEW ALL${hiddenCount ? ` (${hiddenCount} hidden)` : ''}
+      </button>
+    </div>`;
+}
+
+function apkOpenTransferModal() {
+  apkLoadHiddenTransferAccounts();
+  // Remove any existing modal
+  const existing = document.getElementById('transfer-modal-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'transfer-modal-overlay';
+  overlay.innerHTML = `
+    <div id="transfer-modal">
+      <!-- Header -->
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--orange);letter-spacing:0.1em">⇄ ALL AVAILABLE TRANSFER ACCOUNTS</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px">Inactive accounts from other reps · Click to request transfer · Use ✕ to hide from your list</div>
+        </div>
+        <button onclick="document.getElementById('transfer-modal-overlay').remove()"
+          style="background:transparent;border:none;color:var(--text-3);font-size:18px;cursor:pointer;padding:4px 8px;line-height:1">✕</button>
+      </div>
+      <!-- Filters -->
+      <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;background:var(--s0)">
+        <input id="tm-search" type="text" placeholder="Search accounts…" oninput="apkRenderTransferModalBody()"
+          style="flex:2;min-width:140px;padding:5px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:12px;border-radius:var(--r)">
+        <select id="tm-rep" onchange="apkRenderTransferModalBody()"
+          style="flex:1;min-width:100px;padding:5px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:12px;border-radius:var(--r)">
+          <option value="">All Reps</option>
+          ${[...new Set(state.accounts.filter(a=>a.rep !== (window.apkRep||state.repId)).map(a=>a.rep))].sort().map(r=>`<option value="${escHtml(r)}">${escHtml(r)}</option>`).join('')}
+        </select>
+        <select id="tm-status" onchange="apkRenderTransferModalBody()"
+          style="flex:1;min-width:120px;padding:5px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:12px;border-radius:var(--r)">
+          <option value="">All Statuses</option>
+          <option value="High Value">High Value – Lost</option>
+          <option value="At Risk">Declining – At Risk</option>
+          <option value="Dormant">Long Dormant</option>
+          <option value="Monitor">Monitor</option>
+        </select>
+        <select id="tm-revenue" onchange="apkRenderTransferModalBody()"
+          style="flex:1;min-width:110px;padding:5px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:12px;border-radius:var(--r)">
+          <option value="">Any Revenue</option>
+          <option value="100000">$100K+</option>
+          <option value="50000">$50K+</option>
+          <option value="20000">$20K+</option>
+          <option value="5000">$5K+</option>
+        </select>
+        <select id="tm-hidden" onchange="apkRenderTransferModalBody()"
+          style="flex:1;min-width:100px;padding:5px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:12px;border-radius:var(--r)">
+          <option value="visible">Visible only</option>
+          <option value="all">Show all</option>
+          <option value="hidden">Hidden only</option>
+        </select>
+        <select id="tm-sort" onchange="apkRenderTransferModalBody()"
+          style="flex:1;min-width:110px;padding:5px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:12px;border-radius:var(--r)">
+          <option value="revenue">Sort: Revenue ↓</option>
+          <option value="name">Sort: Name A–Z</option>
+          <option value="inactive">Sort: Most Inactive</option>
+        </select>
+      </div>
+      <!-- Stats bar -->
+      <div id="tm-stats" style="padding:6px 14px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text-3);flex-shrink:0;background:var(--s0)"></div>
+      <!-- Body -->
+      <div id="transfer-modal-body" style="overflow-y:auto;flex:1;min-height:0"></div>
+      <!-- Footer -->
+      <div style="padding:10px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;flex-shrink:0;background:var(--s0)">
+        <button onclick="document.getElementById('transfer-modal-overlay').remove()"
+          style="padding:6px 18px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px">CLOSE</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  // Close on overlay click
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  apkRenderTransferModalBody();
+}
+
+function apkRenderTransferModalBody() {
+  const repId = window.apkRep || state.repId || '';
+  const hiddenSet = state.hiddenTransferAccounts[repId] || new Set();
+  const search = (document.getElementById('tm-search')?.value || '').toLowerCase();
+  const repFilter = document.getElementById('tm-rep')?.value || '';
+  const statusFilter = document.getElementById('tm-status')?.value || '';
+  const revenueFilter = parseInt(document.getElementById('tm-revenue')?.value || '0') || 0;
+  const hiddenFilter = document.getElementById('tm-hidden')?.value || 'visible';
+  const sortBy = document.getElementById('tm-sort')?.value || 'revenue';
+
+  let accs = state.accounts.filter(a => a.rep !== repId && isInactive(a));
+
+  // Apply filters
+  if (search) accs = accs.filter(a => a.name.toLowerCase().includes(search));
+  if (repFilter) accs = accs.filter(a => a.rep === repFilter);
+  if (statusFilter) accs = accs.filter(a => (a.status||'').includes(statusFilter));
+  if (revenueFilter) accs = accs.filter(a => (a.total||0) >= revenueFilter);
+  if (hiddenFilter === 'visible') accs = accs.filter(a => !hiddenSet.has(a.name));
+  if (hiddenFilter === 'hidden') accs = accs.filter(a => hiddenSet.has(a.name));
+
+  // Sort
+  if (sortBy === 'revenue') accs.sort((a,b) => (b.total||0) - (a.total||0));
+  else if (sortBy === 'name') accs.sort((a,b) => a.name.localeCompare(b.name));
+  else if (sortBy === 'inactive') accs.sort((a,b) => (b.daysInactive||0) - (a.daysInactive||0));
+
+  // Update stats
+  const statsEl = document.getElementById('tm-stats');
+  if (statsEl) {
+    const totalAll = state.accounts.filter(a => a.rep !== repId && isInactive(a)).length;
+    const hiddenCount = hiddenSet.size;
+    statsEl.textContent = `${accs.length} accounts shown · ${totalAll} total available · ${hiddenCount} hidden from your list`;
+  }
+
+  const body = document.getElementById('transfer-modal-body');
+  if (!body) return;
+
+  if (!accs.length) {
+    body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3);font-size:13px">No accounts match your filters</div>';
+    return;
+  }
+
+  // Column headers
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 90px 100px 110px auto;gap:0;padding:6px 12px;background:var(--s0);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3)">
+      <div>ACCOUNT</div><div>REP</div><div style="text-align:right">REVENUE</div><div style="text-align:center">STATUS</div><div></div>
+    </div>
+    ${accs.map(acc => {
+      const isHidden = hiddenSet.has(acc.name);
+      const statusShort = (acc.status||'').replace(/[^\x00-\x7F]/g,'').trim().replace('High Value – Lost','High Value').replace('Declining – At Risk','At Risk').replace('Long Dormant','Dormant');
+      const statusColor = (acc.status||'').includes('High Value') ? 'var(--red)' :
+                          (acc.status||'').includes('At Risk') ? 'var(--orange)' :
+                          (acc.status||'').includes('Dormant') ? 'var(--text-3)' : 'var(--text-3)';
+      return `<div class="transfer-modal-row${isHidden?' hidden-row':''}" style="grid-template-columns:1fr 90px 100px 110px auto">
+        <div>
+          <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px" title="${escHtml(acc.name)}">${escHtml(acc.name)}</div>
+          ${acc.daysInactive ? `<div style="font-size:10px;color:var(--text-3);font-family:var(--mono)">${acc.daysInactive}d inactive</div>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--text-3);align-self:center">${escHtml(acc.rep)}</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--orange);text-align:right;align-self:center">$${formatNum(acc.total||0)}</div>
+        <div style="font-size:10px;color:${statusColor};text-align:center;align-self:center;padding:0 4px">${escHtml(statusShort)}</div>
+        <div style="display:flex;gap:5px;align-self:center;padding-left:8px" onclick="event.stopPropagation()">
+          <button onclick="apkRequestTransfer('${escHtml(acc.name)}')"
+            style="font-size:10px;padding:4px 8px;background:rgba(249,115,22,0.15);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r);font-family:var(--mono);white-space:nowrap"
+            title="Request this account be transferred to your territory">⇄ REQUEST</button>
+          ${isHidden ?
+            `<button onclick="apkUnhideTransfer('${escHtml(acc.name)}')"
+              style="font-size:10px;padding:4px 8px;background:rgba(0,0,0,0);border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono)"
+              title="Unhide this account">↺ SHOW</button>` :
+            `<button onclick="apkRequestHideTransfer('${escHtml(acc.name)}')"
+              style="font-size:10px;padding:4px 8px;background:rgba(0,0,0,0);border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono)"
+              title="Hide this account from your transfer list">✕ HIDE</button>`
+          }
+        </div>
+      </div>`;
+    }).join('')}`;
+}
+
+function apkUnhideTransfer(name) {
+  const repId = window.apkRep || state.repId || '';
+  if (!state.hiddenTransferAccounts[repId]) return;
+  state.hiddenTransferAccounts[repId].delete(name);
+  try {
+    const key = 'it_hidden_transfer_' + repId;
+    localStorage.setItem(key, JSON.stringify(Array.from(state.hiddenTransferAccounts[repId])));
+  } catch(e) {}
+  showToast(name.slice(0,22) + ' unhidden ✓', 'success');
+  apkRenderTransferModalBody();
 }
 
 // Legacy aliases kept for backward compat

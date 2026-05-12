@@ -1272,7 +1272,9 @@ function renderContactsTab(acc) {
             <option value="Meeting">Meeting</option>
             <option value="Note">Note</option>
           </select>
-          <textarea class="cnote-text-input" id="cnnote-${safeId}" placeholder="Log a call, email, or note for ${escHtml(contactName)}..."></textarea>
+          <textarea class="cnote-text-input" id="cnnote-${safeId}" rows="5"
+            style="width:100%;box-sizing:border-box;min-height:110px;font-size:13px;line-height:1.6;resize:vertical;font-family:var(--font)"
+            placeholder="Log a call, email, or note for ${escHtml(contactName)}..."></textarea>
         </div>
         <button class="cnote-save-btn" onclick="saveContactNote('${escHtml(accountName)}','${escHtml(contactName)}','${safeId}')">SAVE NOTE</button>
       </div>`;
@@ -1789,12 +1791,92 @@ function showNDA() {
   modal.style.display = 'flex';
 }
 
-function acceptNDA() {
-  document.getElementById('nda-modal').style.display = 'none';
-  sessionStorage.setItem('it_nda_accepted', '1');
+async function ensureNDALogHeader() {
+  try {
+    const existing = await sheetsGet("'_NDA_LOG'!A1:L1");
+    // If first row already has our header, skip
+    if (existing.length > 0 && (existing[0][0]||'').toUpperCase() === 'TIMESTAMP') return;
+    // Write header row
+    await sheetsAppend("'_NDA_LOG'!A1", [[
+      'TIMESTAMP','ISO_UTC','EMAIL','FULL_NAME','REP_ID',
+      'LANGUAGE','VERSION','ACTION','TIMEZONE','USER_AGENT',
+      'NDA_EN_SUMMARY','NDA_ES_SUMMARY'
+    ]]);
+  } catch(e) {
+    // Tab may not exist yet — first real acceptance will create it
+    console.log('NDA log header setup:', e.message);
+  }
 }
 
-function declineNDA() {
+
+async function acceptNDA() {
+  document.getElementById('nda-modal').style.display = 'none';
+  sessionStorage.setItem('it_nda_accepted', '1');
+  // Ensure _NDA_LOG has header row (creates tab + header if brand new)
+  ensureNDALogHeader().catch(() => {});
+
+  // ── AUDIT LOG: record every acceptance to _NDA_LOG tab ──────────────────
+  try {
+    const now       = new Date();
+    const timestamp = now.toLocaleString('en-US', {
+      month: '2-digit', day: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    });
+    const isoTime   = now.toISOString();
+    const userEmail = state.user?.email || 'unknown';
+    const userName  = state.user?.name  || 'unknown';
+    const lang      = currentLang === 'es' ? 'Spanish' : 'English';
+    const repId     = state.repId || (state.isAdmin ? 'ADMIN' : 'unknown');
+    const userAgent = navigator.userAgent.slice(0, 120);
+    const timezone  = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
+
+    // Full NDA text they agreed to (both languages, version-stamped)
+    const ndaVersion = '2026-v1';
+    const ndaTextEN  = LANG.en.ndaBody.slice(0, 500) + '...';
+    const ndaTextES  = LANG.es.ndaBody.slice(0, 500) + '...';
+
+    const row = [
+      timestamp,          // A: Date/Time (local)
+      isoTime,            // B: ISO Timestamp (UTC)
+      userEmail,          // C: Email
+      userName,           // D: Full Name
+      repId,              // E: Rep ID
+      lang,               // F: Language shown
+      ndaVersion,         // G: Agreement version
+      'ACCEPTED',         // H: Action
+      timezone,           // I: User timezone
+      userAgent,          // J: Browser/device info
+      ndaTextEN,          // K: EN agreement summary
+      ndaTextES,          // L: ES agreement summary
+    ];
+
+    await sheetsAppend("'_NDA_LOG'!A1", [
+      // Header row is auto-created by Sheets on first append if sheet is new
+      row
+    ]);
+
+    console.log('NDA acceptance logged ✓', userEmail, timestamp);
+  } catch(e) {
+    // Don't block the user — just log the failure silently
+    console.warn('NDA log write failed (non-blocking):', e.message);
+  }
+}
+
+async function declineNDA() {
+  // Log the decline before signing out
+  try {
+    const now      = new Date();
+    const ts       = now.toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+    const iso      = now.toISOString();
+    const email    = state.user?.email || 'unknown';
+    const name     = state.user?.name  || 'unknown';
+    const repId    = state.repId || (state.isAdmin ? 'ADMIN' : 'unknown');
+    const lang     = currentLang === 'es' ? 'Spanish' : 'English';
+    const ua       = navigator.userAgent.slice(0, 120);
+    const tz       = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
+    await sheetsAppend("'_NDA_LOG'!A1", [[ts, iso, email, name, repId, lang, '2026-v1', 'DECLINED', tz, ua, '', '']]);
+  } catch(e) { console.warn('NDA decline log failed:', e.message); }
+
   handleSignout();
   document.getElementById('nda-modal').style.display = 'none';
   showToast(currentLang === 'es' ? 'Debe aceptar para continuar.' : 'You must accept to continue.', 'error');
@@ -3084,21 +3166,26 @@ function openAccountFromContact(accountName) {
 
 async function renderRemovalsView() {
   const el = document.getElementById('main-content');
-  el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div class="loading-spinner">LOADING REMOVAL REQUESTS</div></div>';
+  el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div class="loading-spinner">LOADING...</div></div>';
 
-  // Find all accounts with REMOVE_FLAG set
   const pending = state.accounts.filter(a =>
     a.removeFlag && a.removeFlag.trim() !== '' &&
     a.removeFlag.toUpperCase() !== 'YES' &&
     a.johnApproval?.toUpperCase() !== 'YES'
   );
 
-  // Also check _LOG for transfer requests
   let transferReqs = [];
   try {
     const logRows = await sheetsGet("'_LOG'!A1:E1000");
     transferReqs = logRows.filter((r,i) => i > 0 && (r[2]||'') === 'TRANSFER_REQUEST')
       .slice().reverse().slice(0,20);
+  } catch(e) {}
+
+  // Load NDA log
+  let ndaRows = [];
+  try {
+    const raw = await sheetsGet("'_NDA_LOG'!A1:L2000");
+    ndaRows = raw.filter(r => r[7] === 'ACCEPTED' || r[7] === 'DECLINED').slice().reverse();
   } catch(e) {}
 
   el.innerHTML = `
@@ -3133,18 +3220,50 @@ async function renderRemovalsView() {
               </div>
               <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0">
                 <div style="text-align:right;font-family:var(--mono);font-size:12px;color:var(--text-2)">$${formatNum(acc.total||0)}</div>
-                <button onclick="approveRemovalDirect('${escHtml(acc.name)}')" class="btn btn-danger" style="white-space:nowrap">
-                  ✓ APPROVE REMOVAL
-                </button>
-                <button onclick="denyRemoval('${escHtml(acc.name)}')" class="btn btn-ghost btn-sm" style="white-space:nowrap">
-                  ✗ DENY / KEEP
-                </button>
+                <button onclick="approveRemovalDirect('${escHtml(acc.name)}')" class="btn btn-danger" style="white-space:nowrap">✓ APPROVE</button>
+                <button onclick="denyRemoval('${escHtml(acc.name)}')" class="btn btn-ghost btn-sm" style="white-space:nowrap">✗ DENY / KEEP</button>
               </div>
             </div>`).join('')}
         </div>` : `
         <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:32px;text-align:center;color:var(--text-3)">
           <div style="font-size:24px;margin-bottom:8px">✓</div>
           <div style="font-family:var(--mono);font-size:11px">No pending removal requests</div>
+        </div>`}
+      </div>
+
+      <!-- NDA Acceptance Log -->
+      <div style="margin-bottom:32px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div>
+            <div style="font-size:18px;font-weight:700;margin-bottom:2px">🔒 NDA Acceptance Log</div>
+            <div style="font-size:12px;color:var(--text-3)">${ndaRows.length} entries recorded · stored in _NDA_LOG tab</div>
+          </div>
+          <button onclick="exportNDALog()" class="btn btn-ghost btn-sm">⬇ EXPORT CSV</button>
+        </div>
+        ${ndaRows.length ? `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">
+          <!-- Table header -->
+          <div style="display:grid;grid-template-columns:140px 200px 120px 80px 80px 1fr;gap:0;background:var(--s2);border-bottom:1px solid var(--border);padding:8px 14px;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3)">
+            <div>TIMESTAMP</div><div>EMAIL</div><div>NAME</div><div>REP</div><div>LANG</div><div>ACTION</div>
+          </div>
+          <div style="max-height:400px;overflow-y:auto">
+            ${ndaRows.map(r => {
+              const action = r[7] || '';
+              const actionColor = action === 'ACCEPTED' ? 'var(--green)' : 'var(--red)';
+              return `<div style="display:grid;grid-template-columns:140px 200px 120px 80px 80px 1fr;gap:0;padding:9px 14px;border-bottom:1px solid var(--border);font-size:11px;line-height:1.4" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+                <div style="font-family:var(--mono);color:var(--text-3);font-size:10px">${escHtml(r[0]||'')}</div>
+                <div style="color:var(--blue-b);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r[2]||'')}</div>
+                <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r[3]||'')}</div>
+                <div style="font-family:var(--mono);font-size:10px;color:var(--text-2)">${escHtml(r[4]||'')}</div>
+                <div style="font-size:10px;color:var(--text-3)">${escHtml(r[5]||'')}</div>
+                <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:${actionColor}">${escHtml(action)}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>` : `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:32px;text-align:center;color:var(--text-3)">
+          <div style="font-size:24px;margin-bottom:8px">📋</div>
+          <div style="font-family:var(--mono);font-size:11px">No NDA records yet — log populates when users accept/decline at login</div>
         </div>`}
       </div>
 
@@ -3185,10 +3304,30 @@ async function renderRemovalsView() {
       </div>
     </div>`;
 
-  // Update badge
   const badge = document.getElementById('badge-removals');
   if (badge) badge.textContent = pending.length || '';
 }
+
+function exportNDALog() {
+  // Export _NDA_LOG as CSV download
+  sheetsGet("'_NDA_LOG'!A1:L2000").then(rows => {
+    if (!rows.length) { showToast('No NDA log data', 'error'); return; }
+    const headers = ['TIMESTAMP','ISO_UTC','EMAIL','FULL_NAME','REP_ID','LANGUAGE','VERSION','ACTION','TIMEZONE','USER_AGENT','NDA_EN_SUMMARY','NDA_ES_SUMMARY'];
+    const csvRows = [headers, ...rows].map(r =>
+      r.map(cell => '"' + String(cell||'').replace(/"/g,'""') + '"').join(',')
+    );
+    const csv  = csvRows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'intransit_nda_log_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('NDA log exported ✓', 'success');
+  }).catch(e => showToast('Export failed: ' + e.message, 'error'));
+}
+
 
 async function approveRemovalDirect(accountName) {
   if (!confirm(`Approve removal of "${accountName}"? This will exclude it from all future reports.`)) return;
@@ -4038,53 +4177,71 @@ function clearSignature() {
 }
 
 async function saveSignature() {
-  const rep = state.isAdmin
+  const rep  = state.isAdmin
     ? (document.getElementById('sig-rep-select')?.value || state.repId)
     : state.repId;
   const text = document.getElementById('sig-text')?.value || '';
+  const btn  = document.querySelector('[onclick="saveSignature()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
 
   try {
-    // Ensure _SIGNATURES tab exists and load current rows
-    let rows;
+    const now = new Date().toLocaleString('en-US', {
+      month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'
+    });
+
+    // Strategy: read existing rows, update or add rep, then write back.
+    // The tab may not exist yet — sheetsAppend creates it; sheetsUpdate requires it.
+    let rows = [['REP','SIGNATURE_TEXT','LAST_UPDATED']];
     try {
-      const existing = await sheetsGet("'_SIGNATURES'!A1:D100");
-      // Validate that it looks like a real signatures sheet (first row has REP)
-      if (existing.length > 0 && existing[0].includes('REP')) {
-        rows = existing;
-      } else if (existing.length > 0) {
-        // Has data but wrong format - rebuild with header
-        rows = [['REP','SIGNATURE_TEXT','LAST_UPDATED'], ...existing.filter(r => r[0] && r[0] !== 'REP')];
-      } else {
-        rows = [['REP','SIGNATURE_TEXT','LAST_UPDATED']];
+      const existing = await sheetsGet("'_SIGNATURES'!A1:C200");
+      if (existing.length > 0) {
+        // Check if it has our header
+        const firstCell = (existing[0][0] || '').toString().toUpperCase().trim();
+        rows = firstCell === 'REP' ? existing : [['REP','SIGNATURE_TEXT','LAST_UPDATED'], ...existing];
       }
     } catch(e) {
-      rows = [['REP','SIGNATURE_TEXT','LAST_UPDATED']];
+      // Tab doesn't exist yet — rows stays as header-only, append will create it
     }
 
-    const now = new Date().toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
+    // Find or add this rep's row
     const repIdx = rows.findIndex((r, i) => i > 0 && (r[0]||'').trim() === rep);
-
     if (repIdx === -1) {
-      // Add new row
       rows.push([rep, text, now]);
     } else {
       rows[repIdx] = [rep, text, now];
     }
 
-    // Write back entire sheet using a fixed generous range
-    // Pad all rows to same length to avoid range mismatch
-    const maxCols = Math.max(...rows.map(r => r.length));
-    const paddedRows = rows.map(r => { const p=[...r]; while(p.length<maxCols) p.push(''); return p; });
-    // Use column letter based on actual columns
-    const colLetters='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const endCol = colLetters[Math.min(maxCols-1, 25)] || 'Z';
-    await sheetsUpdate("'_SIGNATURES'!A1:" + endCol + paddedRows.length, paddedRows);
+    // Pad all rows to 3 columns
+    const padded = rows.map(r => {
+      const p = [...r];
+      while (p.length < 3) p.push('');
+      return p.slice(0, 3);
+    });
 
-    // Update local cache
+    // Try sheetsUpdate first (fast if tab exists)
+    let saved = false;
+    try {
+      await sheetsUpdate("'_SIGNATURES'!A1:C" + padded.length, padded);
+      saved = true;
+    } catch(e) {
+      // Tab doesn't exist or range error — fall back to append
+      console.warn('sheetsUpdate failed, trying append:', e.message);
+    }
+
+    if (!saved) {
+      // Append creates the tab if missing — write header + all rows
+      for (const row of padded) {
+        await sheetsAppend("'_SIGNATURES'!A1", [row]);
+      }
+    }
+
     state.signaturesCache[rep] = text;
-    showToast(`Signature saved for ${rep} ✓`, 'success');
+    showToast('Signature saved for ' + rep + ' ✓', 'success');
   } catch(e) {
     showToast('Error saving signature: ' + e.message, 'error');
+    console.error('Signature save error:', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'SAVE SIGNATURE'; }
   }
 }
 

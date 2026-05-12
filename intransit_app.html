@@ -4244,40 +4244,58 @@ function renderSettingsView() {
         </div>` : ''}
 
         <div style="margin-bottom:8px">
-          <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">SIGNATURE TEXT</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Use plain text. Press Enter for new lines. Include name, title, phone, email.</div>
-          <textarea id="sig-text" rows="8" placeholder="Example:
-Best regards,
+          <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:6px">SIGNATURE EDITOR</div>
 
-Karen Mancebo
-Sales Representative | Intransit Technologies
-📞 (555) 123-4567
-✉ kmancebo@intransittech.com
-www.intransittech.com"
-            style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:13px;padding:10px 12px;outline:none;resize:vertical;box-sizing:border-box;line-height:1.6">${escHtml(currentSig)}</textarea>
-        </div>
+          <!-- Toolbar -->
+          <div id="sig-toolbar" style="display:flex;flex-wrap:wrap;gap:3px;padding:6px 8px;background:var(--s0);border:1px solid var(--border);border-bottom:none;border-radius:var(--r) var(--r) 0 0;align-items:center">
+            <select onchange="sigExec('fontName',this.value);this.blur()" style="padding:3px 6px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:11px;border-radius:3px;cursor:pointer;max-width:110px" title="Font family">
+              <option value="Arial">Arial</option>
+              <option value="Calibri">Calibri</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Helvetica Neue">Helvetica</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Trebuchet MS">Trebuchet</option>
+              <option value="Verdana">Verdana</option>
+              <option value="Courier New">Courier New</option>
+            </select>
+            <select onchange="sigExec('fontSize',this.value);this.blur()" style="padding:3px 6px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:11px;border-radius:3px;cursor:pointer;width:60px" title="Font size">
+              <option value="1">8pt</option><option value="2">10pt</option><option value="3" selected>12pt</option><option value="4">14pt</option><option value="5">18pt</option><option value="6">24pt</option>
+            </select>
+            <div style="width:1px;height:20px;background:var(--border);margin:0 2px"></div>
+            <button onclick="sigExec('bold')" title="Bold" style="padding:3px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:13px;font-weight:700;cursor:pointer;border-radius:3px;font-family:serif;line-height:1">B</button>
+            <button onclick="sigExec('italic')" title="Italic" style="padding:3px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:13px;cursor:pointer;border-radius:3px;font-family:serif;font-style:italic;line-height:1">I</button>
+            <button onclick="sigExec('underline')" title="Underline" style="padding:3px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:13px;cursor:pointer;border-radius:3px;font-family:serif;text-decoration:underline;line-height:1">U</button>
+            <div style="width:1px;height:20px;background:var(--border);margin:0 2px"></div>
+            <label title="Text color" style="display:flex;align-items:center;gap:3px;padding:3px 6px;background:var(--s2);border:1px solid var(--border);border-radius:3px;cursor:pointer">
+              <span style="font-size:12px;font-weight:700;font-family:serif">A</span>
+              <input type="color" value="#000000" onchange="sigExec('foreColor',this.value)" style="width:18px;height:16px;border:none;background:none;padding:0;cursor:pointer">
+            </label>
+            <div style="width:1px;height:20px;background:var(--border);margin:0 2px"></div>
+            <button onclick="sigExec('justifyLeft')" title="Align left" style="padding:3px 7px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:12px;cursor:pointer;border-radius:3px;line-height:1">&#8676;</button>
+            <button onclick="sigExec('justifyCenter')" title="Center" style="padding:3px 7px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:12px;cursor:pointer;border-radius:3px;line-height:1">&#8660;</button>
+            <div style="width:1px;height:20px;background:var(--border);margin:0 2px"></div>
+            <button onclick="sigInsertLink()" title="Insert hyperlink" style="padding:3px 8px;background:var(--s2);border:1px solid var(--border);color:var(--blue-b);font-size:10px;cursor:pointer;border-radius:3px;font-family:var(--mono)">&#128279; LINK</button>
+            <button onclick="sigInsertImage()" title="Insert image by URL" style="padding:3px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:10px;cursor:pointer;border-radius:3px;font-family:var(--mono)">&#128444; IMG</button>
+            <button onclick="sigExec('insertHorizontalRule')" title="Insert divider line" style="padding:3px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:10px;cursor:pointer;border-radius:3px;font-family:var(--mono)">&#8212; LINE</button>
+            <button onclick="sigExec('removeFormat')" title="Clear all formatting" style="padding:3px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-muted);font-size:10px;cursor:pointer;border-radius:3px;font-family:var(--mono)">&#10005; FMT</button>
+          </div>
+          <!-- Editable area — white bg so it looks like an email -->
+          <div id="sig-editor" contenteditable="true" spellcheck="true"
+            style="min-height:130px;max-height:260px;overflow-y:auto;padding:12px 14px;background:#ffffff;border:1px solid var(--border);border-radius:0 0 var(--r) var(--r);font-family:Arial,sans-serif;font-size:13px;line-height:1.6;color:#000000;outline:none;box-sizing:border-box"
+          >${currentSig || ''}</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;font-family:var(--mono)">TIP: Select text first, then apply formatting · LINK adds clickable hyperlinks · IMG inserts a logo by URL</div>
 
-        <div style="display:flex;gap:10px;align-items:center">
-          <button onclick="saveSignature()"
-            style="background:var(--blue);border:none;color:white;font-family:var(--font-mono);font-size:11px;padding:9px 20px;cursor:pointer;letter-spacing:0.1em">
-            SAVE SIGNATURE
-          </button>
-          <button onclick="previewSignature()"
-            style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:9px 16px;cursor:pointer;letter-spacing:0.1em">
-            PREVIEW
-          </button>
-          <button onclick="clearSignature()"
-            style="background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:11px;padding:9px 16px;cursor:pointer">
-            CLEAR
-          </button>
+        <!-- Buttons + diagnostic + preview -->
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+          <button onclick="saveSignature()" style="background:var(--blue);border:none;color:white;font-family:var(--font-mono);font-size:11px;padding:9px 20px;cursor:pointer;letter-spacing:0.1em">SAVE SIGNATURE</button>
+          <button onclick="previewSignature()" style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:9px 16px;cursor:pointer;letter-spacing:0.1em">PREVIEW</button>
+          <button onclick="clearSignature()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:11px;padding:9px 16px;cursor:pointer">CLEAR</button>
         </div>
-        <!-- Diagnostic log — shown when save is attempted -->
         <div id="sig-diagnostic" style="display:none;margin-top:12px;padding:12px 14px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);font-family:var(--mono)">
           <div style="font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:8px">SAVE DIAGNOSTIC</div>
           <div id="sig-diag-log"></div>
         </div>
-
-        <div id="sig-preview" style="display:none;margin-top:16px;padding:14px 16px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid var(--blue);font-size:13px;white-space:pre-wrap;line-height:1.7;color:var(--text-dim)"></div>
+        <div id="sig-preview" style="display:none;margin-top:16px;padding:14px 16px;background:#ffffff;border:1px solid var(--border);border-left:3px solid var(--blue);font-size:13px;line-height:1.7;color:#000"></div>
       </div>
 
       <!-- AI Configuration — admin only -->
@@ -4370,24 +4388,66 @@ function clearApiKey() {
   showToast('API key cleared', 'success');
 }
 
+// ── Rich-text signature editor helpers ───────────────────────────────────
+function sigExec(cmd, val) {
+  document.getElementById('sig-editor')?.focus();
+  document.execCommand(cmd, false, val || null);
+}
+
+function sigInsertLink() {
+  const url = prompt('Enter URL (e.g. https://www.intransittech.com):');
+  if (!url) return;
+  const text = prompt('Link display text (leave blank to use URL):') || url;
+  document.getElementById('sig-editor')?.focus();
+  document.execCommand('insertHTML', false, '<a href="' + url + '" target="_blank">' + text + '</a>');
+}
+
+function sigInsertImage() {
+  const url = prompt('Enter image URL (hotlinked — must be publicly accessible):');
+  if (!url) return;
+  const w = prompt('Width in pixels (e.g. 200, or leave blank for auto):') || '';
+  const style = w ? ' width="' + parseInt(w) + '"' : ' style="max-width:200px"';
+  document.getElementById('sig-editor')?.focus();
+  document.execCommand('insertHTML', false, '<img src="' + url + '"' + style + ' alt="signature image">');
+}
+
+function getSigHtml() {
+  return document.getElementById('sig-editor')?.innerHTML || '';
+}
+
+function sigToPlain(html) {
+  // Convert signature HTML to readable plain text for textarea-based email bodies
+  if (!html) return '';
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<hr[^>]*>/gi, '\n' + '─'.repeat(30) + '\n')
+    .replace(/<a[^>]+href="([^"]+)"[^>]*>([^<]*)<\/a>/gi, '$2 ($1)')
+    .replace(/<img[^>]*alt="([^"]*)"[^>]*>/gi, '[$1]')
+    .replace(/<[^>]+>/g, '');
+  return tmp.textContent.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function loadSignatureForRep(rep) {
   const sig = state.signaturesCache[rep] || '';
-  const el = document.getElementById('sig-text');
-  if (el) el.value = sig;
+  const el = document.getElementById('sig-editor');
+  if (el) el.innerHTML = sig;
   document.getElementById('sig-preview').style.display = 'none';
 }
 
 function previewSignature() {
-  const text = document.getElementById('sig-text')?.value || '';
+  const html = getSigHtml();
   const preview = document.getElementById('sig-preview');
   if (!preview) return;
   preview.style.display = 'block';
-  preview.textContent = text || '(empty signature)';
+  preview.innerHTML = html || '<span style="color:#999">(empty signature)</span>';
 }
 
 function clearSignature() {
-  const el = document.getElementById('sig-text');
-  if (el) el.value = '';
+  const el = document.getElementById('sig-editor');
+  if (el) el.innerHTML = '';
   document.getElementById('sig-preview').style.display = 'none';
 }
 
@@ -4395,7 +4455,7 @@ async function saveSignature() {
   const rep  = state.isAdmin
     ? (document.getElementById('sig-rep-select')?.value || state.repId)
     : state.repId;
-  const text = document.getElementById('sig-text')?.value || '';
+  const text = getSigHtml();
   const btn  = document.querySelector('[onclick="saveSignature()"]');
   const diagWrap = document.getElementById('sig-diagnostic'); const diag = document.getElementById('sig-diag-log'); if (diagWrap) diagWrap.style.display = 'block';
   if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
@@ -4494,9 +4554,13 @@ async function saveSignature() {
   }
 }
 
-function getSignatureForCurrentRep() {
+function getSignatureForCurrentRep(asHtml) {
   const rep = state.isAdmin ? (state.viewAsRep || 'FJohn') : state.repId;
-  return state.signaturesCache[rep] || '';
+  const raw = state.signaturesCache[rep] || '';
+  // If the saved value looks like HTML, convert to plain text for textarea emails
+  // unless asHtml=true is explicitly requested
+  if (!asHtml && raw.includes('<')) return sigToPlain(raw);
+  return raw;
 }
 
 function getDisclaimer() {

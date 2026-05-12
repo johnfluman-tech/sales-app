@@ -2850,7 +2850,7 @@ async function generateEmail() {
     const prompt = `You are writing a professional sales outreach email for ${acc.rep} at Intransit Technologies, an industrial parts and electronics distributor serving manufacturing companies in Mexico and the US.
 
 Account: ${acc.name}
-Contact: ${acc.contactName}${acc.contactTitle ? ' (' + acc.contactTitle + ')' : ''}
+Contact: ${acc.contactName ? acc.contactName.trim().split(' ')[0] : ''}${acc.contactTitle ? ' (' + acc.contactTitle + ')' : ''}
 Account status: ${acc.status}
 Days since last order: ${acc.daysInactive}
 Last order date: ${acc.lastSaleDate || 'unknown'}
@@ -2889,9 +2889,10 @@ Return ONLY a JSON object with two keys: "subject" and "body". No preamble, no m
     }
 
     const sig = getSignatureForCurrentRep();
+    const disclaimer = getDisclaimer();
     document.getElementById('email-fields').style.display = 'block';
     document.getElementById('email-subject').value = parsed.subject || '';
-    document.getElementById('email-body').value = (parsed.body || '') + (sig ? '\n\n' + sig : '');
+    document.getElementById('email-body').value = (parsed.body || '') + (sig ? '\n\n' + sig : '') + '\n\n--\n' + disclaimer;
 
   } catch(e) {
     console.error(e);
@@ -3059,6 +3060,11 @@ async function saveSignature() {
 function getSignatureForCurrentRep() {
   const rep = state.isAdmin ? (state.viewAsRep || 'FJohn') : state.repId;
   return state.signaturesCache[rep] || '';
+}
+
+function getDisclaimer() {
+  const email = state.user || 'john.fluman@intransittech.com';
+  return `CONFIDENTIALITY NOTICE: This email and any attachments are intended solely for the named recipient(s) and may contain confidential, proprietary, or legally privileged information belonging to Intransit Technologies Corp. Unauthorized review, use, disclosure, dissemination, or copying of this communication is strictly prohibited. If you have received this message in error, please notify the sender immediately at ${email}, permanently delete this message and all copies from your system, and do not retain, print, or forward any portion of its contents. Thank you.`;
 }
 function renderCollectionsView() {
   const content = document.getElementById('main-content');
@@ -3411,9 +3417,15 @@ async function generateCollectionsEmail(name, tone) {
     `Invoice #${inv.invoiceNum} dated ${inv.date} — $${formatNum(inv.balance)} outstanding`
   ).join('\n') || 'No invoice detail available';
 
+  const contacts = (state.contactsCache[name] || []).filter(ct => ct.type === 'AP/Collections');
+  const toContact = document.getElementById('coll-email-to')?.value;
+  const selectedContact = (state.contactsCache[name] || []).find(ct => ct.email === toContact);
+  const contactFirstName = selectedContact ? selectedContact.name.trim().split(' ')[0] : (contacts[0]?.name?.trim().split(' ')[0] || '');
+
   const prompt = `You are writing ${toneDesc} on behalf of ${acc?.rep || 'our team'} at Intransit Technologies, an industrial parts distributor.
 
 Account: ${name}
+Contact first name: ${contactFirstName || 'Sir/Madam'}
 Outstanding balance: $${formatNum(c.balance)}
 Credit limit: $${formatNum(c.credit)}
 Average days to pay: ${c.avgPay ? Math.round(c.avgPay) : 'unknown'}
@@ -3450,7 +3462,8 @@ Return ONLY a JSON object with keys "subject" and "body". No preamble.`;
     document.getElementById('coll-email-fields').style.display = 'block';
     document.getElementById('coll-email-subject').value = parsed.subject || '';
     const collSig = getSignatureForCurrentRep();
-    document.getElementById('coll-email-body').value = (parsed.body || '') + (collSig ? '\n\n' + collSig : '');
+    const collDisclaimer = getDisclaimer();
+    document.getElementById('coll-email-body').value = (parsed.body || '') + (collSig ? '\n\n' + collSig : '') + '\n\n--\n' + collDisclaimer;
     showToast('Email generated ✓', 'success');
   } catch(e) {
     showToast('Error: ' + e.message, 'error');

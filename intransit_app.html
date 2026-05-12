@@ -3362,7 +3362,6 @@ async function confirmLocation() {
   // Log the access entry (non-blocking)
   logAccessEntry(locationClaim).catch(e => console.warn('Access log failed:', e));
   // Now complete the real login flow
-  loadAllAccounts();
   showNDA_or_complete();
 }
 
@@ -3486,6 +3485,8 @@ async function logAccessEntry(locationClaim) {
 function completeLoginAfterLocation() {
   // NDA log was already written by acceptNDA()
   // Access log is written by logAccessEntry()
+  // Reset the login complete flag so completeLogin runs fully
+  state._loginComplete = false;
   // Now do the actual app init
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').classList.add('visible');

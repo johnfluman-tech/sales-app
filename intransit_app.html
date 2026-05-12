@@ -2817,7 +2817,7 @@ function refreshDashboard() {
     return d >= from && d <= to && repMatch;
   });
 
-  const shipped   = gpFiltered.reduce((s,r) => s + parseMoney(r.EXTENDED_PRICE), 0);
+  const shipped   = gpFiltered.reduce((s,r) => s + parseMoney(r.INVOICE_TOTAL), 0);
   const gp        = gpFiltered.reduce((s,r) => s + parseMoney(r.GP), 0);
   const gpPct     = shipped > 0 ? (gp / shipped * 100) : 0;
 
@@ -2925,7 +2925,7 @@ function refreshDashboard() {
         return d >= from && d <= to && r.SALES_REP?.trim() === rep;
       });
       const gpAmt  = gpR.reduce((s,r)  => s + parseMoney(r.GP), 0);
-      const shipAmt= gpR.reduce((s,r)  => s + parseMoney(r.EXTENDED_PRICE), 0);
+      const shipAmt= gpR.reduce((s,r)  => s + parseMoney(r.INVOICE_TOTAL), 0);
       const bookAmt= ordR.reduce((s,r) => s + parseMoney(r.EXTENDED_PRICE || r.ORDER_TOTAL), 0);
       repStats[rep] = {
         accounts: ra.length,

@@ -207,10 +207,23 @@ body::before {
 
 /* ── ACCOUNT LIST ──────────────────────── */
 .account-list-panel {
-  width: 296px; min-width: 296px;
+  width: 320px; min-width: 220px; max-width: 520px;
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--s0);
+  resize: horizontal;
+  position: relative;
+}
+.account-list-panel::after {
+  content: '⠿';
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  font-size: 14px;
+  pointer-events: none;
+  opacity: 0.4;
 }
 .account-list-header {
   padding: 12px 14px 10px;
@@ -234,6 +247,7 @@ body::before {
 .account-row-name {
   font-size: 12px; font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;
+  cursor: default;
 }
 .account-row-meta { display: flex; align-items: center; gap: 7px; font-size: 11px; flex-wrap: wrap; }
 .account-row-revenue { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-2); margin-left: auto; }
@@ -430,9 +444,10 @@ body::before {
 
 /* ── COLLECTIONS ───────────────────────── */
 .coll-list-panel {
-  width: 276px; min-width: 276px;
+  width: 300px; min-width: 220px; max-width: 480px;
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden; background: var(--s0);
+  resize: horizontal;
 }
 .coll-detail-panel { flex: 1; overflow-y: auto; background: var(--s0); }
 .coll-row {
@@ -466,7 +481,7 @@ body::before {
 .apk-col {
   flex: 1; overflow-y: auto; padding: 8px;
   border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: 5px; transition: background 0.1s; min-width: 0;
+  display: flex; flex-direction: column; gap: 5px; transition: background 0.1s; min-width: 160px;
 }
 .apk-col:last-child { border-right: none; }
 .apk-col.drag-over { background: var(--blue-glow); }
@@ -478,26 +493,31 @@ body::before {
 .apk-card:active { cursor: grabbing; }
 .apk-card.dragging { opacity: 0.38; transform: scale(0.97); }
 .apk-card-drag-handle { position: absolute; right: 7px; top: 7px; color: var(--text-3); font-size: 11px; cursor: grab; }
-.apk-card-name { font-size: 11px; font-weight: 500; padding-right: 18px; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.apk-card-name { font-size: 11px; font-weight: 500; padding-right: 18px; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
 .apk-card-rev { font-family: var(--mono); font-size: 10px; color: var(--text-2); }
 .apk-card-status { font-family: var(--mono); font-size: 9px; color: var(--text-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .apk-card[data-col="solid"]  { border-left: 2px solid var(--gold); }
 .apk-card[data-col="center"] { border-left: 2px solid var(--blue-b); }
 .apk-card[data-col="ring"]   { border-left: 2px solid var(--green); }
 .apk-transfer-panel {
-  width: 210px; min-width: 210px; border-left: 1px solid var(--border);
+  width: 190px; min-width: 150px; border-left: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden; background: var(--s0);
+  flex-shrink: 0;
 }
 .apk-pool-strip {
-  border-top: 1px solid var(--border); background: var(--s1); height: 130px;
+  border-top: 1px solid var(--border); background: var(--s1);
+  height: 180px; min-height: 130px; max-height: 320px;
   display: flex; flex-direction: column;
+  resize: vertical; overflow: hidden;
 }
 .apk-pool-header {
   padding: 7px 12px; display: flex; align-items: center; gap: 10px;
   border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
 .apk-pool-cards {
-  flex: 1; display: flex; gap: 5px; overflow-x: auto; padding: 7px 8px; align-items: flex-start;
+  flex: 1; display: flex; flex-wrap: wrap; gap: 5px;
+  overflow-y: auto; overflow-x: hidden;
+  padding: 7px 8px; align-items: flex-start; align-content: flex-start;
 }
 .apk-pool-cards .apk-card { flex-shrink: 0; width: 155px; }
 #apk-pool.drag-over { background: rgba(59,130,246,0.05); }
@@ -3244,247 +3264,188 @@ function filterCollections(type, btn) {
 
 function selectCollectionsAccount(name) {
   document.querySelectorAll('.coll-item').forEach(el => {
-    el.style.background = el.dataset.name === name ? 'var(--navy-mid)' : 'var(--navy-light)';
+    el.style.background = el.dataset.name === name ? 'var(--s2)' : '';
   });
   const c = state.collectionsCache[name] || {};
   const acc = state.accounts.find(a => a.name.trim() === name.trim());
-  const contacts = (state.contactsCache[name] || []).filter(ct => ct.type === 'AP/Collections');
-  const collNote = state.collectionsNotes[name] || {};
-  const riskColor = c.risk?.includes('HIGH') ? 'var(--red)' : c.risk?.includes('WATCH') ? 'var(--orange)' : 'var(--accent)';
+  const allContacts = (state.contactsCache[name] || []).filter(ct => ct.email);
+  const apContacts  = allContacts.filter(ct => ct.type === 'AP/Collections');
+  const collNote    = state.collectionsNotes[name] || {};
+  const riskColor   = c.risk?.includes('HIGH') ? 'var(--red)' : c.risk?.includes('WATCH') ? 'var(--orange)' : 'var(--gold)';
+  const invoices    = state.collectionsInvoicesCache[name] || [];
+  const today       = new Date();
+
+  // Determine contacts for email
+  // Rule: if multiple AP contacts have different emails = don't pre-select TO
+  const apEmails = [...new Set(apContacts.map(ct => ct.email).filter(Boolean))];
+  const primaryTO  = apEmails.length === 1 ? apContacts[0] : (apContacts[0] || allContacts[0] || null);
+  const multipleAP = apEmails.length > 1;
 
   const detail = document.getElementById('coll-detail');
   if (!detail) return;
 
   detail.innerHTML = `
-    <div style="margin-bottom:16px">
-      <div style="font-size:16px;font-weight:600;margin-bottom:4px">${escHtml(name)}</div>
-      <div style="font-size:12px;color:var(--text-muted)">Rep: ${escHtml(acc?.rep||'—')} &nbsp;·&nbsp; Status: ${acc ? statusBadge(acc.status).replace(/<[^>]+>/g,'') : '—'}</div>
-    </div>
-
-    <!-- Balance cards -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
-      <div style="background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${riskColor};padding:12px">
-        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">BALANCE</div>
-        <div style="font-size:20px;font-family:var(--font-mono);color:${riskColor}">$${formatNum(c.balance)}</div>
-      </div>
-      <div style="background:var(--navy-mid);border:1px solid var(--border);padding:12px">
-        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">CREDIT LIMIT</div>
-        <div style="font-size:20px;font-family:var(--font-mono)">$${formatNum(c.credit)}</div>
-      </div>
-      <div style="background:var(--navy-mid);border:1px solid var(--border);padding:12px">
-        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">AVG DAYS TO PAY</div>
-        <div style="font-size:20px;font-family:var(--font-mono);color:${(c.avgPay||0)>45?'var(--red)':(c.avgPay||0)>30?'var(--orange)':'var(--green)'}">${c.avgPay ? Math.round(c.avgPay) : '—'}</div>
-      </div>
-    </div>
-
-    <!-- Terms + Days Past Due -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      <div style="background:var(--navy-mid);border:1px solid var(--border);padding:10px 12px">
-        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">PAYMENT TERMS</div>
-        <div style="font-size:14px;font-family:var(--font-mono)">${escHtml(c.terms||'—')}</div>
-      </div>
-      <div style="background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${c.daysPastDue>30?'var(--red)':c.daysPastDue>0?'var(--orange)':'var(--border)'};padding:10px 12px">
-        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">DAYS PAST DUE</div>
-        <div style="font-size:14px;font-family:var(--font-mono);color:${c.daysPastDue>30?'var(--red)':c.daysPastDue>0?'var(--orange)':'var(--green)'}">
-          ${c.daysPastDue > 0 ? c.daysPastDue + ' days' : '✓ Current'}
+    <!-- Header: account name + balance -->
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);background:var(--s1)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em">${escHtml(name)}</div>
+          <div style="font-size:11px;color:var(--text-2);margin-top:2px">Rep: ${escHtml(acc?.rep||'—')} · ${acc ? statusBadge(acc.status).replace(/<[^>]+>/g,'') : '—'}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:${riskColor}">$${formatNum(c.balance)}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-top:2px">OUTSTANDING</div>
         </div>
       </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:10px;color:var(--text-3)">
+        <span>Limit: <span style="color:var(--text-2)">$${formatNum(c.credit)}</span></span>
+        <span>Terms: <span style="color:var(--text-2)">${escHtml(c.terms||'—')}</span></span>
+        <span>Avg Pay: <span style="color:var(--text-2)">${c.avgPay ? Math.round(c.avgPay)+' days' : '—'}</span></span>
+        <span>Days Past Due: <span style="color:${c.daysPastDue>30?'var(--red)':c.daysPastDue>0?'var(--orange)':'var(--green)'};">${c.daysPastDue > 0 ? c.daysPastDue+' days' : '✓ Current'}</span></span>
+        ${c.appHold === 'YES' ? '<span style="color:var(--red);font-weight:700">⚠ ON HOLD</span>' : ''}
+        ${state.isAdmin && c.appHold === 'YES'
+          ? `<button onclick="toggleAppHold('${escHtml(name)}',false)" class="btn btn-ghost btn-sm" style="margin-left:auto">REMOVE HOLD</button>`
+          : state.isAdmin ? `<button onclick="toggleAppHold('${escHtml(name)}',true)" class="btn btn-ghost btn-sm" style="margin-left:auto">PLACE ON HOLD</button>` : ''}
+      </div>
     </div>
 
-    <!-- App-managed hold — admin only toggle -->
-    ${c.appHold === 'YES' ? `<div style="background:rgba(192,57,43,0.15);border:1px solid var(--red);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--red);font-family:var(--font-mono);display:flex;justify-content:space-between;align-items:center">
-      <span>⚠ ACCOUNT ON HOLD</span>
-      ${state.isAdmin ? `<button onclick="toggleAppHold('${escHtml(name)}',false)" style="background:transparent;border:1px solid var(--red);color:var(--red);font-family:var(--font-mono);font-size:10px;padding:4px 10px;cursor:pointer">REMOVE HOLD</button>` : ''}
-    </div>` : state.isAdmin ? `<div style="margin-bottom:12px">
-      <button onclick="toggleAppHold('${escHtml(name)}',true)" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:10px;padding:6px 12px;cursor:pointer;letter-spacing:0.1em">
-        PLACE ON HOLD
-      </button>
-    </div>` : ''}
+    <div style="padding:16px 18px;overflow-y:auto">
 
-    <!-- Risk flag -->
-    ${c.risk ? `<div style="background:rgba(232,160,32,0.08);border:1px solid var(--border);padding:8px 12px;margin-bottom:12px;font-size:11px;font-family:var(--font-mono);color:${riskColor}">${escHtml(c.risk)}</div>` : ''}
+      <!-- PRIMARY CONTACT — shown once, above invoices -->
+      ${allContacts.length ? `
+      <div style="margin-bottom:14px">
+        <div class="section-label">Contacts for Email</div>
 
-    <!-- AP Contacts -->
-    ${contacts.length ? `
-    <div style="margin-bottom:16px">
-      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--accent);margin-bottom:8px">AP / COLLECTIONS CONTACTS</div>
-      ${contacts.map(ct => `
-        <div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid var(--accent);margin-bottom:6px;font-size:12px">
-          <div style="font-weight:500">${escHtml(ct.name)}</div>
-          ${ct.title ? `<div style="font-size:11px;color:var(--text-muted)">${escHtml(ct.title)}</div>` : ''}
-          <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
-            ${ct.email ? `<a href="mailto:${escHtml(ct.email)}" style="font-size:11px;color:var(--blue-bright)">✉ ${escHtml(ct.email)}</a>` : ''}
-            ${ct.phone ? `<span style="font-size:11px;color:var(--text-dim)">☎ ${escHtml(ct.phone)}</span>` : ''}
-          </div>
-        </div>`).join('')}
-    </div>` : ''}
-
-    <!-- Unpaid Invoices -->
-    ${(() => {
-      const invoices = state.collectionsInvoicesCache[name] || [];
-      if (!invoices.length) return '';
-      const today = new Date();
-
-      // Get AP/Collections contacts for this account — these are the POCs for invoices
-      const allContacts = state.contactsCache[name] || [];
-      const apContacts  = allContacts.filter(c => c.type === 'AP/Collections');
-      const buyerContacts = allContacts.filter(c => c.type !== 'AP/Collections');
-      // Primary POC = first AP contact, fallback to first buyer
-      const primaryPOC = apContacts[0] || buyerContacts[0] || null;
-
-      const accSafeId = btoa(encodeURIComponent(name)).replace(/=/g,'');
-
-      return `
-      <div style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--red)">UNPAID INVOICES (${invoices.length})</div>
-          <div style="font-family:var(--font-mono);font-size:10px;color:var(--accent)">$${formatNum(invoices.reduce((s,i)=>s+i.balance,0))} total outstanding</div>
-        </div>
-
-        ${primaryPOC ? `
-        <div style="padding:10px 12px;background:rgba(52,152,219,0.06);border:1px solid var(--blue);border-left:3px solid var(--blue-bright);margin-bottom:10px;font-size:11px">
-          <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.12em;color:var(--blue-bright);margin-bottom:6px">
-            ${apContacts.length ? '💰 AP/COLLECTIONS CONTACT' : '👤 PRIMARY CONTACT'}
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-            <div>
-              <div style="font-weight:500;font-size:12px;color:var(--text)">${escHtml(primaryPOC.name||'')}</div>
-              ${primaryPOC.title ? `<div style="font-size:10px;color:var(--text-muted)">${escHtml(primaryPOC.title)}</div>` : ''}
-            </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-              ${primaryPOC.email ? `<a href="mailto:${escHtml(primaryPOC.email)}" class="contact-blur" style="font-size:11px;color:var(--blue-bright);text-decoration:none">✉ ${escHtml(primaryPOC.email)}</a>` : ''}
-              ${primaryPOC.phone ? `<span class="contact-blur" style="font-size:11px;color:var(--text-dim)">☎ ${escHtml(primaryPOC.phone)}</span>` : ''}
-              ${primaryPOC.mobile ? `<span class="contact-blur" style="font-size:11px;color:var(--text-dim)">📱 ${escHtml(primaryPOC.mobile)}</span>` : ''}
-              <button onclick="switchView('contacts');setTimeout(()=>{ const cards=document.querySelectorAll('.contact-card'); cards.forEach(c=>{ if((c.dataset.account||'').toLowerCase().includes('${escHtml(name.toLowerCase().replace(/'/g,''))}')){ c.click(); return; } }); },400)"
-                style="font-size:10px;font-family:var(--font-mono);padding:3px 8px;background:transparent;border:1px solid var(--border);color:var(--blue-bright);cursor:pointer;white-space:nowrap">
-                VIEW CONTACT PAGE →
-              </button>
-            </div>
-          </div>
-          ${apContacts.length > 1 ? `<div style="margin-top:6px;font-size:10px;color:var(--text-muted)">${apContacts.length} AP contacts total — <span style="color:var(--blue-bright);cursor:pointer" onclick="document.getElementById('coll-all-poc-${accSafeId}').style.display=document.getElementById('coll-all-poc-${accSafeId}').style.display==='none'?'block':'none'">show all</span></div>
-          <div id="coll-all-poc-${accSafeId}" style="display:none;margin-top:8px;display:flex;flex-direction:column;gap:4px">
-            ${apContacts.slice(1).map(c=>`<div style="font-size:11px;color:var(--text-dim);padding:4px 0;border-top:1px solid var(--border-light)">${escHtml(c.name||'')}${c.title?` — ${escHtml(c.title)}`:''} ${c.email?`<a href="mailto:${escHtml(c.email)}" class="contact-blur" style="color:var(--blue-bright);text-decoration:none;margin-left:6px">✉</a>`:''}</div>`).join('')}
-          </div>` : ''}
-        </div>` : ''}
-
-        ${invoices.map(inv => {
-          const invDate = new Date(inv.date);
-          const termsStr = (inv.terms||'').toUpperCase();
-          let termsDays = 30;
-          if (/COD|CASH|CIA|PREPAID|T\/T|TT|WIRE/.test(termsStr)) termsDays = 0;
-          else { const m = termsStr.match(/(\d+)/); if(m) termsDays = parseInt(m[1]); }
-          const dueDate = new Date(invDate); dueDate.setDate(dueDate.getDate() + termsDays);
-          const daysPast = Math.max(0, Math.floor((today - dueDate) / 86400000));
-          const trackUrl = getTrackingUrl(inv.tracking, inv.shipVia);
-          const agingColor = daysPast > 60 ? 'var(--red)' : daysPast > 30 ? 'var(--orange)' : daysPast > 0 ? 'var(--orange)' : 'var(--green)';
-          return `<div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${daysPast>30?'var(--red)':daysPast>0?'var(--orange)':'var(--border)'};margin-bottom:6px;font-size:12px">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <span style="font-family:var(--font-mono);font-weight:600">#${escHtml(inv.invoiceNum)}</span>
-                <span style="color:var(--text-muted);font-size:11px">${escHtml(inv.date)}</span>
-                ${inv.orderNum ? `<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">PO#${escHtml(inv.orderNum)}</span>` : ''}
-              </div>
-              <span style="font-family:var(--font-mono);color:var(--red);font-weight:600">$${formatNum(inv.balance)}</span>
-            </div>
-            <div style="display:flex;gap:12px;font-size:11px;flex-wrap:wrap;align-items:center">
-              <span style="color:var(--text-muted)">Total: $${formatNum(inv.total)}</span>
-              <span style="color:${agingColor};font-weight:500">${daysPast > 0 ? daysPast + ' days past due' : '✓ Current'}</span>
-              ${inv.terms ? `<span style="color:var(--text-muted)">Terms: ${escHtml(inv.terms)}</span>` : ''}
-            </div>
-            ${inv.tracking ? `<div style="margin-top:6px;font-size:11px">
-              <span style="color:var(--text-muted)">${escHtml(inv.shipVia||'Carrier')}: </span>
-              ${trackUrl ? `<a href="${escHtml(trackUrl)}" target="_blank" style="color:var(--blue-bright);text-decoration:none">📦 ${escHtml(inv.tracking)} ↗</a>` : `<span style="font-family:var(--font-mono)">${escHtml(inv.tracking)}</span>`}
-            </div>` : ''}
-          </div>`;
-        }).join('')}
-      </div>`;
-    })()}
-
-    <!-- Collection note from CRM -->
-    ${c.note ? `
-    <div style="margin-bottom:16px">
-      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:6px">LATEST CRM COLLECTION NOTE</div>
-      <div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);font-size:12px;color:var(--text-dim);line-height:1.5">${escHtml(c.note)}</div>
-    </div>` : ''}
-
-    <!-- Collections follow-up note -->
-    <div style="margin-bottom:16px">
-      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--accent);margin-bottom:8px">COLLECTIONS NOTE & FOLLOW-UP</div>
-      <select id="coll-status-select" style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:7px 10px;outline:none;margin-bottom:8px">
-        <option value="">— Status —</option>
-        <option value="Contacted" ${collNote.status==='Contacted'?'selected':''}>Contacted</option>
-        <option value="Promised Payment" ${collNote.status==='Promised Payment'?'selected':''}>Promised Payment</option>
-        <option value="Partial Paid" ${collNote.status==='Partial Paid'?'selected':''}>Partial Paid</option>
-        <option value="Disputed" ${collNote.status==='Disputed'?'selected':''}>Disputed</option>
-        <option value="Escalated" ${collNote.status==='Escalated'?'selected':''}>Escalated</option>
-        <option value="Resolved" ${collNote.status==='Resolved'?'selected':''}>Resolved</option>
-      </select>
-      <input type="date" id="coll-promised-date" value="${collNote.promisedDate||''}"
-        placeholder="Promised payment date"
-        style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:7px 10px;outline:none;margin-bottom:8px;box-sizing:border-box">
-      <textarea id="coll-note-text" rows="3" placeholder="Collections note — call outcome, promise details, disputes..."
-        style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:8px 10px;outline:none;resize:vertical;box-sizing:border-box;margin-bottom:8px">${escHtml(collNote.note||'')}</textarea>
-      <button onclick="saveCollectionsNote('${escHtml(name)}')"
-        style="background:var(--blue);border:none;color:white;font-family:var(--font-mono);font-size:11px;padding:8px 16px;cursor:pointer;letter-spacing:0.1em;margin-bottom:12px">
-        SAVE NOTE
-      </button>
-    </div>
-
-    <!-- AI Collections Email -->
-    <div>
-      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:8px">AI COLLECTIONS EMAIL</div>
-
-      <!-- Contact selectors -->
-      ${(() => {
-        const allContacts = state.contactsCache[name] || [];
-        const apContacts  = allContacts.filter(ct => ct.type === 'AP/Collections');
-        const allOpts     = allContacts.filter(ct => ct.email);
-        if (!allOpts.length) return '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">No email contacts on file</div>';
-        return `
-        <div style="margin-bottom:10px">
-          <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">TO (Primary Contact)</div>
-          <select id="coll-email-to" style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:7px 10px;outline:none;margin-bottom:8px;box-sizing:border-box">
+        <!-- TO field -->
+        <div style="margin-bottom:8px">
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:4px">TO — PRIMARY</div>
+          <select id="coll-email-to" class="field-select" style="font-size:12px">
             <option value="">— Select contact —</option>
-            ${allOpts.map(ct => `<option value="${escHtml(ct.email)}" ${apContacts[0]?.email===ct.email?'selected':''}>${escHtml(ct.name)} — ${escHtml(ct.email)}</option>`).join('')}
+            ${allContacts.map(ct => `<option value="${escHtml(ct.email)}"
+              ${!multipleAP && primaryTO?.email === ct.email ? 'selected' : ''}
+            >${escHtml(ct.name)}${ct.title?' ('+escHtml(ct.title)+')':''} — ${escHtml(ct.email)}</option>`).join('')}
           </select>
-          <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">CC (Optional — select multiple)</div>
-          <select id="coll-email-cc" multiple style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:4px;outline:none;margin-bottom:8px;box-sizing:border-box;height:80px">
-            ${allOpts.map(ct => `<option value="${escHtml(ct.email)}">${escHtml(ct.name)} — ${escHtml(ct.email)}</option>`).join('')}
-          </select>
-          <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px">Hold Ctrl/Cmd to select multiple CC recipients</div>
-        </div>`;
-      })()}
+          ${multipleAP ? `<div style="font-size:10px;color:var(--orange);margin-top:4px;font-family:var(--mono)">⚠ Multiple AP contacts — select primary manually</div>` : ''}
+        </div>
 
-      <div style="display:flex;gap:8px;margin-bottom:10px">
-        <button onclick="generateCollectionsEmail('${escHtml(name)}','gentle')"
-          style="background:var(--navy-mid);border:1px solid var(--border);color:var(--accent);font-family:var(--font-mono);font-size:10px;padding:7px 12px;cursor:pointer;letter-spacing:0.1em">
-          ✦ GENTLE REMINDER
-        </button>
-        <button onclick="generateCollectionsEmail('${escHtml(name)}','firm')"
-          style="background:var(--navy-mid);border:1px solid var(--border);color:var(--orange);font-family:var(--font-mono);font-size:10px;padding:7px 12px;cursor:pointer;letter-spacing:0.1em">
-          ✦ FIRM NOTICE
-        </button>
-        <button onclick="generateCollectionsEmail('${escHtml(name)}','final')"
-          style="background:var(--navy-mid);border:1px solid var(--red);color:var(--red);font-family:var(--font-mono);font-size:10px;padding:7px 12px;cursor:pointer;letter-spacing:0.1em">
-          ✦ FINAL NOTICE
-        </button>
+        <!-- CC field with auto-highlight and deselect button -->
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3)">CC — AUTO-SELECTED AP/COLLECTIONS</div>
+            <button onclick="document.querySelectorAll('#coll-email-cc option').forEach(o=>o.selected=false)"
+              class="btn btn-ghost btn-sm">CLEAR ALL CC</button>
+          </div>
+          <select id="coll-email-cc" multiple class="field-select"
+            style="font-size:12px;height:${Math.min(allContacts.length*24+10, 90)}px;padding:4px">
+            ${allContacts.map(ct => {
+              const isAP = ct.type === 'AP/Collections' || /\bap\b|collections|a\/p/i.test(ct.title||'') || /\bcc\b/i.test(ct.name||'');
+              const isPrimary = ct.email === (primaryTO?.email);
+              // Auto-select: AP/CC contacts, but not if they're the TO
+              const autoSel = isAP && !isPrimary;
+              return `<option value="${escHtml(ct.email)}" ${autoSel ? 'selected' : ''}>${escHtml(ct.name)}${ct.title?' ('+escHtml(ct.title)+')':''} — ${escHtml(ct.email)}${isAP?' ✓AP':''}</option>`;
+            }).join('')}
+          </select>
+          <div style="font-size:10px;color:var(--text-3);margin-top:3px">AP/Collections contacts pre-selected ✓ · Hold Ctrl/Cmd to adjust</div>
+        </div>
+      </div>` : `
+      <div style="margin-bottom:14px;padding:10px;background:var(--orange-bg);border:1px solid rgba(249,115,22,0.3);border-radius:var(--r);font-size:11px;color:var(--orange)">
+        ⚠ No email contacts on file for this account
+      </div>`}
+
+      <!-- INVOICES WITH CHECKBOXES -->
+      ${invoices.length ? `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div class="section-label" style="margin-bottom:0">Unpaid Invoices (${invoices.length}) · $${formatNum(invoices.reduce((s,i)=>s+i.balance,0))} total</div>
+          <div style="display:flex;gap:10px">
+            <span onclick="document.querySelectorAll('.coll-inv-chk').forEach(c=>{c.checked=true});updateCollEmailBtnState()"
+              style="font-size:10px;color:var(--blue-b);cursor:pointer;font-family:var(--mono);text-decoration:underline">ALL</span>
+            <span onclick="document.querySelectorAll('.coll-inv-chk').forEach(c=>{c.checked=false});updateCollEmailBtnState()"
+              style="font-size:10px;color:var(--text-3);cursor:pointer;font-family:var(--mono);text-decoration:underline">NONE</span>
+          </div>
+        </div>
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+          ${invoices.map((inv, idx) => {
+            const invDate = new Date(inv.date);
+            const termsStr = (inv.terms||'').toUpperCase();
+            let termsDays = 30;
+            if (/COD|CASH|CIA|PREPAID|T\/T|TT|WIRE/.test(termsStr)) termsDays = 0;
+            else { const m = termsStr.match(/(\d+)/); if(m) termsDays = parseInt(m[1]); }
+            const dueDate = new Date(invDate); dueDate.setDate(dueDate.getDate() + termsDays);
+            const daysPast = Math.max(0, Math.floor((today - dueDate) / 86400000));
+            const ageColor = daysPast > 60 ? 'var(--red)' : daysPast > 30 ? 'var(--orange)' : daysPast > 0 ? 'var(--orange)' : 'var(--green)';
+            const trackUrl = getTrackingUrl(inv.tracking, inv.shipVia);
+            return `<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;border-left:3px solid ${daysPast>30?'var(--red)':daysPast>0?'var(--orange)':'var(--border)'}"
+              onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">
+              <input type="checkbox" class="coll-inv-chk" data-idx="${idx}" onchange="updateCollEmailBtnState()"
+                style="flex-shrink:0;accent-color:var(--blue-b);width:16px;height:16px;cursor:pointer" checked>
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:3px">
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                    <span style="font-family:var(--mono);font-weight:700;font-size:13px">#${escHtml(inv.invoiceNum)}</span>
+                    <span style="font-size:11px;color:var(--text-3)">${escHtml(inv.date)}</span>
+                    ${inv.orderNum ? `<span style="font-size:10px;color:var(--text-3);font-family:var(--mono)">PO#${escHtml(inv.orderNum)}</span>` : ''}
+                  </div>
+                  <span style="font-family:var(--mono);font-weight:700;font-size:14px;color:var(--red);white-space:nowrap">$${formatNum(inv.balance)}</span>
+                </div>
+                <div style="display:flex;gap:12px;font-size:11px;flex-wrap:wrap;align-items:center">
+                  <span style="color:var(--text-3)">Invoice total: $${formatNum(inv.total)}</span>
+                  <span style="color:${ageColor};font-weight:500">${daysPast > 0 ? daysPast+' days past due' : '✓ Current'}</span>
+                  ${inv.terms ? `<span style="color:var(--text-3)">Terms: ${escHtml(inv.terms)}</span>` : ''}
+                </div>
+                ${inv.tracking ? `<div style="margin-top:3px;font-size:11px">
+                  ${trackUrl ? `<a href="${escHtml(trackUrl)}" target="_blank" onclick="event.stopPropagation()" style="color:var(--blue-b);text-decoration:none">📦 ${escHtml(inv.shipVia||'')} ${escHtml(inv.tracking)} ↗</a>`
+                    : `<span style="color:var(--text-3)">📦 ${escHtml(inv.tracking)}</span>`}
+                </div>` : ''}
+              </div>
+            </label>`;
+          }).join('')}
+        </div>
+        <div id="coll-inv-hint" style="font-family:var(--mono);font-size:10px;color:var(--green);margin-top:5px">
+          ✓ All invoices selected — generate email below
+        </div>
+      </div>` : `<div style="padding:12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);font-size:12px;color:var(--text-3);margin-bottom:14px">No open invoices on file.</div>`}
+
+      <!-- COLLECTIONS NOTE -->
+      <div style="margin-bottom:14px">
+        <div class="section-label">Collections Note</div>
+        <select id="coll-status-select" class="field-select" style="font-size:12px;margin-bottom:8px">
+          <option value="">— Status —</option>
+          <option value="Contacted" ${collNote.status==='Contacted'?'selected':''}>Contacted</option>
+          <option value="Promised Payment" ${collNote.status==='Promised Payment'?'selected':''}>Promised Payment</option>
+          <option value="Partial Paid" ${collNote.status==='Partial Paid'?'selected':''}>Partial Paid</option>
+          <option value="Disputed" ${collNote.status==='Disputed'?'selected':''}>Disputed</option>
+          <option value="Escalated" ${collNote.status==='Escalated'?'selected':''}>Escalated</option>
+          <option value="Resolved" ${collNote.status==='Resolved'?'selected':''}>Resolved</option>
+        </select>
+        <input type="date" id="coll-promised-date" value="${collNote.promisedDate||''}"
+          class="field-input" style="font-family:var(--mono);font-size:11px;margin-bottom:8px">
+        <textarea id="coll-note-text" rows="3" placeholder="Collections note — call outcome, promise details, disputes..."
+          class="field-input field-textarea" style="margin-bottom:8px">${escHtml(collNote.note||'')}</textarea>
+        <button onclick="saveCollectionsNote('${escHtml(name)}')" class="btn btn-primary">SAVE NOTE</button>
       </div>
-      <div id="coll-email-fields" style="display:none">
-        <input id="coll-email-subject" type="text" placeholder="Subject"
-          style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:7px 10px;outline:none;margin-bottom:6px;box-sizing:border-box">
-        <textarea id="coll-email-body" rows="8"
-          style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:8px 10px;outline:none;resize:vertical;box-sizing:border-box;margin-bottom:8px"></textarea>
-        <div style="display:flex;gap:8px">
-          <button onclick="copyCollectionsEmail()"
-            style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:10px;padding:7px 12px;cursor:pointer">
-            COPY
-          </button>
-          <button onclick="openCollectionsEmailClientFull()"
-            style="background:var(--blue);border:none;color:white;font-family:var(--font-mono);font-size:10px;padding:7px 12px;cursor:pointer">
-            OPEN IN EMAIL
-          </button>
+
+      <!-- AI EMAIL GENERATION -->
+      <div>
+        <div class="section-label">AI Collections Email</div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <button id="coll-gen-gentle" onclick="generateCollectionsEmail('${escHtml(name)}','gentle')"
+            class="btn btn-gold" style="flex:1">✦ GENTLE</button>
+          <button id="coll-gen-firm" onclick="generateCollectionsEmail('${escHtml(name)}','firm')"
+            class="btn btn-secondary" style="flex:1;color:var(--orange);border-color:rgba(249,115,22,0.3)">✦ FIRM</button>
+          <button id="coll-gen-final" onclick="generateCollectionsEmail('${escHtml(name)}','final')"
+            class="btn btn-danger" style="flex:1">✦ FINAL</button>
+        </div>
+        <div id="coll-email-fields" style="display:none">
+          <input id="coll-email-subject" type="text" placeholder="Subject" class="field-input" style="margin-bottom:6px">
+          <textarea id="coll-email-body" rows="10" class="field-input field-textarea" style="margin-bottom:8px;line-height:1.6"></textarea>
+          <div style="display:flex;gap:8px">
+            <button onclick="copyCollectionsEmail()" class="btn btn-secondary">COPY</button>
+            <button onclick="openCollectionsEmailClientFull()" class="btn btn-primary">OPEN IN EMAIL</button>
+          </div>
         </div>
       </div>
+
     </div>`;
 }
 
@@ -3507,6 +3468,24 @@ function saveCollectionsNote(name) {
   selectCollectionsAccount(name);
 }
 
+function updateCollEmailBtnState() {
+  const checked = document.querySelectorAll('.coll-inv-chk:checked');
+  const hint = document.getElementById('coll-inv-hint');
+  const total = document.querySelectorAll('.coll-inv-chk').length;
+  if (hint) {
+    if (checked.length === 0) {
+      hint.style.color = 'var(--orange)';
+      hint.textContent = '⚠ No invoices selected — select at least one';
+    } else if (checked.length === total) {
+      hint.style.color = 'var(--green)';
+      hint.textContent = '✓ All ' + total + ' invoices selected';
+    } else {
+      hint.style.color = 'var(--blue-b)';
+      hint.textContent = '✓ ' + checked.length + ' of ' + total + ' invoices selected';
+    }
+  }
+}
+
 async function generateCollectionsEmail(name, tone) {
   const c       = state.collectionsCache[name] || {};
   const acc     = state.accounts.find(a => a.name.trim() === name.trim());
@@ -3519,8 +3498,10 @@ async function generateCollectionsEmail(name, tone) {
     ? 'a firm, direct overdue notice — professional but no-nonsense, with a clear payment deadline of 5 business days'
     : 'a serious final notice — consequences clearly stated (credit hold, collections escalation), urgent but not threatening';
 
-  // Build detailed invoice list with tracking info
-  const invoices = state.collectionsInvoicesCache[name] || [];
+  // Build detailed invoice list — only checked invoices
+  const allInvoices = state.collectionsInvoicesCache[name] || [];
+  const checkedBoxes = [...document.querySelectorAll('.coll-inv-chk:checked')].map(el => parseInt(el.dataset.idx));
+  const invoices = checkedBoxes.length > 0 ? checkedBoxes.map(i => allInvoices[i]).filter(Boolean) : allInvoices;
   const invoiceLines = invoices.slice(0, 8).map(inv => {
     const trackUrl = getTrackingUrl(inv.tracking, inv.shipVia);
     const trackInfo = inv.tracking
@@ -3981,52 +3962,149 @@ function selectContactCard(el, accountName, contactName) {
         </div>
       </div>
 
-      <!-- Contact Notes — full width -->
-      <div style="background:var(--navy-light);border:1px solid var(--border);padding:14px;margin-bottom:16px">
-        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--blue-bright);margin-bottom:10px">📋 CONTACT NOTES — ${escHtml(contactName||'')}</div>
+      <!-- ── CONTACT NOTES ─────────────────────────────── -->
+      <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:16px;margin-bottom:16px">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;color:var(--blue-b);margin-bottom:12px">
+          📋 CONTACT NOTES — ${escHtml(contactName||'')}
+        </div>
 
-        <!-- Existing notes -->
-        ${ctNotes.length ? `
-        <div style="max-height:200px;overflow-y:auto;margin-bottom:12px;display:flex;flex-direction:column;gap:6px">
-          ${ctNotes.slice().reverse().map(n => `
-            <div class="cnote-entry">
-              <div class="cnote-entry-meta">
-                <span class="cnote-type-badge ${(n.type||'').toLowerCase()}">${(n.type||'NOTE').toUpperCase()}</span>
-                <span>${escHtml(n.rep||'')}</span>
-                <span>${escHtml(n.date||'')}</span>
-              </div>
-              <div>${escHtml(n.note||'')}</div>
-            </div>`).join('')}
-        </div>` : `<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">No notes yet for this contact.</div>`}
-
-        <!-- Note form -->
-        <div class="cnote-form">
-          <div class="cnote-row">
-            <select class="cnote-type-sel" id="cntype-cv-${safeId}">
-              <option value="Call">Call</option>
-              <option value="Email">Email</option>
-              <option value="Meeting">Meeting</option>
-              <option value="Note">Note</option>
+        <!-- Log new note — large textarea -->
+        <div style="margin-bottom:14px">
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+            <select class="field-select" id="cntype-cv-${safeId}" style="width:120px;font-size:12px;flex-shrink:0">
+              <option value="Call">📞 Call</option>
+              <option value="Email">✉ Email</option>
+              <option value="Meeting">🤝 Meeting</option>
+              <option value="Note">📝 Note</option>
             </select>
-            <textarea class="cnote-text-input" id="cnnote-cv-${safeId}"
-              placeholder="Log a call, email, or note for ${escHtml(contactName||'')}..."></textarea>
+            <div style="font-size:11px;color:var(--text-3)">Log an activity for ${escHtml(contactName||'this contact')}</div>
           </div>
-          <button class="cnote-save-btn" onclick="saveContactNoteFromView('${escHtml(accountName)}','${escHtml(contactName||'')}','cv-${safeId}')">
+          <textarea class="field-input field-textarea" id="cnnote-cv-${safeId}" rows="5"
+            placeholder="Log a call, email, or note for ${escHtml(contactName||'')}...&#10;&#10;Example: Called 5/12 at 2pm — spoke with ${escHtml(contactName?.split(' ')[0]||'contact')}, confirmed PO is being processed, expects payment by 5/20."
+            style="font-size:12px;line-height:1.6;margin-bottom:8px;resize:vertical;min-height:100px"></textarea>
+          <button class="btn btn-primary" onclick="saveContactNoteFromView('${escHtml(accountName)}','${escHtml(contactName||'')}','cv-${safeId}')">
             SAVE NOTE
           </button>
         </div>
+
+        <!-- Note history — contact notes + collections notes merged -->
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:8px;padding-top:12px;border-top:1px solid var(--border)">
+            NOTE HISTORY (${ctNotes.length})
+          </div>
+          ${(() => {
+            // Merge contact notes + collections notes for this account into one timeline
+            const collNote = (state.collectionsNotes || {})[accountName.trim()] || {};
+            const collNoteEntries = [];
+            // Collections note may be a concatenated string like "[May 12, 3:45 PM] text\n[May 11...] ..."
+            if (collNote.note) {
+              const lines = collNote.note.split(/\n(?=\[)/);
+              lines.forEach(line => {
+                const m = line.match(/^\[(.+?)\]\s*([\s\S]+)/);
+                collNoteEntries.push({
+                  type: 'Collections',
+                  note: m ? m[2].trim() : line.trim(),
+                  date: m ? m[1] : '',
+                  rep: '',
+                  isCollections: true,
+                  status: collNote.status || '',
+                });
+              });
+            }
+            const allNotes = [
+              ...ctNotes.map(n => ({...n, isCollections: false})),
+              ...collNoteEntries,
+            ].sort((a, b) => {
+              // Sort by date descending — try to parse dates
+              try { return new Date(b.date) - new Date(a.date); } catch { return 0; }
+            });
+            if (!allNotes.length) return '<div style="font-size:12px;color:var(--text-3);padding:12px 0">No notes yet for this contact.</div>';
+            return `<div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto">
+              ${allNotes.slice().reverse().map(n => `
+                <div style="background:var(--s2);border:1px solid var(--border);border-left:3px solid ${n.isCollections ? 'var(--orange)' : 'var(--blue-b)'};border-radius:var(--r);padding:10px 12px">
+                  <div style="display:flex;gap:8px;align-items:center;margin-bottom:5px;flex-wrap:wrap">
+                    <span class="cnote-type-badge ${n.isCollections ? 'collections' : (n.type||'').toLowerCase()}"
+                      style="${n.isCollections ? 'background:rgba(249,115,22,0.15);color:var(--orange)' : ''}"
+                    >${n.isCollections ? '💰 COLLECTIONS' : (n.type||'NOTE').toUpperCase()}</span>
+                    ${n.status ? `<span style="font-size:10px;color:var(--orange);font-family:var(--mono)">${escHtml(n.status)}</span>` : ''}
+                    ${n.rep ? `<span style="font-size:11px;color:var(--text-2);font-weight:500">${escHtml(n.rep)}</span>` : ''}
+                    <span style="font-size:10px;color:var(--text-3)">${escHtml(n.date||'')}</span>
+                  </div>
+                  <div style="font-size:12px;color:var(--text);line-height:1.5">${escHtml(n.note||'')}</div>
+                </div>`).join('')}
+            </div>`;
+          })()}
+        </div>
       </div>
 
-      <!-- Recent RFQs -->
+      <!-- ── AI EMAIL TO CONTACT ─────────────────────────── -->
+      <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:16px;margin-bottom:16px">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;color:var(--blue-b);margin-bottom:12px">
+          ✦ AI EMAIL TO CONTACT
+        </div>
+
+        <!-- TO field — pre-filled with this contact -->
+        <div style="margin-bottom:10px">
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);margin-bottom:4px">TO</div>
+          <select id="ct-email-to-${safeId}" class="field-select" style="font-size:12px">
+            <option value="">— Select contact —</option>
+            ${allContacts.map(ct => `<option value="${escHtml(ct.email)}"
+              ${ct.name === contactName ? 'selected' : ''}
+            >${escHtml(ct.name)}${ct.title?' ('+escHtml(ct.title)+')':''} — ${escHtml(ct.email||'no email')}</option>`).join('')}
+          </select>
+        </div>
+
+        <!-- CC field — all other account contacts -->
+        ${allContacts.filter(ct => ct.email && ct.name !== contactName).length ? `
+        <div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3)">CC (OPTIONAL)</div>
+            <button onclick="document.querySelectorAll('#ct-email-cc-${safeId} option').forEach(o=>o.selected=false)"
+              class="btn btn-ghost btn-sm">CLEAR</button>
+          </div>
+          <select id="ct-email-cc-${safeId}" multiple class="field-select"
+            style="font-size:12px;height:${Math.min(allContacts.filter(ct=>ct.email&&ct.name!==contactName).length*24+10, 80)}px;padding:4px">
+            ${allContacts.filter(ct => ct.email && ct.name !== contactName).map(ct => `
+              <option value="${escHtml(ct.email)}">${escHtml(ct.name)}${ct.title?' ('+escHtml(ct.title)+')':''} — ${escHtml(ct.email)}</option>`).join('')}
+          </select>
+          <div style="font-size:10px;color:var(--text-3);margin-top:3px">Hold Ctrl/Cmd to select multiple</div>
+        </div>` : ''}
+
+        <!-- Email type buttons -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <button onclick="generateContactEmail('${escHtml(accountName)}','${escHtml(contactName||'')}','${safeId}','reengagement')"
+            class="btn btn-primary" style="flex:1;white-space:nowrap">✦ RE-ENGAGEMENT</button>
+          <button onclick="generateContactEmail('${escHtml(accountName)}','${escHtml(contactName||'')}','${safeId}','followup')"
+            class="btn btn-secondary" style="flex:1;white-space:nowrap">✦ FOLLOW-UP</button>
+          <button onclick="generateContactEmail('${escHtml(accountName)}','${escHtml(contactName||'')}','${safeId}','intro')"
+            class="btn btn-ghost" style="flex:1;white-space:nowrap">✦ INTRODUCTION</button>
+        </div>
+
+        <!-- Generated email -->
+        <div id="ct-email-fields-${safeId}" style="display:none">
+          <input id="ct-email-subject-${safeId}" type="text" placeholder="Subject"
+            class="field-input" style="margin-bottom:6px;font-size:13px">
+          <textarea id="ct-email-body-${safeId}" rows="12"
+            class="field-input field-textarea" style="margin-bottom:8px;font-size:12px;line-height:1.7"></textarea>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onclick="copyContactEmail('${safeId}')" class="btn btn-secondary">COPY</button>
+            <button onclick="openContactEmailClient('${escHtml(accountName)}','${safeId}')" class="btn btn-primary">OPEN IN EMAIL</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── RECENT RFQs ───────────────────────────────────── -->
       ${recentReqs.length ? `
-      <div style="background:var(--navy-light);border:1px solid var(--border);padding:14px">
-        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:10px">RECENT RFQs (${h.reqs.length} total)</div>
-        <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:14px">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;color:var(--text-3);margin-bottom:10px">
+          RECENT RFQs (${h.reqs.length} total)
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px">
           ${recentReqs.map(r => `
-            <div style="font-size:11px;display:flex;justify-content:space-between;padding:6px 8px;background:var(--navy-mid);border:1px solid var(--border)">
-              <span style="color:var(--blue-bright);font-family:var(--font-mono)">${escHtml(r.part||r.desc||'—')}</span>
-              <span style="color:var(--text-muted)">${escHtml(String(r.date||''))}</span>
-              <span style="color:${r.closed?'var(--text-muted)':'var(--green)'};font-size:10px">${r.closed?'CLOSED':'OPEN'}</span>
+            <div style="font-size:11px;display:flex;justify-content:space-between;padding:6px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r)">
+              <span style="color:var(--blue-b);font-family:var(--mono)">${escHtml(r.part||r.desc||'—')}</span>
+              <span style="color:var(--text-3)">${escHtml(String(r.date||''))}</span>
+              <span style="color:${r.closed?'var(--text-3)':'var(--green)'};font-size:10px;font-family:var(--mono)">${r.closed?'CLOSED':'OPEN'}</span>
             </div>`).join('')}
         </div>
       </div>` : ''}
@@ -4184,6 +4262,126 @@ function getAnthropicKey() {
 // ══════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════
+//  AI EMAIL TO CONTACT (Contacts page)
+// ══════════════════════════════════════════════════════════════
+async function generateContactEmail(accountName, contactName, safeId, emailType) {
+  const acc      = state.accounts.find(a => a.name.trim() === accountName.trim());
+  const contacts = state.contactsCache[accountName] || [];
+  const ct       = contacts.find(c => c.name === contactName) || contacts[0];
+  const h        = state.historyCache[accountName] || { invoices:[], reqs:[], quotes:[] };
+  const ctNotes  = (state.contactNotesCache||{})[accountName]?.filter(n => n.contact === contactName) || [];
+
+  const firstName = (contactName||'').split(' ')[0];
+  const revenueContext = acc?.years
+    ? Object.entries(acc.years).filter(([,v])=>v>0).sort(([a],[b])=>a.localeCompare(b))
+        .map(([y,v])=>`${y}: $${formatNum(v)}`).join(', ')
+    : '';
+  const topParts = h.invoices.slice(0,5).map(i=>i.part).filter(Boolean).join(', ');
+  const recentNote = ctNotes.slice(-1)[0]?.note || '';
+  const repName = acc?.rep || state.repId || '';
+
+  const typeDesc = {
+    reengagement: 'a warm re-engagement email — reference their history with Intransit, ask how you can help, mention specific parts they have bought before',
+    followup: 'a concise follow-up email — reference a recent interaction or quote, check in on status, offer to help move things forward',
+    intro: 'a professional introduction email — introduce yourself as their rep at Intransit, briefly explain what Intransit does, invite them to reach out with any needs',
+  }[emailType] || 'a professional outreach email';
+
+  const prompt = `You are writing a ${typeDesc} for ${repName} at Intransit Technologies, an aerospace and industrial parts distributor.
+
+CONTACT: ${contactName}${ct?.title ? ' ('+ct.title+')' : ''}
+ACCOUNT: ${accountName}
+ACCOUNT STATUS: ${acc?.status || 'Unknown'}
+DAYS INACTIVE: ${acc?.daysInactive || 0}
+REVENUE HISTORY: ${revenueContext || 'New contact'}
+TOP PARTS PURCHASED: ${topParts || 'Not available'}
+LAST NOTE: ${recentNote || 'None'}
+
+Write a SHORT, professional email (3-4 paragraphs max). Be specific about their history. Sound like a real person, not a template. Do NOT use "I hope this email finds you well."
+
+Return ONLY a JSON object with keys "subject" and "body". No preamble, no markdown fences.`;
+
+  const btns = ['reengagement','followup','intro'].map(t =>
+    document.querySelector(`button[onclick*="'${safeId}','${t}'"]`)
+  );
+  btns.forEach(b => { if(b) { b.disabled=true; b.textContent='GENERATING...'; } });
+
+  try {
+    const apiKey = getAnthropicKey();
+    if (!apiKey) return;
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text.replace(/```json|```/g,'').trim());
+    } catch {
+      const sm = text.match(/"subject"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+      const bm = text.match(/"body"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/s);
+      parsed = {
+        subject: sm?.[1] || 'Following up — ' + accountName,
+        body:    bm?.[1] || text,
+      };
+    }
+    if (parsed.body) parsed.body = parsed.body.replace(/\\n/g,'\n').replace(/\\"/g,'"');
+
+    const sig = getSignatureForCurrentRep();
+    const disclaimer = getDisclaimer();
+    const fullBody = (parsed.body||'').trim()
+      + (sig ? '\n\n'+sig : '')
+      + '\n\n--\n' + disclaimer;
+
+    const subEl  = document.getElementById('ct-email-subject-'+safeId);
+    const bodyEl = document.getElementById('ct-email-body-'+safeId);
+    const fields = document.getElementById('ct-email-fields-'+safeId);
+    if (subEl)  subEl.value = parsed.subject || '';
+    if (bodyEl) bodyEl.value = fullBody;
+    if (fields) fields.style.display = 'block';
+    showToast('Email generated ✓', 'success');
+  } catch(e) {
+    showToast('Error: '+e.message, 'error');
+    console.error(e);
+  } finally {
+    const labels = { reengagement:'✦ RE-ENGAGEMENT', followup:'✦ FOLLOW-UP', intro:'✦ INTRODUCTION' };
+    btns.forEach((b,i) => {
+      if(b) { b.disabled=false; b.textContent=labels[['reengagement','followup','intro'][i]]; }
+    });
+  }
+}
+
+function copyContactEmail(safeId) {
+  const subject = document.getElementById('ct-email-subject-'+safeId)?.value || '';
+  const body    = document.getElementById('ct-email-body-'+safeId)?.value    || '';
+  navigator.clipboard.writeText('Subject: '+subject+'\n\n'+body)
+    .then(()=>showToast('Copied ✓','success'))
+    .catch(()=>showToast('Could not copy','error'));
+}
+
+function openContactEmailClient(accountName, safeId) {
+  const toSel  = document.getElementById('ct-email-to-'+safeId);
+  const ccSel  = document.getElementById('ct-email-cc-'+safeId);
+  const to     = toSel?.value || '';
+  const ccList = ccSel ? [...ccSel.selectedOptions].map(o=>o.value).filter(v=>v!==to) : [];
+  const subject = encodeURIComponent(document.getElementById('ct-email-subject-'+safeId)?.value||'');
+  const body    = encodeURIComponent(document.getElementById('ct-email-body-'+safeId)?.value||'');
+  const cc      = ccList.length ? '&cc='+encodeURIComponent(ccList.join(',')) : '';
+  window.open(`mailto:${encodeURIComponent(to)}?subject=${subject}${cc}&body=${body}`);
+}
 
 // ══════════════════════════════════════════════════════════════
 //  ATTACK PLAN KANBAN

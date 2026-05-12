@@ -205,6 +205,32 @@ body::before {
 .filter-btn.active { background: var(--blue-glow); border-color: var(--border-acc); color: var(--blue-b); }
 .content { flex: 1; overflow: hidden; display: flex; min-height: 0; }
 
+/* ── RESIZABLE SPLITTERS ───────────────── */
+.splitter-h {
+  width: 5px;
+  min-width: 5px;
+  flex-shrink: 0;
+  align-self: stretch;
+  background: var(--border);
+  cursor: col-resize;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s;
+}
+.splitter-h:hover, .splitter-h.dragging { background: var(--blue-b); }
+.splitter-v {
+  height: 5px;
+  min-height: 5px;
+  flex-shrink: 0;
+  width: 100%;
+  background: var(--border);
+  cursor: row-resize;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s;
+}
+.splitter-v:hover, .splitter-v.dragging { background: var(--blue-b); }
+
 /* ── ACCOUNT LIST ──────────────────────── */
 .help-btn {
   width: 32px; height: 32px; border-radius: 50%;
@@ -228,23 +254,11 @@ body::before {
 .sort-btn:hover { border-color: var(--blue-b); color: var(--blue-b); }
 .sort-btn.active { background: var(--blue-b); border-color: var(--blue-b); color: #fff; }
 .account-list-panel {
-  width: 420px; min-width: 280px; max-width: 680px;
-  border-right: 1px solid var(--border);
+  width: 420px; min-width: 180px; max-width: 800px;
+  border-right: none;
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--s0);
-  resize: horizontal;
-  position: relative;
-}
-.account-list-panel::after {
-  content: '⠿';
-  position: absolute;
-  right: 3px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-3);
-  font-size: 14px;
-  pointer-events: none;
-  opacity: 0.4;
+  flex-shrink: 0;
 }
 .account-list-header {
   padding: 12px 14px 10px;
@@ -445,7 +459,7 @@ body::before {
 .data-table .mono  { font-family: var(--mono); font-size: 11px; }
 .data-table .right { text-align: right; }
 .data-table .accent{ color: var(--text); font-weight: 500; }
-.table-wrap { overflow: auto; flex: 1; }
+.table-wrap { overflow-x: hidden; overflow-y: auto; flex: 1; min-width: 0; }
 .table-wrap table { width: 100%; border-collapse: collapse; }
 .table-wrap th {
   font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em;
@@ -465,10 +479,9 @@ body::before {
 
 /* ── COLLECTIONS ───────────────────────── */
 .coll-list-panel {
-  width: 300px; min-width: 220px; max-width: 480px;
-  border-right: 1px solid var(--border);
+  width: 300px; min-width: 180px; max-width: 700px;
+  border-right: none;
   display: flex; flex-direction: column; overflow: hidden; background: var(--s0);
-  resize: horizontal;
 }
 .coll-detail-panel { flex: 1; overflow-y: auto; background: var(--s0); }
 .coll-row {
@@ -565,9 +578,9 @@ body::before {
 }
 .apk-pool-strip {
   border-top: 1px solid var(--border); background: var(--s1);
-  height: 180px; min-height: 130px; max-height: 320px;
+  height: 180px; min-height: 80px; max-height: 500px;
   display: flex; flex-direction: column;
-  resize: vertical; overflow: hidden;
+  overflow: hidden; flex-shrink: 0;
 }
 .apk-pool-header {
   padding: 7px 12px; display: flex; align-items: center; gap: 10px;
@@ -2566,10 +2579,14 @@ function switchView(view) {
   } else if (viewRenderers[view]) {
     viewRenderers[view]();
     ensureCacheLoaded().then(() => {
-      if (state.activeView === view) viewRenderers[view]();
+      if (state.activeView === view) {
+        viewRenderers[view]();
+        setTimeout(restoreSplitPositions, 50);
+      }
     });
   } else {
     renderAccountsView();
+    setTimeout(restoreSplitPositions, 50);
   }
 }
 
@@ -2697,6 +2714,7 @@ function renderAccountsView() {
         </table>
       </div>
     </div>
+    <div class="splitter-h" id="main-splitter-h" onmousedown="startSplitH(event,'account-list','detail-panel','main-splitter-h')"></div>
     <div class="detail-panel" id="detail-panel">
       <div class="detail-empty">
         <div class="detail-empty-icon">◈</div>
@@ -5163,10 +5181,10 @@ function renderCollectionsView() {
       </div>
 
       <!-- Two-panel layout -->
-      <div style="display:flex;gap:16px;min-height:500px">
+      <div style="display:flex;flex:1;overflow:hidden;min-height:500px" id="coll-split-container">
 
         <!-- Account list -->
-        <div id="coll-list" style="width:380px;flex-shrink:0;overflow-y:auto;max-height:700px">
+        <div id="coll-list" style="width:380px;min-width:200px;flex-shrink:0;overflow-y:auto">
           ${collList.map(c => {
             const riskColor = c.risk?.includes('HIGH') ? 'var(--red)' : c.risk?.includes('WATCH') ? 'var(--orange)' : 'var(--accent)';
             const holdBadge = c.appHold === 'YES' ? `<span style="background:rgba(192,57,43,0.2);color:var(--red);font-size:9px;font-family:var(--font-mono);padding:2px 5px;margin-left:6px">HOLD</span>` : '';
@@ -5191,7 +5209,8 @@ function renderCollectionsView() {
         </div>
 
         <!-- Detail panel -->
-        <div id="coll-detail" style="flex:1;background:var(--navy-light);border:1px solid var(--border);padding:20px;overflow-y:auto;max-height:700px">
+        <div class="splitter-h" onmousedown="startSplitH(event,'coll-list','coll-detail','coll-splitter-h')" id="coll-splitter-h"></div>
+        <div id="coll-detail" style="flex:1;background:var(--navy-light);border:1px solid var(--border);padding:20px;overflow-y:auto">
           <div style="color:var(--text-muted);font-size:12px;text-align:center;padding:40px 0">
             ← Select an account to view details
           </div>
@@ -5880,7 +5899,7 @@ function renderContactsView() {
     <div style="display:flex;flex:1;overflow:hidden" id="contacts-main">
 
       <!-- LEFT — scrollable contact list -->
-      <div style="width:320px;min-width:320px;border-right:1px solid var(--border);overflow-y:auto;background:var(--navy-dark)" id="contacts-list-panel">
+      <div style="width:320px;min-width:180px;border-right:none;overflow-y:auto;background:var(--navy-dark)" id="contacts-list-panel">
         <div id="contacts-grid">
           ${allContacts.map(ct => {
             const typeColor = ct.type === 'AP/Collections' ? 'var(--accent)' : 'var(--blue-bright)';
@@ -5916,6 +5935,7 @@ function renderContactsView() {
       </div>
 
       <!-- RIGHT — full contact detail panel -->
+      <div class="splitter-h" onmousedown="startSplitH(event,'contacts-list-panel','contacts-detail-panel','contacts-splitter-h')" id="contacts-splitter-h"></div>
       <div style="flex:1;overflow-y:auto;background:var(--navy-mid)" id="contacts-detail-panel">
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:10px">
           <div style="font-size:32px;opacity:0.2">👤</div>
@@ -6804,6 +6824,7 @@ function apkRender(repAccs, otherAccs, rep) {
       </div>
 
       <!-- Pool strip -->
+      <div class="splitter-v" onmousedown="startSplitV(event,'apk-pool-wrap','apk-splitter-v')" id="apk-splitter-v"></div>
       <div style="flex-shrink:0;border-top:2px solid var(--border);background:var(--s1)" id="apk-pool-wrap">
         <div style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid var(--border);gap:10px">
           <span style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3)" id="apk-pool-count">POOL</span>
@@ -7965,6 +7986,106 @@ async function init() {
 }
 
 init();
+
+// ══════════════════════════════════════════════════════════
+//  RESIZABLE SPLITTERS
+// ══════════════════════════════════════════════════════════
+
+function startSplitH(e, leftId, rightId, splitterId) {
+  e.preventDefault();
+  const splitter = document.getElementById(splitterId);
+  const leftEl   = document.getElementById(leftId);
+  const rightEl  = document.getElementById(rightId);
+  if (!leftEl || !rightEl) return;
+
+  splitter.classList.add('dragging');
+  const startX    = e.clientX;
+  const startW    = leftEl.getBoundingClientRect().width;
+  const container = leftEl.parentElement;
+  const containerW = container.getBoundingClientRect().width;
+
+  function onMove(ev) {
+    const delta = ev.clientX - startX;
+    const newW  = Math.max(180, Math.min(startW + delta, containerW - 180));
+    leftEl.style.width    = newW + 'px';
+    leftEl.style.minWidth = newW + 'px';
+    leftEl.style.maxWidth = newW + 'px';
+    leftEl.style.flex     = 'none';
+    rightEl.style.flex    = '1';
+    // Save position
+    try { localStorage.setItem('it_split_' + leftId, newW); } catch(e){}
+  }
+
+  function onUp() {
+    splitter.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function startSplitV(e, bottomId, splitterId) {
+  e.preventDefault();
+  const splitter = document.getElementById(splitterId);
+  const bottomEl = document.getElementById(bottomId);
+  if (!bottomEl) return;
+
+  splitter.classList.add('dragging');
+  const startY   = e.clientY;
+  const startH   = bottomEl.getBoundingClientRect().height;
+  const container = bottomEl.parentElement;
+  const containerH = container.getBoundingClientRect().height;
+
+  function onMove(ev) {
+    const delta  = startY - ev.clientY; // dragging up = bigger bottom
+    const newH   = Math.max(80, Math.min(startH + delta, containerH - 200));
+    bottomEl.style.height    = newH + 'px';
+    bottomEl.style.minHeight = newH + 'px';
+    bottomEl.style.maxHeight = newH + 'px';
+    bottomEl.style.flexShrink = '0';
+    try { localStorage.setItem('it_split_' + bottomId, newH); } catch(e){}
+  }
+
+  function onUp() {
+    splitter.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function restoreSplitPositions() {
+  // Restore saved splitter positions from localStorage
+  const panels = [
+    { id: 'account-list',       type: 'h' },
+    { id: 'coll-list',          type: 'h' },
+    { id: 'contacts-list-panel',type: 'h' },
+    { id: 'apk-pool-wrap',      type: 'v' }
+  ];
+  panels.forEach(p => {
+    const saved = localStorage.getItem('it_split_' + p.id);
+    if (!saved) return;
+    const el = document.getElementById(p.id);
+    if (!el) return;
+    if (p.type === 'h') {
+      el.style.width = saved + 'px';
+      el.style.minWidth = saved + 'px';
+      el.style.maxWidth = saved + 'px';
+      el.style.flex = 'none';
+    } else {
+      el.style.height = saved + 'px';
+      el.style.minHeight = saved + 'px';
+      el.style.maxHeight = saved + 'px';
+      el.style.flexShrink = '0';
+    }
+  });
+}
+
+// Restore positions after any view switch
 </script>
 </body>
 </html>

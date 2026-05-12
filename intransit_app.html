@@ -3711,7 +3711,7 @@ function selectCollectionsAccount(name) {
               <span onclick="document.querySelectorAll('.coll-inv-chk').forEach(c=>c.checked=false);updateCollEmailBtnState()" style="font-size:10px;color:var(--text-muted);cursor:pointer;font-family:var(--font-mono);text-decoration:underline">NONE</span>
             </div>
           </div>
-          <div style="background:var(--navy-mid);border:1px solid var(--border);padding:4px;max-height:200px;overflow-y:auto">
+          <div style="background:var(--navy-mid);border:1px solid var(--border);padding:0;max-height:320px;overflow-y:auto">
             ${invoices.map((inv, idx) => {
               const termsStr = (inv.terms||'').toUpperCase();
               let termsDays = 30;
@@ -3722,21 +3722,21 @@ function selectCollectionsAccount(name) {
               const daysPast = Math.max(0, Math.floor((today - dueDate) / 86400000));
               const ageColor = daysPast > 60 ? 'var(--red)' : daysPast > 30 ? 'var(--orange)' : daysPast > 0 ? 'var(--orange)' : 'var(--green)';
               const trackUrl = getTrackingUrl(inv.tracking, inv.shipVia);
-              return `<label style="display:flex;align-items:flex-start;gap:8px;padding:7px 8px;border-bottom:1px solid var(--border-light);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background=''">
+              return `<label style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
                 <input type="checkbox" class="coll-inv-chk" data-idx="${idx}" onchange="updateCollEmailBtnState()"
-                  style="margin-top:3px;flex-shrink:0;accent-color:var(--blue);width:14px;height:14px">
+                  style="flex-shrink:0;accent-color:var(--blue);width:18px;height:18px;cursor:pointer">
                 <div style="flex:1;min-width:0">
-                  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-                    <span style="font-family:var(--font-mono);font-weight:600;color:var(--text);font-size:12px">#${escHtml(inv.invoiceNum)}</span>
-                    <span style="font-family:var(--font-mono);color:var(--red);font-weight:600;font-size:12px">$${formatNum(inv.balance)} due</span>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:5px">
+                    <span style="font-family:var(--font-mono);font-weight:700;color:var(--text);font-size:15px">#${escHtml(inv.invoiceNum)}</span>
+                    <span style="font-family:var(--font-mono);color:var(--red);font-weight:700;font-size:17px;white-space:nowrap">$${formatNum(inv.balance)}</span>
                   </div>
-                  <div style="display:flex;gap:10px;margin-top:2px;font-size:11px;flex-wrap:wrap">
-                    <span style="color:var(--text-muted)">${escHtml(inv.date)}</span>
-                    <span style="color:${ageColor}">${daysPast > 0 ? daysPast + 'd overdue' : '\u2713 Current'}</span>
+                  <div style="display:flex;gap:14px;font-size:13px;flex-wrap:wrap;align-items:center">
+                    <span style="color:var(--text-dim)">${escHtml(inv.date)}</span>
+                    <span style="color:${ageColor};font-weight:600">${daysPast > 0 ? daysPast + ' days overdue' : '\u2713 Current'}</span>
                     <span style="color:var(--text-muted)">${escHtml(inv.terms||'NET30')}</span>
-                    <span style="color:var(--text-muted)">Invoice total: $${formatNum(inv.total)}</span>
+                    <span style="color:var(--text-muted)">Total billed: $${formatNum(inv.total)}</span>
                   </div>
-                  ${inv.tracking ? `<div style="margin-top:3px">${trackUrl ? `<a href="${escHtml(trackUrl)}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--blue-bright);text-decoration:none">\ud83d\udce6 ${escHtml(inv.shipVia||'Carrier')} ${escHtml(inv.tracking)} \u2197</a>` : `<span style="font-size:10px;color:var(--text-muted)">\ud83d\udce6 ${escHtml(inv.tracking)}</span>`}</div>` : ''}
+                  ${inv.tracking ? `<div style="margin-top:5px">${trackUrl ? `<a href="${escHtml(trackUrl)}" target="_blank" onclick="event.stopPropagation()" style="font-size:12px;color:var(--blue-bright);text-decoration:none">\ud83d\udce6 ${escHtml(inv.shipVia||'Carrier')} &nbsp;${escHtml(inv.tracking)}&nbsp; \u2197</a>` : `<span style="font-size:12px;color:var(--text-muted)">\ud83d\udce6 ${escHtml(inv.tracking)}</span>`}</div>` : ''}
                 </div>
               </label>`;
             }).join('')}
@@ -3747,37 +3747,10 @@ function selectCollectionsAccount(name) {
         </div>`;
       })()}
 
-      <!-- STEP 2: Select contacts -->
-      ${(() => {
-        const allContacts = state.contactsCache[name] || [];
-        const apContacts  = allContacts.filter(ct => ct.type === 'AP/Collections');
-        const allOpts     = allContacts.filter(ct => ct.email);
-        if (!allOpts.length) return '<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">No email contacts on file</div>';
-        const primaryTo = apContacts[0] || allOpts[0];
-        return `
-        <div style="margin-bottom:14px">
-          <div style="font-family:var(--font-mono);font-size:10px;color:var(--accent);letter-spacing:0.1em;margin-bottom:8px">STEP 2 — RECIPIENTS</div>
-          <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">TO (Primary)</div>
-          <select id="coll-email-to" style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:7px 10px;outline:none;margin-bottom:8px;box-sizing:border-box">
-            <option value="">— Select contact —</option>
-            ${allOpts.map(ct => `<option value="${escHtml(ct.email)}" ${ct.email===primaryTo?.email?'selected':''}>${escHtml(ct.name)} — ${escHtml(ct.email)}</option>`).join('')}
-          </select>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-            <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">CC (Optional)</div>
-            <button onclick="document.querySelectorAll('#coll-email-cc option').forEach(o=>o.selected=false)"
-              style="font-size:10px;font-family:var(--font-mono);padding:2px 8px;background:transparent;border:1px solid var(--border);color:var(--text-muted);cursor:pointer">
-              DESELECT ALL
-            </button>
-          </div>
-          <select id="coll-email-cc" multiple style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:4px;outline:none;margin-bottom:4px;box-sizing:border-box;height:90px">
-            ${allOpts.filter(ct => ct.email !== primaryTo?.email).map(ct => {
-              const isAutoCc = /\(AP\)|\(CC\)/i.test(ct.name);
-              return `<option value="${escHtml(ct.email)}" ${isAutoCc?'selected':''}>${escHtml(ct.name)} — ${escHtml(ct.email)}${isAutoCc?' \u2713':''}</option>`;
-            }).join('')}
-          </select>
-          <div style="font-size:10px;color:var(--text-muted);margin-bottom:0">Hold Ctrl/Cmd to adjust. Contacts with (AP) or (CC) pre-selected \u2713</div>
-        </div>`;
-      })()}
+      <!-- STEP 2: Select contacts — rendered dynamically when invoices checked -->
+      <div id="coll-step2-${escHtml(name).replace(/[^a-zA-Z0-9]/g,'_')}" data-account="${escHtml(name)}" style="margin-bottom:14px">
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:0.1em;margin-bottom:6px;opacity:0.5">STEP 2 — RECIPIENTS &nbsp;<span style="font-size:9px">(select invoices above first)</span></div>
+      </div>
 
       <!-- STEP 3: Generate -->
       <div style="font-family:var(--font-mono);font-size:10px;color:var(--accent);letter-spacing:0.1em;margin-bottom:8px">STEP 3 — GENERATE EMAIL</div>
@@ -3815,32 +3788,105 @@ function selectCollectionsAccount(name) {
 }
 
 function updateCollEmailBtnState() {
-  const checked = document.querySelectorAll('.coll-inv-chk:checked').length;
+  const checked = document.querySelectorAll('.coll-inv-chk:checked');
+  const count = checked.length;
   const hint = document.getElementById('coll-inv-hint');
   const btns = ['coll-gen-gentle','coll-gen-firm','coll-gen-final'];
   const toneColors = { 'coll-gen-gentle': 'var(--accent)', 'coll-gen-firm': 'var(--orange)', 'coll-gen-final': 'var(--red)' };
+
+  // Enable/disable generate buttons
   btns.forEach(id => {
     const btn = document.getElementById(id);
     if (!btn) return;
-    if (checked > 0) {
-      btn.disabled = false;
-      btn.style.cursor = 'pointer';
-      btn.style.opacity = '1';
-      btn.style.color = toneColors[id];
-      btn.style.borderColor = toneColors[id] === 'var(--red)' ? 'var(--red)' : 'var(--border)';
-    } else {
-      btn.disabled = true;
-      btn.style.cursor = 'not-allowed';
-      btn.style.opacity = '0.4';
-      btn.style.color = 'var(--text-muted)';
-      btn.style.borderColor = 'var(--border)';
-    }
+    btn.disabled = count === 0;
+    btn.style.cursor = count > 0 ? 'pointer' : 'not-allowed';
+    btn.style.opacity = count > 0 ? '1' : '0.4';
+    btn.style.color = count > 0 ? toneColors[id] : 'var(--text-muted)';
+    btn.style.borderColor = (count > 0 && id === 'coll-gen-final') ? 'var(--red)' : 'var(--border)';
   });
+
   if (hint) {
-    hint.innerHTML = checked > 0
-      ? `<span style="color:var(--green)">✓ ${checked} invoice${checked>1?'s':''} selected — choose email tone below</span>`
-      : `<span style="color:var(--text-muted)">← Check invoices above, then choose email tone below</span>`;
+    hint.innerHTML = count > 0
+      ? `<span style="color:var(--green)">✓ ${count} invoice${count>1?'s':''} selected — fill in recipients below, then generate</span>`
+      : `<span style="color:var(--text-muted)">← Check invoices above to continue</span>`;
   }
+
+  // Find the Step 2 container — it has a dynamic ID based on account name
+  const step2El = document.querySelector('[id^="coll-step2-"]');
+  if (!step2El) return;
+
+  if (count === 0) {
+    step2El.innerHTML = `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:0.1em;margin-bottom:6px;opacity:0.5">STEP 2 — RECIPIENTS &nbsp;<span style="font-size:9px">(select invoices above first)</span></div>`;
+    return;
+  }
+
+  // Get the account name from the data attribute
+  const accountName = step2El.dataset.account || '';
+
+  // Look up contacts
+  let allContacts = state.contactsCache[accountName] || [];
+  if (!allContacts.length) {
+    // Try trimmed match
+    const key = Object.keys(state.contactsCache).find(k => k.trim() === accountName.trim());
+    if (key) allContacts = state.contactsCache[key] || [];
+  }
+
+  const apContacts  = allContacts.filter(ct => ct.type === 'AP/Collections');
+  const allOpts     = allContacts.filter(ct => ct.email);
+
+  if (!allOpts.length) {
+    step2El.innerHTML = `
+      <div style="font-family:var(--font-mono);font-size:10px;color:var(--accent);letter-spacing:0.1em;margin-bottom:8px">STEP 2 — RECIPIENTS</div>
+      <div style="padding:12px;background:rgba(232,160,32,0.08);border:1px solid rgba(232,160,32,0.3);font-size:12px;color:var(--accent);margin-bottom:8px">
+        ⚠ No email contacts on file for this account.<br>
+        <span style="font-size:11px;color:var(--text-muted)">Add contacts in the CRM or enter an address manually:</span>
+      </div>
+      <input id="coll-email-to" type="email" placeholder="Enter recipient email address..."
+        style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:13px;padding:9px 12px;outline:none;margin-bottom:8px;box-sizing:border-box">
+      <input id="coll-email-cc" type="text" placeholder="CC addresses (comma separated)..."
+        style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:13px;padding:9px 12px;outline:none;box-sizing:border-box">`;
+    return;
+  }
+
+  // Primary = first AP contact, fallback to first with email
+  const primaryTo = apContacts[0] || allOpts[0];
+
+  step2El.innerHTML = `
+    <div style="font-family:var(--font-mono);font-size:10px;color:var(--accent);letter-spacing:0.1em;margin-bottom:8px">STEP 2 — RECIPIENTS</div>
+
+    <!-- Primary contact info card -->
+    <div style="padding:10px 12px;background:rgba(52,152,219,0.06);border:1px solid var(--blue);border-left:3px solid var(--blue-bright);margin-bottom:10px;font-size:12px">
+      <div style="font-family:var(--font-mono);font-size:9px;color:var(--blue-bright);margin-bottom:5px">
+        ${apContacts.length ? '💰 PRIMARY AP CONTACT' : '👤 PRIMARY CONTACT'}
+      </div>
+      <div style="font-weight:500;font-size:13px">${escHtml(primaryTo.name||'')}</div>
+      ${primaryTo.title ? `<div style="font-size:11px;color:var(--text-muted)">${escHtml(primaryTo.title)}</div>` : ''}
+      <div style="display:flex;gap:10px;margin-top:5px;flex-wrap:wrap;font-size:12px">
+        ${primaryTo.email ? `<span style="color:var(--blue-bright)">✉ ${escHtml(primaryTo.email)}</span>` : ''}
+        ${primaryTo.phone ? `<span style="color:var(--text-dim)">☎ ${escHtml(primaryTo.phone)}</span>` : ''}
+      </div>
+    </div>
+
+    <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px">TO (Primary)</div>
+    <select id="coll-email-to" style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:13px;padding:8px 10px;outline:none;margin-bottom:10px;box-sizing:border-box">
+      <option value="">— Select contact —</option>
+      ${allOpts.map(ct => `<option value="${escHtml(ct.email)}" ${ct.email===primaryTo?.email?'selected':''}>${escHtml(ct.name)} — ${escHtml(ct.email)}</option>`).join('')}
+    </select>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">CC (Optional)</div>
+      <button onclick="document.querySelectorAll('#coll-email-cc option').forEach(o=>o.selected=false)"
+        style="font-size:10px;font-family:var(--font-mono);padding:2px 8px;background:transparent;border:1px solid var(--border);color:var(--text-muted);cursor:pointer">
+        DESELECT ALL
+      </button>
+    </div>
+    <select id="coll-email-cc" multiple style="width:100%;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-main);font-size:12px;padding:4px;outline:none;margin-bottom:4px;box-sizing:border-box;height:${Math.min(allOpts.length * 28 + 8, 100)}px">
+      ${allOpts.filter(ct => ct.email !== primaryTo?.email).map(ct => {
+        const isAutoCc = /\(AP\)|\(CC\)/i.test(ct.name);
+        return `<option value="${escHtml(ct.email)}" ${isAutoCc?'selected':''}>${escHtml(ct.name)} — ${escHtml(ct.email)}${isAutoCc?' ✓':''}</option>`;
+      }).join('')}
+    </select>
+    <div style="font-size:10px;color:var(--text-muted)">Hold Ctrl/Cmd to adjust. Contacts with (AP) or (CC) pre-selected ✓</div>`;
 }
 
 function saveCollectionsNote(name) {
@@ -3932,7 +3978,8 @@ TONE: ${toneDesc}
 
 INSTRUCTIONS:
 - Open with the contact's first name greeting
-- Reference ALL selected invoice numbers specifically
+- You MUST reference EVERY invoice number listed above — do not skip or summarize any
+- List each invoice # and balance in the email body — the recipient needs to match them to their records
 - Include the total outstanding ($${formatNum(totalDue)}) clearly
 - If a tracking link is provided for an invoice, include it in the email body naturally (e.g. "You can track your shipment here: [URL]")
 - For gentle: warm tone, assume oversight, ask for payment or status update
@@ -4015,16 +4062,49 @@ No markdown, no code fences, no explanation. Just the JSON.`;
     if (parsed.subject) parsed.subject = String(parsed.subject).replace(/\\n/g,' ').replace(/\\"/g,'"').replace(/\\t/g,' ');
     if (parsed.body)    parsed.body    = String(parsed.body).replace(/\\n/g,'\n').replace(/\\"/g,'"').replace(/\\t/g,'\t');
 
+    // VERIFY every selected invoice number is mentioned in the body
+    // If AI dropped any, append them as a guaranteed reference block
+    const missingInvoices = invoices.filter(inv => {
+      const num = String(inv.invoiceNum).trim();
+      return num && !parsed.body.includes(num);
+    });
+
+    let guaranteedBlock = '';
+    if (missingInvoices.length > 0) {
+      // Build a clean invoice reference block for any that were omitted
+      guaranteedBlock = '\n\nFor your reference, below are all outstanding invoices included in this notice:\n';
+      invoices.forEach(inv => {
+        const trackUrl = getTrackingUrl(inv.tracking, inv.shipVia);
+        const termsStr = (inv.terms||'').toUpperCase();
+        let termsDays = 30;
+        if (/COD|CASH|CIA|PREPAID|T\/T|TT|WIRE/.test(termsStr)) termsDays = 0;
+        else { const m = termsStr.match(/(\d+)/); if(m) termsDays = parseInt(m[1]); }
+        const invDate = new Date(inv.date);
+        const dueDate = new Date(invDate); dueDate.setDate(dueDate.getDate() + termsDays);
+        const daysPast = Math.max(0, Math.floor((new Date() - dueDate) / 86400000));
+        guaranteedBlock += `\n  • Invoice #${inv.invoiceNum}  |  Date: ${inv.date}  |  Balance: $${formatNum(inv.balance)}  |  ${daysPast > 0 ? daysPast + ' days past due' : 'Current'}  |  Terms: ${inv.terms || 'NET30'}`;
+        if (inv.tracking && trackUrl) guaranteedBlock += `\n    Track shipment: ${trackUrl}`;
+        else if (inv.tracking) guaranteedBlock += `\n    Tracking: ${inv.tracking}`;
+      });
+    }
+
     const collSig        = getSignatureForCurrentRep();
     const collDisclaimer = getDisclaimer();
     const fullBody       = (parsed.body || '').trim()
+      + guaranteedBlock
       + (collSig ? '\n\n' + collSig : '')
       + '\n\n--\n' + collDisclaimer;
 
     document.getElementById('coll-email-fields').style.display = 'block';
     document.getElementById('coll-email-subject').value = parsed.subject || (toneLabel + ' — ' + name);
     document.getElementById('coll-email-body').value = fullBody;
-    showToast('Email generated ✓', 'success');
+
+    // Warn if we had to add missing invoices
+    if (missingInvoices.length > 0) {
+      showToast(`Email generated — ${missingInvoices.length} invoice(s) auto-appended to body`, 'success');
+    } else {
+      showToast('Email generated ✓ — all invoices included', 'success');
+    }
   } catch(e) {
     showToast('Error generating email: ' + e.message, 'error');
     console.error('Collections email error:', e);

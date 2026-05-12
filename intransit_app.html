@@ -2393,12 +2393,16 @@ async function refreshDashboard() {
   const reqDateCol = reqKeys.find(k => k.includes('DATE')) || 'NOT FOUND';
   const reqRepCol  = reqKeys.find(k => k.includes('SALES') || k.includes('REP') || k.includes('SELLER')) || 'NOT FOUND';
 
-  // Filter GP by rep and date
+  // Filter GP by rep and date — exclude Deleted Inventory and zero-price rows
   const gpFiltered = state.gpCache.filter(r => {
     const d = normDate(r[gpDateCol] || r.INVOICE_DATE || '');
     const repVal = (r[gpSalesRepCol] || r.SALES_REP || '').trim();
     const repMatch = !repFilter || repVal === repFilter;
-    return d >= from && d <= to && repMatch;
+    const custName = (r.CUSTOMER_NAME || '').toLowerCase();
+    const extPrice = parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE);
+    // Exclude internal cost adjustments: Deleted Inventory rows with no shipped revenue
+    const isInternalAdj = custName.includes('deleted inventory') && extPrice === 0;
+    return d >= from && d <= to && repMatch && !isInternalAdj;
   });
 
   // Filter reqs — normalize dates which may be M/D/YYYY or YYYY-MM-DD
@@ -2421,9 +2425,12 @@ async function refreshDashboard() {
     return d >= from && d <= to && repMatch;
   });
 
-  // Compute shipped and GP
-  const shipped = gpFiltered.reduce((s,r) => s + parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL), 0);
-  const gp      = gpFiltered.reduce((s,r) => s + parseMoney(r[gpGPCol] || r.GP), 0);
+  // Compute shipped and GP using actual column names found dynamically
+  const getShipped = (r) => parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE);
+  const getGP      = (r) => parseMoney(r[gpGPCol] || r.GP);
+
+  const shipped = gpFiltered.reduce((s,r) => s + getShipped(r), 0);
+  const gp      = gpFiltered.reduce((s,r) => s + getGP(r), 0);
   const gpPct   = shipped > 0 ? (gp / shipped * 100) : 0;
 
   // Booked orders
@@ -2462,7 +2469,7 @@ async function refreshDashboard() {
           <div>${diagCheck(repFilter !== null, 'Rep filter: "' + (repFilter || 'All') + '"')}</div>
           <div>${diagCheck(gpFiltered.length > 0, 'GP rows in range: ' + gpFiltered.length)}</div>
           <div>${diagCheck(shipped > 0, 'Shipped: $' + formatNum(shipped))}</div>
-          <div>${diagCheck(gp > 0, 'GP $: $' + formatNum(gp))}</div>
+          <div>${diagCheck(gp > 0, 'GP $: $' + formatNum(gp) + ' (' + gpPct.toFixed(1) + '%)')}</div>
           <div>${diagCheck(reqsTotal > 0, 'Reqs Cache: ' + reqsTotal + ' rows')}</div>
           <div>${diagCheck(reqDateCol !== 'NOT FOUND', 'Reqs date col: "' + reqDateCol + '"')}</div>
           <div>${diagCheck(reqsFiltered.length > 0, 'Reqs in range: ' + reqsFiltered.length)}</div>
@@ -2474,6 +2481,71 @@ async function refreshDashboard() {
         </div>
         <div style="margin-top:6px;font-size:9px;color:var(--text-3)">
           <button onclick="this.parentElement.parentElement.style.display='none'" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:2px 8px;cursor:pointer;border-radius:var(--r)">DISMISS</button>
+        </div>
+      </div>
+
+      <!-- Invoice detail verification table -->
+      <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;color:var(--text-3);margin-bottom:2px">DATA VERIFICATION — ALL ROWS IN DATE RANGE</div>
+            <div style="font-size:12px;color:var(--text-2)">${gpFiltered.length} rows · Rep: <strong style="color:var(--text)">${repFilter || 'All'}</strong> · ${from} → ${to}</div>
+          </div>
+          <div style="font-family:var(--mono);font-size:11px;text-align:right">
+            <div style="color:var(--green)">Shipped: $${formatNum(shipped)}</div>
+            <div style="color:${gp >= 0 ? 'var(--green)' : 'var(--red)'}">GP: $${formatNum(gp)} (${gpPct.toFixed(1)}%)</div>
+          </div>
+        </div>
+        <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead>
+              <tr style="background:var(--s2);position:sticky;top:0">
+                <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">DATE</th>
+                <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border)">CUSTOMER</th>
+                <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">SALES REP</th>
+                <th style="padding:7px 12px;text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">SHIPPED $</th>
+                <th style="padding:7px 12px;text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border)">GP $</th>
+                <th style="padding:7px 12px;text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border)">GP %</th>
+                <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">NOTE</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${state.gpCache.filter(r => {
+                const d = normDate(r[gpDateCol] || r.INVOICE_DATE || '');
+                const repVal = (r[gpSalesRepCol] || r.SALES_REP || '').trim();
+                const repMatch = !repFilter || repVal === repFilter;
+                return d >= from && d <= to && repMatch;
+              }).map(r => {
+                const rowShipped = getShipped(r);
+                const rowGP = getGP(r);
+                const rowGPPct = rowShipped > 0 ? (rowGP / rowShipped * 100) : 0;
+                const custName = r.CUSTOMER_NAME || '—';
+                const isAdj = custName.toLowerCase().includes('deleted inventory') && rowShipped === 0;
+                const rowDate = normDate(r[gpDateCol] || r.INVOICE_DATE || '');
+                const bgStyle = isAdj ? 'background:rgba(249,115,22,0.05)' : '';
+                return `<tr style="border-bottom:1px solid rgba(82,130,190,0.06);${bgStyle}" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='${isAdj ? 'rgba(249,115,22,0.05)' : ''}'">
+                  <td style="padding:6px 12px;font-family:var(--mono);font-size:11px;white-space:nowrap;color:var(--text-2)">${rowDate}</td>
+                  <td style="padding:6px 12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${isAdj ? 'color:var(--orange)' : ''}" title="${escHtml(custName)}">${escHtml(custName.length > 38 ? custName.slice(0,38)+'…' : custName)}</td>
+                  <td style="padding:6px 12px;font-family:var(--mono);font-size:11px;white-space:nowrap;color:var(--text-2)">${escHtml((r[gpSalesRepCol]||r.SALES_REP||'').trim())}</td>
+                  <td style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:11px;white-space:nowrap;color:${rowShipped > 0 ? 'var(--text)' : 'var(--text-3)'}">$${formatNum(rowShipped)}</td>
+                  <td style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:11px;white-space:nowrap;color:${rowGP < 0 ? 'var(--red)' : rowGP > 0 ? 'var(--green)' : 'var(--text-3)'}">$${formatNum(rowGP)}</td>
+                  <td style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:11px;white-space:nowrap;color:${rowGPPct < 0 ? 'var(--red)' : rowGPPct >= 30 ? 'var(--green)' : 'var(--text-3)'}">${rowShipped > 0 ? rowGPPct.toFixed(1)+'%' : '—'}</td>
+                  <td style="padding:6px 12px;font-size:10px;font-family:var(--mono);color:var(--orange)">${isAdj ? '⚠ COST ADJ' : ''}</td>
+                </tr>`;
+              }).join('')}
+              <tr style="background:var(--s2);border-top:2px solid var(--border-hi)">
+                <td colspan="3" style="padding:8px 12px;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text)">TOTAL (${state.gpCache.filter(r=>{ const d=normDate(r[gpDateCol]||r.INVOICE_DATE||''); return d>=from&&d<=to&&(!repFilter||(r[gpSalesRepCol]||r.SALES_REP||'').trim()===repFilter); }).length} rows incl. adjustments)</td>
+                <td style="padding:8px 12px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--green)">$${formatNum(shipped)}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${gp >= 0 ? 'var(--green)' : 'var(--red)'}">$${formatNum(gp)}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${gpPct >= 30 ? 'var(--green)' : gpPct >= 15 ? 'var(--gold)' : 'var(--red)'}">${gpPct.toFixed(1)}%</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="padding:8px 14px;border-top:1px solid var(--border);font-size:10px;color:var(--text-3);font-family:var(--mono)">
+          ⚠ COST ADJ rows (Deleted Inventory, $0 shipped) are excluded from KPI cards but shown here for full transparency.
+          Compare this list against your CRM Performance Dashboard to verify completeness.
         </div>
       </div>`;
   }
@@ -2536,7 +2608,10 @@ async function refreshDashboard() {
       const ra  = state.accounts.filter(a => a.rep === rep);
       const gpR = state.gpCache.filter(r => {
         const d = normDate(r[gpDateCol] || r.INVOICE_DATE || '');
-        return d >= from && d <= to && (r[gpSalesRepCol] || r.SALES_REP || '').trim() === rep;
+        const custName = (r.CUSTOMER_NAME || '').toLowerCase();
+        const extPrice = parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE);
+        const isInternalAdj = custName.includes('deleted inventory') && extPrice === 0;
+        return d >= from && d <= to && (r[gpSalesRepCol] || r.SALES_REP || '').trim() === rep && !isInternalAdj;
       });
       const ordR = state.ordersHistoryCache.length > 0
         ? state.ordersHistoryCache.filter(r => {
@@ -2549,8 +2624,8 @@ async function refreshDashboard() {
         const d = normDate(raw);
         return d >= from && d <= to && (r[reqRepCol] || r.SALES_REP || r.SELLER || '').trim() === rep;
       });
-      const gpAmt  = gpR.reduce((s,r) => s + parseMoney(r[gpGPCol] || r.GP), 0);
-      const shipAmt = gpR.reduce((s,r) => s + parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL), 0);
+      const gpAmt   = gpR.reduce((s,r) => s + parseMoney(r[gpGPCol] || r.GP), 0);
+      const shipAmt = gpR.reduce((s,r) => s + parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE), 0);
       const bookAmt = ordR.reduce((s,r) => s + parseMoney(r.EXTENDED_PRICE || r.ORDER_TOTAL), 0);
       repStats[rep] = {
         accounts: ra.length, active: ra.filter(a => !isInactive(a)).length,

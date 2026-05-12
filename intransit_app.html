@@ -3788,6 +3788,14 @@ No markdown, no code fences, no explanation. Just the JSON.`;
     const data = await response.json();
     const rawText = data.content?.[0]?.text || '';
 
+    // DEBUG — show raw response so we can see what API returns
+    console.log('=== COLLECTIONS EMAIL RAW API RESPONSE ===');
+    console.log(rawText);
+    console.log('===========================================');
+    // Also show in the body field temporarily so we can see it
+    document.getElementById('coll-email-fields').style.display = 'block';
+    document.getElementById('coll-email-body').value = 'DEBUG — RAW API RESPONSE:\n\n' + rawText;
+
     // Robust parsing — handle escaped newlines, code fences, trailing content
     let parsed = null;
     try {

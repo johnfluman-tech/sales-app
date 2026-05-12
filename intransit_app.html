@@ -520,6 +520,28 @@ body::before {
 .apk-card[data-col="solid"]  { border-left: 2px solid var(--gold); }
 .apk-card[data-col="center"] { border-left: 2px solid var(--blue-b); }
 .apk-card[data-col="ring"]   { border-left: 2px solid var(--green); }
+/* Compact zone card */
+.apk-zone-card {
+  background:var(--s2);border:1px solid var(--border);border-radius:var(--r);
+  padding:5px 8px 5px 10px;margin-bottom:3px;cursor:default;
+  display:flex;align-items:center;gap:6px;min-height:36px;
+  transition:background 0.1s;position:relative;
+}
+.apk-zone-card:hover { background:var(--s3); }
+.apk-zone-card[data-col="solid"]  { border-left:3px solid var(--gold); }
+.apk-zone-card[data-col="center"] { border-left:3px solid var(--blue-b); }
+.apk-zone-card[data-col="ring"]   { border-left:3px solid var(--green); }
+.apk-zone-card-info { flex:1;min-width:0; }
+.apk-zone-card-name { font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2; }
+.apk-zone-card-meta { font-family:var(--mono);font-size:9px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px; }
+.apk-zone-card-btns { display:flex;gap:2px;flex-shrink:0;opacity:0;transition:opacity 0.15s; }
+.apk-zone-card:hover .apk-zone-card-btns { opacity:1; }
+.apk-zone-btn {
+  padding:2px 5px;font-size:9px;font-family:var(--mono);
+  background:transparent;border:1px solid var(--border);color:var(--text-3);
+  cursor:pointer;border-radius:2px;line-height:1.4;white-space:nowrap;
+}
+.apk-zone-btn:hover { background:var(--blue-b);border-color:var(--blue-b);color:#fff; }
 /* Transfer browse modal */
 #transfer-modal-overlay {
   position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9000;display:flex;align-items:center;justify-content:center;
@@ -2913,18 +2935,11 @@ function renderEmailTab(acc) {
         <div style="font-size:11px;color:var(--orange);padding:8px 12px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:var(--r);margin-bottom:6px">
           ⚠ No email contacts found for: <strong>${escHtml(name)}</strong>
         </div>
-        <div style="font-size:10px;font-family:var(--mono);color:var(--text-3);padding:8px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r)">
-          <div style="color:var(--text-2);margin-bottom:4px">CONTACT LOOKUP DIAGNOSTIC:</div>
-          <div>Cache keys total: ${collDiag.cacheKeys}</div>
-          <div>Exact match: ${collDiag.exactMatch ? '✓' : '✗ NOT FOUND'}</div>
-          <div>Raw contacts found: ${collDiag.rawCount} (${collDiag.withEmail} with email)</div>
-          ${collDiag.sample.length ? '<div>Similar keys: ' + collDiag.sample.map(k => escHtml(k)).join(' | ') + '</div>' : '<div style="color:var(--red)">No similar keys in cache — contacts may not have loaded yet</div>'}
-          <div style="margin-top:4px">
+        <div style="margin-top:8px">
             <input type="text" id="coll-manual-email" placeholder="Enter email manually..."
               style="background:var(--s1);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px 8px;width:200px;font-family:var(--font);outline:none;border-radius:var(--r)">
             <button onclick="applyManualEmail()" style="background:var(--blue-b);border:none;color:#fff;font-size:10px;font-family:var(--mono);padding:5px 10px;cursor:pointer;border-radius:var(--r);margin-left:6px">USE THIS EMAIL</button>
           </div>
-        </div>
       </div>`}
 
       <!-- Research context / custom prompt -->
@@ -3289,39 +3304,23 @@ async function renderRemovalsView() {
   const el = document.getElementById('main-content');
   el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div style="font-family:var(--mono);letter-spacing:0.15em">LOADING REQUESTS...</div></div>';
 
-  // ── DIAGNOSTICS ───────────────────────────────────────────────────────────
-  const diagItems = [];
-  const dLog = (msg, ok=true) => diagItems.push({msg, ok});
-  dLog('Accounts loaded: ' + state.accounts.length);
-
   // ── 1. REMOVAL REQUESTS from state.accounts ───────────────────────────────
   const pendingRemovals = state.accounts.filter(a =>
     a.removeFlag && a.removeFlag.trim() &&
     a.removeFlag.toUpperCase() !== 'YES' &&
     a.johnApproval?.toUpperCase() !== 'YES'
   );
-  dLog('Removal requests (REMOVE_FLAG set): ' + pendingRemovals.length);
-  if (pendingRemovals.length === 0) {
-    const sample = state.accounts.filter(a => a.removeFlag).slice(0,3);
-    sample.forEach(a => dLog('  Sample flag: "' + a.removeFlag + '" approval="' + (a.johnApproval||'—') + '"'));
-  }
 
   // ── 2. LOG-BASED REQUESTS (hold, transfer) ───────────────────────────────
   let holdReqs = [], transferReqs = [], hideReqs = [], globalRemoveReqs = [], logError = '';
   try {
     const logRows = await sheetsGet("'_LOG'!A1:E2000");
-    dLog('_LOG rows loaded: ' + logRows.length);
     holdReqs     = logRows.filter((r,i) => i>0 && (r[2]||'')==='HOLD_REQUEST').slice().reverse().slice(0,30);
     transferReqs = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_REQUEST').slice().reverse().slice(0,30);
     hideReqs        = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_HIDE_REQUEST').slice().reverse().slice(0,50);
     globalRemoveReqs = logRows.filter((r,i) => i>0 && (r[2]||'')==='POOL_GLOBAL_REMOVE_REQUEST').slice().reverse().slice(0,50);
-    dLog('Hold requests in log: ' + holdReqs.length);
-    dLog('Transfer requests in log: ' + transferReqs.length);
-    dLog('Hide requests in log: ' + hideReqs.length);
-    dLog('Global pool remove requests: ' + globalRemoveReqs.length);
   } catch(e) {
     logError = e.message;
-    dLog('_LOG failed to load: ' + e.message, false);
   }
 
   // ── 3. NDA LOG ─────────────────────────────────────────────────────────────
@@ -3329,8 +3328,7 @@ async function renderRemovalsView() {
   try {
     const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_NDA_LOG'!A1:L2000");
     ndaRows = (raw||[]).filter(r => r[7] === 'ACCEPTED' || r[7] === 'DECLINED').slice().reverse();
-    dLog('NDA log entries: ' + ndaRows.length);
-  } catch(e) { dLog('NDA log: ' + e.message, false); }
+  } catch(e) { /* ignore */ }
 
   const totalPending = pendingRemovals.length + holdReqs.length + transferReqs.length;
   const badge = document.getElementById('badge-removals');
@@ -3351,22 +3349,10 @@ async function renderRemovalsView() {
           <div style="font-size:20px;font-weight:700;margin-bottom:3px">🗑 Requests & Approvals</div>
           <div style="font-size:12px;color:var(--text-3)">${totalPending} pending · Only John can approve</div>
         </div>
-        <button onclick="toggleRemovalsDiag()"
-          style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 12px;cursor:pointer;border-radius:var(--r)">
-          DIAG ${diagItems.filter(d=>!d.ok).length > 0 ? '⚠ '+diagItems.filter(d=>!d.ok).length+' ISSUES' : '✓ OK'}
-        </button>
+        
       </div>
 
-      <!-- Diagnostic panel -->
-      <div id="removals-diag" style="display:none;background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:12px 16px;margin-bottom:20px">
-        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:8px">DIAGNOSTIC LOG</div>
-        ${diagItems.map(d=>`<div style="font-size:11px;color:${d.ok?'var(--green)':'var(--red)'};margin-bottom:2px">${d.ok?'✓':'✗'} ${escHtml(d.msg)}</div>`).join('')}
-        <div style="margin-top:8px;font-size:10px;color:var(--text-3)">
-          To request removal: go to any account → Notes tab → scroll down → fill in the REP REQUESTS section
-        </div>
-      </div>
-
-      <!-- How reps submit requests -->
+      <!-- Diagnostic panel --><!-- How reps submit requests -->
       <div style="background:rgba(52,152,219,0.07);border:1px solid rgba(52,152,219,0.25);border-radius:var(--r2);padding:12px 16px;margin-bottom:24px;font-size:12px">
         <div style="font-weight:600;margin-bottom:4px">ℹ How reps submit requests</div>
         <div style="color:var(--text-2);line-height:1.7">
@@ -3599,10 +3585,7 @@ async function renderRemovalsView() {
     </div>`;
 }
 
-function toggleRemovalsDiag() {
-  const d = document.getElementById('removals-diag');
-  if (d) d.style.display = d.style.display === 'none' ? 'block' : 'none';
-}
+
 
 
 async function approveRemovalDirect(accountName) {
@@ -3681,7 +3664,6 @@ function renderDashboard() {
       </div>
 
       <!-- Diagnostics (shown when data issues detected) -->
-      <div id="dash-diag"></div>
 
       <!-- KPI cards -->
       <div id="dash-kpis" class="dashboard-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
@@ -3689,7 +3671,6 @@ function renderDashboard() {
       </div>
 
       <!-- Debug info (admin only) -->
-      <div id="dash-debug" style="margin-bottom:8px;padding:6px 10px;background:var(--navy-mid);border:1px solid var(--border)"></div>
 
       <!-- Rep table (admin only) -->
       <div id="dash-rep-table"></div>
@@ -3736,180 +3717,7 @@ async function refreshDashboard() {
   }
 
   // ── Diagnostic: check what's actually in the caches ──────────
-  const diagEl = document.getElementById('dash-diag');
-  const gpTotal = state.gpCache.length;
-  const sampleGP = state.gpCache[0] || {};
-  const gpKeys = Object.keys(sampleGP);
-  const gpSalesRepCol = gpKeys.find(k => k.includes('SALES') || k.includes('REP') || k === 'SALES_REP') || 'NOT FOUND';
-  const gpInvTotalCol = gpKeys.find(k => k === 'INVOICE_TOTAL') || gpKeys.find(k => k === 'EXTENDED_PRICE') || gpKeys.find(k => k.includes('TOTAL') || k.includes('PRICE')) || 'NOT FOUND';
-  const gpDateCol     = gpKeys.find(k => k.includes('DATE')) || 'NOT FOUND';
-  const gpGPCol       = gpKeys.find(k => k === 'GP') || 'NOT FOUND';
 
-  // Sample SALES_REP value
-  const sampleRepVal = sampleGP[gpSalesRepCol] || '(empty)';
-
-  // Reqs cache check
-  const reqsTotal = state.reqsCache.length;
-  const sampleReq = state.reqsCache[0] || {};
-  const reqKeys   = Object.keys(sampleReq);
-  const reqDateCol = reqKeys.find(k => k.includes('DATE')) || 'NOT FOUND';
-  const reqRepCol  = reqKeys.find(k => k.includes('SALES') || k.includes('REP') || k.includes('SELLER')) || 'NOT FOUND';
-
-  // Filter GP by rep and date — exclude Deleted Inventory and zero-price rows
-  const gpFiltered = state.gpCache.filter(r => {
-    const d = normDate(r[gpDateCol] || r.INVOICE_DATE || '');
-    const repVal = (r[gpSalesRepCol] || r.SALES_REP || '').trim();
-    const repMatch = !repFilter || repVal === repFilter;
-    return d >= from && d <= to && repMatch;
-  });
-
-  // Filter reqs — normalize dates which may be M/D/YYYY or YYYY-MM-DD
-  function normDate(raw) {
-    if (!raw) return '';
-    const s = String(raw).trim();
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10); // already ISO
-    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-    if (m) {
-      const yr = m[3].length === 2 ? '20' + m[3] : m[3];
-      return `${yr}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
-    }
-    return s.slice(0,10);
-  }
-  const reqsFiltered = state.reqsCache.filter(r => {
-    const raw = r[reqDateCol] || r.DATE || r.DATE_ENTERED || '';
-    const d = normDate(raw);
-    const repVal = (r[reqRepCol] || r.SALES_REP || r.SELLER || '').trim();
-    const repMatch = !repFilter || repVal === repFilter;
-    return d >= from && d <= to && repMatch;
-  });
-
-  // Compute shipped and GP using actual column names found dynamically
-  const getShipped = (r) => parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE);
-  const getGP      = (r) => parseMoney(r[gpGPCol] || r.GP);
-
-  const shipped = gpFiltered.reduce((s,r) => s + getShipped(r), 0);
-  const gp      = gpFiltered.reduce((s,r) => s + getGP(r), 0);
-  const gpPct   = shipped > 0 ? (gp / shipped * 100) : 0;
-
-  // Booked orders
-  const ordersFiltered = state.ordersHistoryCache.length > 0
-    ? state.ordersHistoryCache.filter(r => {
-        const d = (r.ORDER_DATE || '').slice(0,10);
-        const repMatch = !repFilter || (r.SALES_REP||'').trim() === repFilter;
-        return d >= from && d <= to && repMatch;
-      })
-    : state.ordersCache.filter(r => {
-        return !repFilter || (r.SALES_REP||'').trim() === repFilter;
-      });
-  const booked = ordersFiltered.reduce((s,r) => s + parseMoney(r.EXTENDED_PRICE || r.ORDER_TOTAL), 0);
-  const bookedLabel = state.ordersHistoryCache.length > 0 ? 'Orders Booked' : 'Open Backlog';
-
-  // Account stats
-  const accs     = state.accounts.filter(a => !repFilter || a.rep === repFilter);
-  const inactive = accs.filter(a => isInactive(a));
-  const declining = accs.filter(a => isDeclining(a));
-  const today    = new Date().toISOString().slice(0,10);
-  const due      = accs.filter(a => { const d = parseDate(a.followUpDate); return d && d <= today; });
-
-  // ── Update diagnostic panel ───────────────────────────────────
-  if (diagEl) {
-    const diagColor = (ok) => ok ? 'var(--green)' : 'var(--red)';
-    const diagCheck = (ok, label) => `<span style="color:${diagColor(ok)}">${ok ? '✓' : '✗'} ${label}</span>`;
-    diagEl.innerHTML = `
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text-2);padding:10px 14px;background:var(--s1);border:1px solid var(--border);border-left:3px solid var(--blue-b);border-radius:var(--r);margin-bottom:16px">
-        <div style="font-size:9px;letter-spacing:0.18em;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">DASHBOARD DIAGNOSTICS</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 20px">
-          <div>${diagCheck(gpTotal > 0, 'GP Cache: ' + gpTotal + ' rows')}</div>
-          <div>${diagCheck(gpSalesRepCol !== 'NOT FOUND', 'SALES_REP col: "' + gpSalesRepCol + '"')}</div>
-          <div>${diagCheck(gpInvTotalCol !== 'NOT FOUND', 'Shipped col: "' + gpInvTotalCol + '"')}</div>
-          <div>${diagCheck(gpDateCol !== 'NOT FOUND', 'Date col: "' + gpDateCol + '"')}</div>
-          <div><span style="color:var(--text-2)">✓ Sample REP value: "${sampleRepVal}"</span></div>
-          <div>${diagCheck(repFilter !== null, 'Rep filter: "' + (repFilter || 'All') + '"')}</div>
-          <div>${diagCheck(gpFiltered.length > 0, 'GP rows in range: ' + gpFiltered.length)}</div>
-          <div>${diagCheck(shipped > 0, 'Shipped: $' + formatNum(shipped))}</div>
-          <div>${diagCheck(gp > 0, 'GP $: $' + formatNum(gp) + ' (' + gpPct.toFixed(1) + '%)')}</div>
-          <div>${diagCheck(reqsTotal > 0, 'Reqs Cache: ' + reqsTotal + ' rows')}</div>
-          <div>${diagCheck(reqDateCol !== 'NOT FOUND', 'Reqs date col: "' + reqDateCol + '"')}</div>
-          <div>${diagCheck(reqsFiltered.length > 0, 'Reqs in range: ' + reqsFiltered.length)}</div>
-          <div style="color:var(--text-3)">Req date sample: "${normDate(state.reqsCache[0]?.[reqDateCol] || '')}" (raw: "${state.reqsCache[0]?.[reqDateCol] || ''}")</div>
-          <div style="grid-column:span 3;color:var(--text-3);font-size:9px;margin-top:4px">
-            Date range: ${from} → ${to} &nbsp;|&nbsp; GP keys: ${gpKeys.slice(0,6).join(', ')}
-            &nbsp;|&nbsp; Req keys: ${reqKeys.slice(0,5).join(', ')}
-          </div>
-        </div>
-        <div style="margin-top:6px;font-size:9px;color:var(--text-3)">
-          <button onclick="this.parentElement.parentElement.style.display='none'" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:2px 8px;cursor:pointer;border-radius:var(--r)">DISMISS</button>
-        </div>
-      </div>
-
-      <!-- Invoice detail verification table -->
-      <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden">
-        <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;color:var(--text-3);margin-bottom:2px">DATA VERIFICATION — ALL ROWS IN DATE RANGE</div>
-            <div style="font-size:12px;color:var(--text-2)">${gpFiltered.length} rows · Rep: <strong style="color:var(--text)">${repFilter || 'All'}</strong> · ${from} → ${to}</div>
-          </div>
-          <div style="font-family:var(--mono);font-size:11px;text-align:right">
-            <div style="color:var(--green)">Shipped: $${formatNum(shipped)}</div>
-            <div style="color:${gp >= 0 ? 'var(--green)' : 'var(--red)'}">GP: $${formatNum(gp)} (${gpPct.toFixed(1)}%)</div>
-          </div>
-        </div>
-        <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <thead>
-              <tr style="background:var(--s2);position:sticky;top:0">
-                <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">DATE</th>
-                <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border)">CUSTOMER</th>
-                <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">INVOICE #</th>
-                <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">SALES REP</th>
-                <th style="padding:7px 12px;text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">SHIPPED $</th>
-                <th style="padding:7px 12px;text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border)">GP $</th>
-                <th style="padding:7px 12px;text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border)">GP %</th>
-                <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">NOTE</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${state.gpCache.filter(r => {
-                const d = normDate(r[gpDateCol] || r.INVOICE_DATE || '');
-                const repVal = (r[gpSalesRepCol] || r.SALES_REP || '').trim();
-                const repMatch = !repFilter || repVal === repFilter;
-                return d >= from && d <= to && repMatch;
-              }).map(r => {
-                const rowShipped = getShipped(r);
-                const rowGP = getGP(r);
-                const rowGPPct = rowShipped > 0 ? (rowGP / rowShipped * 100) : 0;
-                const custName = r.CUSTOMER_NAME || '—';
-                const isAdj = custName.toLowerCase().includes('deleted inventory') && rowShipped === 0;
-                const rowDate = normDate(r[gpDateCol] || r.INVOICE_DATE || '');
-                const bgStyle = isAdj ? 'background:rgba(249,115,22,0.05)' : '';
-                return `<tr style="border-bottom:1px solid rgba(82,130,190,0.06);${bgStyle}" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='${isAdj ? 'rgba(249,115,22,0.05)' : ''}'">
-                  <td style="padding:6px 12px;font-family:var(--mono);font-size:11px;white-space:nowrap;color:var(--text-2)">${rowDate}</td>
-                  <td style="padding:6px 12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${isAdj ? 'color:var(--orange)' : ''}" title="${escHtml(custName)}">${escHtml(custName.length > 35 ? custName.slice(0,35)+'…' : custName)}</td>
-                  <td style="padding:6px 12px;font-family:var(--mono);font-size:11px;white-space:nowrap;color:var(--blue-b)">${escHtml(String(r.INVOICE_NUMBER || r.INVOICE_NUM || r.INV_NUM || '—'))}</td>
-                  <td style="padding:6px 12px;font-family:var(--mono);font-size:11px;white-space:nowrap;color:var(--text-2)">${escHtml((r[gpSalesRepCol]||r.SALES_REP||'').trim())}</td>
-                  <td style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:11px;white-space:nowrap;color:${rowShipped > 0 ? 'var(--text)' : 'var(--text-3)'}">$${formatNum(rowShipped)}</td>
-                  <td style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:11px;white-space:nowrap;color:${rowGP < 0 ? 'var(--red)' : rowGP > 0 ? 'var(--green)' : 'var(--text-3)'}">$${formatNum(rowGP)}</td>
-                  <td style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:11px;white-space:nowrap;color:${rowGPPct < 0 ? 'var(--red)' : rowGPPct >= 30 ? 'var(--green)' : 'var(--text-3)'}">${rowShipped > 0 ? rowGPPct.toFixed(1)+'%' : '—'}</td>
-                  <td style="padding:6px 12px;font-size:10px;font-family:var(--mono);color:var(--orange)">${isAdj ? '⚠ COST ADJ' : ''}</td>
-                </tr>`;
-              }).join('')}
-              <tr style="background:var(--s2);border-top:2px solid var(--border-hi)">
-                <td colspan="4" style="padding:8px 12px;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text)">TOTAL (${state.gpCache.filter(r=>{ const d=normDate(r[gpDateCol]||r.INVOICE_DATE||''); return d>=from&&d<=to&&(!repFilter||(r[gpSalesRepCol]||r.SALES_REP||'').trim()===repFilter); }).length} rows incl. adjustments)</td>
-                <td style="padding:8px 12px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--green)">$${formatNum(shipped)}</td>
-                <td style="padding:8px 12px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${gp >= 0 ? 'var(--green)' : 'var(--red)'}">$${formatNum(gp)}</td>
-                <td style="padding:8px 12px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${gpPct >= 30 ? 'var(--green)' : gpPct >= 15 ? 'var(--gold)' : 'var(--red)'}">${gpPct.toFixed(1)}%</td>
-                <td></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div style="padding:8px 14px;border-top:1px solid var(--border);font-size:10px;color:var(--text-3);font-family:var(--mono)">
-          ⚠ COST ADJ rows (Deleted Inventory, $0 shipped) are excluded from KPI cards but shown here for full transparency.
-          Invoice # shows only if the _GP sheet includes that column (re-run sales_report.py to include it).
-          Compare this list against your CRM Performance Dashboard to verify completeness.
-        </div>
-      </div>`;
-  }
 
   // ── Render KPI cards ──────────────────────────────────────────
   const kpiEl = document.getElementById('dash-kpis');
@@ -4360,10 +4168,6 @@ function renderSettingsView() {
           <button onclick="previewSignature()" style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:9px 16px;cursor:pointer;letter-spacing:0.1em">PREVIEW</button>
           <button onclick="clearSignature()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:11px;padding:9px 16px;cursor:pointer">CLEAR</button>
         </div>
-        <div id="sig-diagnostic" style="display:none;margin-top:12px;padding:12px 14px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);font-family:var(--mono)">
-          <div style="font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:8px">SAVE DIAGNOSTIC</div>
-          <div id="sig-diag-log"></div>
-        </div>
         <div id="sig-preview" style="display:none;margin-top:16px;padding:14px 16px;background:#ffffff;border:1px solid var(--border);border-left:3px solid var(--blue);font-size:13px;line-height:1.7;color:#000"></div>
       </div>
 
@@ -4526,23 +4330,12 @@ async function saveSignature() {
     : state.repId;
   const text = getSigHtml();
   const btn  = document.querySelector('[onclick="saveSignature()"]');
-  const diagWrap = document.getElementById('sig-diagnostic'); const diag = document.getElementById('sig-diag-log'); if (diagWrap) diagWrap.style.display = 'block';
   if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
-  if (diag) diag.innerHTML = '<div style="color:var(--text-3);font-size:11px">Saving...</div>';
-
-  const log = [];
-  const addLog = (msg, ok=true) => {
-    log.push({ msg, ok });
-    if (diag) diag.innerHTML = log.map(l =>
-      `<div style="font-size:11px;color:${l.ok?'var(--green)':'var(--red)'};margin-bottom:2px">${l.ok?'✓':'✗'} ${escHtml(l.msg)}</div>`
-    ).join('');
-  };
 
   try {
     const now = new Date().toLocaleString('en-US', {
       month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'
     });
-    addLog('Rep: ' + rep + ' · Sheet: ' + CONFIG.SPREADSHEET_ID.slice(0,12) + '...');
 
     // Step 1: try to read existing _SIGNATURES tab
     let rows = [['REP','SIGNATURE_TEXT','LAST_UPDATED']];
@@ -4550,28 +4343,23 @@ async function saveSignature() {
     try {
       const existing = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SIGNATURES'!A1:C200");
       tabExists = true;
-      addLog('_SIGNATURES tab found (' + existing.length + ' rows)');
       if (existing.length > 0) {
         const firstCell = (existing[0][0]||'').toString().toUpperCase().trim();
         rows = firstCell === 'REP' ? existing : [['REP','SIGNATURE_TEXT','LAST_UPDATED'], ...existing];
       }
     } catch(e) {
-      addLog('_SIGNATURES tab not found — will create it', false);
     }
 
     // Step 2: update or add this rep
     const repIdx = rows.findIndex((r,i) => i > 0 && (r[0]||'').trim() === rep);
     if (repIdx === -1) {
       rows.push([rep, text, now]);
-      addLog('Adding new row for ' + rep);
     } else {
       rows[repIdx] = [rep, text, now];
-      addLog('Updating existing row for ' + rep);
     }
 
     // Pad rows to exactly 3 cols
     const padded = rows.map(r => { const p=[...r]; while(p.length<3)p.push(''); return p.slice(0,3); });
-    addLog('Writing ' + padded.length + ' rows to _SIGNATURES tab...');
 
     // Step 3: write — try update first, fall back to creating via batchUpdate then update
     let saved = false;
@@ -4579,16 +4367,13 @@ async function saveSignature() {
       try {
         await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_SIGNATURES'!A1:C" + padded.length, padded);
         saved = true;
-        addLog('Saved via sheetsUpdate ✓');
       } catch(e2) {
-        addLog('sheetsUpdate failed: ' + e2.message, false);
       }
     }
 
     if (!saved) {
       // Create the tab via batchUpdate, then write
       try {
-        addLog('Creating _SIGNATURES tab...');
         const createUrl = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.HISTORY_SPREADSHEET_ID}:batchUpdate`;
         const createRes = await fetch(createUrl, {
           method: 'POST',
@@ -4598,16 +4383,12 @@ async function saveSignature() {
         const createData = await createRes.json();
         if (!createRes.ok) {
           // Tab might already exist with a different case — just try writing
-          addLog('Tab create response: ' + (createData.error?.message || createRes.status), !createData.error?.message?.includes('already exists'));
         } else {
-          addLog('Tab created ✓');
         }
         // Now write
         await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_SIGNATURES'!A1:C" + padded.length, padded);
         saved = true;
-        addLog('Saved via create+update ✓');
       } catch(e3) {
-        addLog('Create+update failed: ' + e3.message, false);
         throw e3;
       }
     }
@@ -4615,7 +4396,6 @@ async function saveSignature() {
     state.signaturesCache[rep] = text;
     showToast('Signature saved for ' + rep + ' ✓', 'success');
   } catch(e) {
-    addLog('FINAL ERROR: ' + e.message, false);
     showToast('Error saving signature: ' + e.message, 'error');
     console.error('Signature save error:', e);
   } finally {
@@ -4768,31 +4548,7 @@ function selectCollectionsAccount(name) {
     el.style.background = el.dataset.name === name ? 'var(--s2)' : '';
   });
   const c = state.collectionsCache[name] || {};
-  const acc = state.accounts.find(a => a.name.trim() === name.trim());
-  // ── CONTACT LOOKUP DIAGNOSTIC ──────────────────────────────────────────
-  // Try exact match first, then case-insensitive, then partial
-  let rawContacts = state.contactsCache[name] || [];
-  if (rawContacts.length === 0) {
-    // Try case-insensitive match
-    const nameLower = name.trim().toLowerCase();
-    const matchKey = Object.keys(state.contactsCache).find(k => k.trim().toLowerCase() === nameLower);
-    if (matchKey) rawContacts = state.contactsCache[matchKey] || [];
-  }
-  if (rawContacts.length === 0) {
-    // Try partial match (first 20 chars)
-    const nameStart = name.trim().toLowerCase().slice(0, 20);
-    const matchKey = Object.keys(state.contactsCache).find(k => k.trim().toLowerCase().startsWith(nameStart));
-    if (matchKey) rawContacts = state.contactsCache[matchKey] || [];
-  }
-  const collDiag = {
-    accountName: name,
-    cacheKeys: Object.keys(state.contactsCache).length,
-    exactMatch: !!(state.contactsCache[name]),
-    rawCount: rawContacts.length,
-    withEmail: rawContacts.filter(ct => ct.email).length,
-    sample: Object.keys(state.contactsCache).filter(k => k.toLowerCase().includes(name.toLowerCase().slice(0,8))).slice(0,3),
-  };
-  const allContacts = rawContacts.filter(ct => ct.email);
+  const acc = state.accounts.find(a => a.name.trim() === name.trim());const allContacts = rawContacts.filter(ct => ct.email);
   const apContacts  = allContacts.filter(ct => ct.type === 'AP/Collections');
   const collNote    = state.collectionsNotes[name] || {};
   const riskColor   = c.risk?.includes('HIGH') ? 'var(--red)' : c.risk?.includes('WATCH') ? 'var(--orange)' : 'var(--gold)';
@@ -6216,7 +5972,6 @@ async function renderAttackPlan() {
 
   // Build initial state from saved plan
   const repAccs = state.accounts.filter(a => a.rep === repFilter).sort((a, b) => (b.total || 0) - (a.total || 0));
-  const otherAccs = state.accounts.filter(a => a.rep !== repFilter && isInactive(a)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
 
   const planState = {}; // accountName → zone key
   if (saved.length > 0) {
@@ -6232,7 +5987,9 @@ async function renderAttackPlan() {
   }
   window.apkState = planState;
   apkLoadHiddenTransferAccounts();
-  await apkLoadGloballyRemoved();
+  await apkLoadGloballyRemoved(); // must complete before building otherAccs
+  // Build otherAccs AFTER globallyRemovedFromPool is loaded so filter is accurate
+  const otherAccs = state.accounts.filter(a => a.rep !== repFilter && isInactive(a) && !state.globallyRemovedFromPool.has(a.name)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
   apkRender(repAccs, otherAccs, repFilter);
 }
 
@@ -6258,25 +6015,17 @@ function apkMove(name, toZone) {
   window.apkState[name] = toZone;
   // Re-render just the columns (not the whole board)
   const repAccs = state.accounts.filter(a => a.rep === window.apkRep).sort((a, b) => (b.total || 0) - (a.total || 0));
-  const otherAccs = state.accounts.filter(a => a.rep !== window.apkRep && isInactive(a)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
+  const otherAccs = state.accounts.filter(a => a.rep !== window.apkRep && isInactive(a) && !state.globallyRemovedFromPool.has(a.name)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
   apkRenderColumns(repAccs);
   apkRenderPool(repAccs);
   apkRenderHeaders();
   showToast(name.slice(0, 22) + ' → ' + toZone, 'success');
-  apkLogDiag('Moved: ' + name + ' → ' + toZone);
 }
 
 function apkRender(repAccs, otherAccs, rep) {
   const el = document.getElementById('main-content');
   el.innerHTML = `
     <div id="apk-board" style="display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--s0)">
-
-      <!-- Diagnostic bar -->
-      <div id="apk-diag-bar" style="display:none;background:var(--s2);border-bottom:1px solid var(--border);padding:6px 14px;font-family:var(--mono);font-size:10px;color:var(--green);display:flex;gap:16px;flex-wrap:wrap;align-items:center;flex-shrink:0">
-        <span id="apk-diag-text">—</span>
-        <button onclick="document.getElementById('apk-diag-bar').style.display='none'"
-          style="margin-left:auto;background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:11px">✕ DISMISS</button>
-      </div>
 
       <!-- Column headers -->
       <div style="display:flex;padding:10px 14px 0;gap:10px;flex-shrink:0;background:var(--s1);border-bottom:1px solid var(--border)" id="apk-headers">
@@ -6316,7 +6065,7 @@ function apkRender(repAccs, otherAccs, rep) {
         <!-- 3 zone columns -->
         <div style="flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;overflow-y:auto;min-height:0" id="apk-cols-wrap">
           ${['solid','center','ring'].map(key => `
-            <div id="apk-col-${key}" style="border-right:1px solid var(--border);overflow-y:auto;padding:8px">
+            <div id="apk-col-${key}" style="border-right:1px solid var(--border);overflow-y:auto;padding:5px 6px">
               <!-- cards injected by apkRenderColumns -->
             </div>`).join('')}
         </div>
@@ -6352,14 +6101,13 @@ function apkRender(repAccs, otherAccs, rep) {
           <span style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3)" id="apk-pool-count">POOL</span>
           <span style="font-size:11px;color:var(--text-3)">Click zone buttons on a card to assign it · ↑ star to add, ↓ to return to pool</span>
           <div style="margin-left:auto;display:flex;gap:7px;align-items:center">
-            <button id="apk-diag-btn" onclick="apkToggleDiag()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r)">DIAG</button>
             <button onclick="apkShowMyHidden()" id="apk-hidden-btn" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">MY HIDDEN</button>
             ${(state.isAdmin && !state.viewAsRep) ? `<button onclick="apkShowGlobalRemoved()" style="background:transparent;border:1px solid rgba(220,38,38,0.5);color:var(--red);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">ALL REMOVED</button>` : ''}
             <button onclick="apkConfirmReset()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">RESET</button>
             <button onclick="apkSaveNow()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:5px 14px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;font-weight:700" id="apk-save-btn">SAVE PLAN</button>
           </div>
         </div>
-        <div id="apk-pool" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;min-height:70px;max-height:180px;overflow-y:auto">
+        <div id="apk-pool" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;min-height:60px;max-height:160px;overflow-y:auto">
           <!-- pool cards injected by apkRenderPool -->
         </div>
       </div>
@@ -6391,41 +6139,61 @@ function apkRender(repAccs, otherAccs, rep) {
 
   apkRenderColumns(repAccs);
   apkRenderPool(repAccs);
-  apkLogDiag('Loaded plan for ' + rep + ' · ' + Object.keys(window.apkState).length + ' accounts · saved: ' + (Object.values(window.apkState).filter(z => z !== 'pool').length) + ' in zones');
 }
 
 function apkCardHtml(name, zone) {
   const acc = state.accounts.find(a => a.name === name);
-  const st = (acc?.status || '').replace(/[🔴🟠⚫🟡]/g, '').trim();
+  const rawStatus = acc?.status || '';
+  const st = rawStatus.replace(/[🔴🟠⚫🟡\u{1F534}\u{1F7E0}\u{26AB}\u{1F7E1}]/gu, '').trim();
   const yrs = acc?.years ? Object.keys(acc.years).filter(y => acc.years[y] > 0).sort() : [];
   const range = yrs.length >= 2 ? yrs[0] + '–' + yrs[yrs.length - 1] : yrs[0] || '';
-  const zoneColors = { solid: 'var(--gold)', center: 'var(--blue-b)', ring: 'var(--green)', pool: 'var(--border)' };
+  const safeName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+  // Status dot color
+  const dotColor = rawStatus.includes('🔴') ? 'var(--red)'
+    : rawStatus.includes('🟠') ? 'var(--orange)'
+    : rawStatus.includes('⚫') ? 'var(--text-3)'
+    : rawStatus.includes('🟡') ? 'var(--gold)'
+    : 'var(--green)';
+
   const allZones = [
     { key: 'solid',  icon: '★', label: 'Core' },
     { key: 'center', icon: '◈', label: 'Pursue' },
     { key: 'ring',   icon: '○', label: 'Ring' },
     { key: 'pool',   icon: '↓', label: 'Pool' },
   ];
-  const safeName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  const btnHtml = allZones.filter(z => z.key !== zone).map(z =>
-    `<button onclick="apkMove('${safeName}','${z.key}')" title="→ ${z.label}"
-      style="padding:2px 6px;font-size:9px;font-family:var(--mono);background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:2px;transition:all 0.12s"
-      onmouseover="this.style.background='var(--blue-b)';this.style.borderColor='var(--blue-b)';this.style.color='#fff'"
-      onmouseout="this.style.background='';this.style.borderColor='var(--border)';this.style.color='var(--text-3)'"
-      >${z.icon} ${z.label}</button>`
+
+  if (zone === 'pool') {
+    // Pool cards: compact chip style
+    const btnHtml = allZones.filter(z => z.key !== 'pool').map(z =>
+      `<button onclick="apkMove('${safeName}','${z.key}')" class="apk-zone-btn" title="→ ${z.label}">${z.icon}</button>`
+    ).join('');
+    return `<div style="background:var(--s2);border:1px solid var(--border);border-left:3px solid var(--border);border-radius:var(--r);padding:4px 7px;width:150px;flex-shrink:0;min-height:0">
+      <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px" title="${escHtml(name)}">
+        <span onclick="apkOpenAccount('${escHtml(name)}')" style="cursor:pointer" onmouseover="this.style.color='var(--blue-b)'" onmouseout="this.style.color=''">${escHtml(name)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">$${formatNum(acc?.total||0)}</span>
+        <div style="display:flex;gap:2px">${btnHtml}</div>
+      </div>
+    </div>`;
+  }
+
+  // Zone cards (solid/center/ring): compact single-row design
+  const moveZones = allZones.filter(z => z.key !== zone);
+  const btnHtml = moveZones.map(z =>
+    `<button onclick="apkMove('${safeName}','${z.key}')" class="apk-zone-btn" title="→ ${z.label}">${z.icon} ${z.label}</button>`
   ).join('');
 
-  const isPool = zone === 'pool';
-  return `<div style="background:var(--s1);border:1px solid var(--border);border-left:3px solid ${zoneColors[zone]};border-radius:var(--r2);padding:8px 10px;${isPool ? 'width:160px;flex-shrink:0' : 'margin-bottom:6px'}">
-    <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px" title="${escHtml(name)}">
-    <span onclick="apkOpenAccount('${escHtml(name)}')"
-      style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.3);text-underline-offset:2px"
-      onmouseover="this.style.color='var(--blue-b)'" onmouseout="this.style.color=''"
-      title="Open account">${escHtml(name)}</span>
-  </div>
-    <div style="font-family:var(--mono);font-size:10px;color:var(--text-2);margin-bottom:2px">$${formatNum(acc?.total || 0)}${range ? ' <span style="color:var(--text-3)">' + range + '</span>' : ''}</div>
-    ${st ? `<div style="font-size:9px;color:var(--text-3);margin-bottom:4px">${escHtml(st)}</div>` : ''}
-    <div style="display:flex;gap:3px;flex-wrap:wrap">${btnHtml}</div>
+  return `<div class="apk-zone-card" data-col="${zone}" title="${escHtml(name)}">
+    <div style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0;margin-top:1px"></div>
+    <div class="apk-zone-card-info">
+      <div class="apk-zone-card-name">
+        <span onclick="apkOpenAccount('${escHtml(name)}')" style="cursor:pointer" onmouseover="this.style.color='var(--blue-b)'" onmouseout="this.style.color=''">${escHtml(name)}</span>
+      </div>
+      <div class="apk-zone-card-meta">$${formatNum(acc?.total||0)}${range ? ' · ' + range : ''}${st ? ' · ' + st.slice(0,22) : ''}</div>
+    </div>
+    <div class="apk-zone-card-btns">${btnHtml}</div>
   </div>`;
 }
 
@@ -6481,32 +6249,13 @@ function apkRenderHeaders() {
   });
 }
 
-// ── Diagnostic ──────────────────────────────────────────
-const apkDiagLog = [];
-function apkLogDiag(msg) {
-  const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  apkDiagLog.unshift('[' + ts + '] ' + msg);
-  if (apkDiagLog.length > 20) apkDiagLog.pop();
-  const el = document.getElementById('apk-diag-text');
-  if (el) el.innerHTML = apkDiagLog.slice(0, 5).map(l => escHtml(l)).join(' &nbsp;|&nbsp; ');
-}
-function apkToggleDiag() {
-  const bar = document.getElementById('apk-diag-bar');
-  if (!bar) return;
-  const vis = bar.style.display !== 'none' && bar.style.display !== '';
-  bar.style.display = vis ? 'none' : 'flex';
-  if (!vis) {
-    const el = document.getElementById('apk-diag-text');
-    if (el) el.innerHTML = apkDiagLog.map(l => escHtml(l)).join('<br>');
-  }
-}
+
 
 // ── Save / Reset ─────────────────────────────────────────
 function apkSaveNow() {
   const rep = window.apkRep;
   if (!rep) { showToast('No rep selected', 'error'); return; }
   const cards = Object.entries(window.apkState).map(([name, zone], i) => ({ name, zone: zone.toUpperCase(), order: i }));
-  apkLogDiag('Saving ' + cards.length + ' accounts for ' + rep);
   saveAttackPlan(rep, cards);
 }
 
@@ -6534,7 +6283,6 @@ function apkConfirmReset() {
   apkRenderColumns(repAccsNew);
   apkRenderPool(repAccsNew);
   apkRenderHeaders();
-  apkLogDiag('Reset to default for ' + rep);
   showToast('Plan reset to default layout ✓', 'success');
 }
 
@@ -6631,7 +6379,7 @@ function apkRequestHideTransfer(name, existingNote) {
     .catch(e => showToast('Error: ' + e.message, 'error'));
   // Re-render transfer panel
   const repAccs = state.accounts.filter(a => a.rep === repId);
-  const otherAccs = state.accounts.filter(a => a.rep !== repId && isInactive(a)).sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,50);
+  const otherAccs = state.accounts.filter(a => a.rep !== repId && isInactive(a) && !state.globallyRemovedFromPool.has(a.name)).sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,50);
   const panel = document.getElementById('apk-transfer');
   if (panel) apkRenderTransferPanel(panel, otherAccs, repId);
   // Re-render modal if open
@@ -6655,8 +6403,10 @@ function apkLoadHiddenTransferAccounts() {
 
 function apkRenderTransferPanel(panelEl, otherAccs, repId) {
   const hiddenSet = state.hiddenTransferAccounts[repId] || new Set();
-  const visible = otherAccs.filter(a => !hiddenSet.has(a.name));
-  const hiddenCount = otherAccs.filter(a => hiddenSet.has(a.name)).length;
+  const globalRemoved = state.globallyRemovedFromPool || new Set();
+  const accsFiltered = otherAccs.filter(a => !globalRemoved.has(a.name));
+  const visible = accsFiltered.filter(a => !hiddenSet.has(a.name));
+  const hiddenCount = accsFiltered.filter(a => hiddenSet.has(a.name)).length;
   if (!visible.length && !hiddenCount) {
     panelEl.innerHTML = '<div style="font-size:11px;color:var(--text-3);padding:14px;text-align:center">No inactive accounts from other reps</div>';
     return;
@@ -6759,7 +6509,7 @@ function apkRenderTransferModalBody() {
   const hiddenFilter = document.getElementById('tm-hidden')?.value || 'visible';
   const sortBy = document.getElementById('tm-sort')?.value || 'revenue';
 
-  let accs = state.accounts.filter(a => a.rep !== repId && isInactive(a));
+  let accs = state.accounts.filter(a => a.rep !== repId && isInactive(a) && !state.globallyRemovedFromPool.has(a.name));
 
   // Apply filters
   if (search) accs = accs.filter(a => a.name.toLowerCase().includes(search));
@@ -7168,8 +6918,7 @@ INSTRUCTIONS:
         <div style="width:22px;height:22px;border-radius:50%;background:rgba(212,175,55,0.2);border:1px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;margin-top:2px;color:var(--gold)">✦</div>
         <div style="background:var(--s2);border:1px solid var(--border);border-radius:2px var(--r2) var(--r2) var(--r2);padding:9px 12px;font-size:12px;line-height:1.6;color:var(--text);max-width:92%;white-space:pre-wrap">${escHtml(answer)}</div>
       </div>`;
-    apkLogDiag('AI asked: ' + question.slice(0,40));
-  } catch(e) {
+    } catch(e) {
     const thinkEl = document.getElementById(thinkId);
     if (thinkEl) thinkEl.outerHTML = `<div style="color:var(--red);font-size:11px;padding:4px">Error: ${escHtml(e.message)}</div>`;
   } finally {

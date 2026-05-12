@@ -3232,19 +3232,95 @@ www.intransittech.com"
         <div id="sig-preview" style="display:none;margin-top:16px;padding:14px 16px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid var(--blue);font-size:13px;white-space:pre-wrap;line-height:1.7;color:var(--text-dim)"></div>
       </div>
 
+      <!-- AI Configuration — admin only -->
+      ${state.isAdmin ? `
+      <div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px">AI Configuration</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
+          Set the Anthropic API key to enable AI email generation for all reps. Stored locally in this browser — never sent to any server or saved in code.
+        </div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:6px">ANTHROPIC API KEY</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="password" id="api-key-input" placeholder="sk-ant-api03-..."
+              value="${localStorage.getItem('it_anthro_key') ? '••••••••••••••••••••••••••••••••' : ''}"
+              style="flex:1;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);
+                     font-family:var(--font-mono);font-size:12px;padding:9px 12px;outline:none;
+                     border-radius:2px;letter-spacing:0.05em"
+              onfocus="if(this.value.startsWith('•'))this.value=''"
+            >
+            <button onclick="saveApiKey()"
+              style="background:var(--blue);border:none;color:white;font-family:var(--font-mono);
+                     font-size:11px;padding:9px 18px;cursor:pointer;letter-spacing:0.08em;white-space:nowrap">
+              SAVE KEY
+            </button>
+            <button onclick="clearApiKey()"
+              style="background:transparent;border:1px solid var(--border);color:var(--text-muted);
+                     font-family:var(--font-mono);font-size:11px;padding:9px 14px;cursor:pointer">
+              CLEAR
+            </button>
+          </div>
+          <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">
+            Status: <span style="color:${localStorage.getItem('it_anthro_key') ? 'var(--green)' : 'var(--accent)'};font-weight:500" id="api-key-status">
+              ${localStorage.getItem('it_anthro_key') ? '✓ API key is set — AI emails enabled' : '⚠ No key set — AI emails disabled'}
+            </span>
+          </div>
+          <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
+            Get your key at: <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--blue-bright)">console.anthropic.com</a>
+          </div>
+        </div>
+      </div>` : ''}
+
       <!-- App Info -->
       <div style="background:var(--navy-light);border:1px solid var(--border);padding:20px">
-        <div style="font-size:15px;font-weight:600;margin-bottom:4px">About</div>
-        <div style="font-size:12px;color:var(--text-muted);line-height:1.8">
-          <div>Intransit Sales Intelligence App</div>
-          <div>Data source: CCCRM on INTRANSIT-RDS02</div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:12px">About</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Intransit Sales Intelligence App</div>
+        <div style="background:rgba(192,57,43,0.10);border-left:3px solid #c0392b;border-radius:0 3px 3px 0;padding:12px 14px;font-size:12px;color:#e8a090;line-height:1.7">
+          <strong style="color:#e05040;display:block;margin-bottom:5px;font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em">⚠ STRICTLY CONFIDENTIAL</strong>
+          This application and all data accessible within it are the exclusive proprietary property of <strong style="color:#e8f0fe">Intransit Technologies Corp.</strong>
+          Access is granted solely for authorized business use. Unauthorized disclosure is strictly prohibited and may result in termination and/or legal proceedings.<br><br>
+          By using this application you confirm acceptance of the <strong style="color:#e8f0fe">Intransit Technologies Confidentiality &amp; Acceptable Use Agreement</strong> presented at login. All sessions are logged and subject to audit.
         </div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:12px;text-align:right;font-family:var(--font-mono)">&copy; ${new Date().getFullYear()} Intransit Technologies Corp. All rights reserved.</div>
       </div>
 
     </div>`;
 }
 
-function loadSignatureForRep(rep) {
+function saveApiKey() {
+  const input = document.getElementById('api-key-input');
+  if (!input) return;
+  const key = input.value.trim();
+  if (!key || key.startsWith('•')) {
+    showToast('Please enter a valid API key', 'error');
+    return;
+  }
+  if (!key.startsWith('sk-ant-')) {
+    showToast('Invalid key format — must start with sk-ant-', 'error');
+    return;
+  }
+  localStorage.setItem('it_anthro_key', key);
+  input.value = '••••••••••••••••••••••••••••••••';
+  const status = document.getElementById('api-key-status');
+  if (status) {
+    status.style.color = 'var(--green)';
+    status.textContent = '✓ API key is set — AI emails enabled';
+  }
+  showToast('API key saved ✓ — AI emails now enabled', 'success');
+}
+
+function clearApiKey() {
+  localStorage.removeItem('it_anthro_key');
+  sessionStorage.removeItem('it_ak');
+  const input = document.getElementById('api-key-input');
+  if (input) input.value = '';
+  const status = document.getElementById('api-key-status');
+  if (status) {
+    status.style.color = 'var(--accent)';
+    status.textContent = '⚠ No key set — AI emails disabled';
+  }
+  showToast('API key cleared', 'success');
+}
   const sig = state.signaturesCache[rep] || '';
   const el = document.getElementById('sig-text');
   if (el) el.value = sig;
@@ -3787,14 +3863,6 @@ No markdown, no code fences, no explanation. Just the JSON.`;
     });
     const data = await response.json();
     const rawText = data.content?.[0]?.text || '';
-
-    // DEBUG — show raw response so we can see what API returns
-    console.log('=== COLLECTIONS EMAIL RAW API RESPONSE ===');
-    console.log(rawText);
-    console.log('===========================================');
-    // Also show in the body field temporarily so we can see it
-    document.getElementById('coll-email-fields').style.display = 'block';
-    document.getElementById('coll-email-body').value = 'DEBUG — RAW API RESPONSE:\n\n' + rawText;
 
     // Robust parsing — handle escaped newlines, code fences, trailing content
     let parsed = null;
@@ -4350,18 +4418,12 @@ function updateBadges() {
 //  ANTHROPIC API KEY — stored in session memory only, never in code
 // ══════════════════════════════════════════════════════════
 function getAnthropicKey() {
-  if (!sessionStorage.getItem('it_ak')) {
-    const key = prompt(
-      'Enter your Anthropic API key to enable AI email generation.\n\n' +
-      'This is stored only for this browser session and never saved anywhere.'
-    );
-    if (!key || !key.startsWith('sk-ant-')) {
-      showToast('Invalid API key — AI emails disabled', 'error');
-      return null;
-    }
-    sessionStorage.setItem('it_ak', key.trim());
+  const key = localStorage.getItem('it_anthro_key') || sessionStorage.getItem('it_ak');
+  if (!key) {
+    showToast('No API key set — go to Settings → AI Configuration to add your key', 'error');
+    return null;
   }
-  return sessionStorage.getItem('it_ak');
+  return key;
 }
 
 // ══════════════════════════════════════════════════════════

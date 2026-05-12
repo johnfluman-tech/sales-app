@@ -446,6 +446,30 @@ td {
   color: var(--text-dim);
 }
 
+/* ── CONTACT NOTES ──────────────────────────────────────── */
+.cnote-log { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
+.cnote-entry { padding: 8px 10px; background: var(--navy-mid); border: 1px solid var(--border); border-left: 3px solid var(--blue-bright); font-size: 12px; line-height: 1.5; }
+.cnote-entry-meta { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-bottom: 3px; display: flex; gap: 8px; }
+.cnote-type-badge { font-size: 9px; padding: 1px 5px; border-radius: 2px; background: rgba(52,152,219,0.15); color: var(--blue-bright); font-family: var(--font-mono); letter-spacing: 0.05em; }
+.cnote-type-badge.email { background: rgba(39,174,96,0.15); color: #52c27a; }
+.cnote-type-badge.meeting { background: rgba(155,89,182,0.15); color: #a29bfe; }
+.cnote-type-badge.note { background: rgba(180,140,0,0.2); color: #d4ac0d; }
+.cnote-form { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.cnote-row { display: flex; gap: 6px; }
+.cnote-type-sel { flex: 0 0 90px; font-size: 11px; padding: 5px 6px; background: var(--navy-mid); border: 1px solid var(--border); color: var(--text); border-radius: 2px; font-family: var(--font-mono); }
+.cnote-text-input { flex: 1; font-size: 11px; padding: 5px 8px; background: var(--navy-mid); border: 1px solid var(--border); color: var(--text); border-radius: 2px; resize: vertical; min-height: 52px; font-family: var(--font-sans); line-height: 1.5; }
+.cnote-save-btn { align-self: flex-end; padding: 5px 14px; background: var(--blue); color: #fff; border: none; font-size: 11px; font-family: var(--font-mono); letter-spacing: 0.05em; cursor: pointer; border-radius: 2px; }
+.cnote-save-btn:hover { background: var(--blue-bright); }
+/* ── AI NEXT BEST ACTION ─────────────────────────────────── */
+.nba-btn { width: 100%; padding: 8px 12px; background: linear-gradient(135deg, rgba(52,152,219,0.15), rgba(155,89,182,0.1)); border: 1px solid var(--blue); color: var(--blue-bright); font-size: 11px; font-family: var(--font-mono); letter-spacing: 0.08em; cursor: pointer; border-radius: 2px; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; }
+.nba-btn:hover { background: rgba(52,152,219,0.25); }
+.nba-result { margin-top: 10px; padding: 12px 14px; background: rgba(52,152,219,0.07); border: 1px solid rgba(52,152,219,0.3); border-left: 3px solid var(--blue-bright); font-size: 12px; line-height: 1.7; color: var(--text-dim); }
+.nba-result-header { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.15em; color: var(--blue-bright); margin-bottom: 8px; }
+.nba-action-item { display: flex; gap: 8px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.nba-action-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.nba-action-num { font-family: var(--font-mono); font-size: 10px; color: var(--blue-bright); flex-shrink: 0; padding-top: 1px; }
+/* ── END NEW CSS ─────────────────────────────────────────── */
+
 .detail-contact-card {
   margin: 14px 20px 0;
   padding: 12px 14px;
@@ -1476,6 +1500,32 @@ async function loadSupplementalData() {
     }
 
     state.cacheLoaded = true;
+
+    // Load contact notes (_CONTACT_NOTES tab — app-managed, may not exist yet)
+    try {
+      const cnRows = await sheetsGet("'_CONTACT_NOTES'!A1:F50000");
+      if (cnRows.length > 1) {
+        state.contactNotesCache = {};
+        for (let r = 1; r < cnRows.length; r++) {
+          const row = cnRows[r];
+          const acct = (row[0] || '').trim();
+          if (!acct) continue;
+          if (!state.contactNotesCache[acct]) state.contactNotesCache[acct] = [];
+          state.contactNotesCache[acct].push({
+            contact: (row[1] || '').trim(),
+            type:    (row[2] || 'Note').trim(),
+            note:    (row[3] || '').trim(),
+            date:    (row[4] || '').trim(),
+            rep:     (row[5] || '').trim(),
+          });
+        }
+      } else {
+        state.contactNotesCache = {};
+      }
+    } catch(e) {
+      state.contactNotesCache = {};
+    }
+
     console.log('Supplemental data loaded');
   } catch(e) {
     console.error('Could not load supplemental data:', e);
@@ -1492,13 +1542,49 @@ function renderContactsTab(acc) {
   const purchasing = contacts.filter(c => c.type !== 'AP/Collections');
   const ap = contacts.filter(c => c.type === 'AP/Collections');
 
+  // Load contact notes for this account from cache
+  const acctNotes = (state.contactNotesCache || {})[acc.name.trim()] || [];
+
+  const renderContactNotes = (contactName) => {
+    const notes = acctNotes.filter(n => n.contact === contactName);
+    if (!notes.length) return '';
+    return `<div class="cnote-log" id="cnlog-${btoa(encodeURIComponent(contactName)).replace(/=/g,'')}">
+      ${notes.slice().reverse().map(n => `
+        <div class="cnote-entry">
+          <div class="cnote-entry-meta">
+            <span class="cnote-type-badge ${n.type.toLowerCase()}">${n.type.toUpperCase()}</span>
+            <span>${escHtml(n.rep)}</span>
+            <span>${escHtml(n.date)}</span>
+          </div>
+          <div>${escHtml(n.note)}</div>
+        </div>`).join('')}
+    </div>`;
+  };
+
+  const renderNoteForm = (contactName, accountName) => {
+    const safeId = btoa(encodeURIComponent(contactName)).replace(/=/g,'');
+    return `
+      <div class="cnote-form" style="margin-top:8px">
+        <div class="cnote-row">
+          <select class="cnote-type-sel" id="cntype-${safeId}">
+            <option value="Call">Call</option>
+            <option value="Email">Email</option>
+            <option value="Meeting">Meeting</option>
+            <option value="Note">Note</option>
+          </select>
+          <textarea class="cnote-text-input" id="cnnote-${safeId}" placeholder="Log a call, email, or note for ${escHtml(contactName)}..."></textarea>
+        </div>
+        <button class="cnote-save-btn" onclick="saveContactNote('${escHtml(accountName)}','${escHtml(contactName)}','${safeId}')">SAVE NOTE</button>
+      </div>`;
+  };
+
   const renderGroup = (list, label, color) => {
     if (!list.length) return '';
     return `
-      <div style="margin-bottom:14px">
+      <div style="margin-bottom:16px">
         <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:${color};margin-bottom:8px;text-transform:uppercase">${label} (${list.length})</div>
         ${list.map(c => `
-          <div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${color};margin-bottom:6px">
+          <div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${color};margin-bottom:8px">
             <div style="font-weight:500;font-size:13px">${escHtml(c.name)}</div>
             ${c.title ? `<div style="font-size:11px;color:var(--text-muted);margin-top:1px">${escHtml(c.title)}</div>` : ''}
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
@@ -1506,13 +1592,157 @@ function renderContactsTab(acc) {
               ${c.phone ? `<span class="contact-link contact-blur" style="font-size:11px">☎ ${escHtml(c.phone)}</span>` : ''}
               ${c.mobile ? `<span class="contact-link contact-blur" style="font-size:11px">📱 ${escHtml(c.mobile)}</span>` : ''}
             </div>
+            ${renderContactNotes(c.name)}
+            ${renderNoteForm(c.name, acc.name)}
           </div>`).join('')}
       </div>`;
   };
 
-  return renderGroup(purchasing, '🛒 Purchasing Contacts', 'var(--blue-bright)') +
-         renderGroup(ap, '💰 AP / Collections Contacts', 'var(--accent)');
+  // AI Next Best Action section
+  const nbaSection = `
+    <div style="margin-bottom:16px;padding:12px;background:var(--navy-mid);border:1px solid var(--border)">
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--blue-bright);margin-bottom:8px">✦ AI NEXT BEST ACTION</div>
+      <button class="nba-btn" onclick="generateNextBestAction('${escHtml(acc.name)}')">
+        ✦ ANALYZE ACCOUNT &amp; RECOMMEND NEXT STEPS
+      </button>
+      <div id="nba-result-${btoa(encodeURIComponent(acc.name)).replace(/=/g,'')}" style="display:none"></div>
+    </div>`;
+
+  return nbaSection +
+    renderGroup(purchasing, '🛒 Purchasing Contacts', 'var(--blue-bright)') +
+    renderGroup(ap, '💰 AP / Collections Contacts', 'var(--accent)');
 }
+
+// ── SAVE CONTACT NOTE ──────────────────────────────────────
+async function saveContactNote(accountName, contactName, safeId) {
+  const typeEl = document.getElementById('cntype-' + safeId);
+  const noteEl = document.getElementById('cnnote-' + safeId);
+  if (!typeEl || !noteEl) return;
+  const type = typeEl.value;
+  const note = noteEl.value.trim();
+  if (!note) { showToast('Please enter a note', 'error'); return; }
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) +
+                  ' ' + now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const rep = state.user?.email || 'unknown';
+
+  // Save to _CONTACT_NOTES sheet
+  try {
+    await sheetsAppend("'_CONTACT_NOTES'!A1", [[
+      accountName, contactName, type, note, dateStr, rep
+    ]]);
+    showToast('Note saved ✓', 'success');
+    noteEl.value = '';
+
+    // Update local cache
+    if (!state.contactNotesCache) state.contactNotesCache = {};
+    if (!state.contactNotesCache[accountName]) state.contactNotesCache[accountName] = [];
+    state.contactNotesCache[accountName].push({ contact: contactName, type, note, date: dateStr, rep });
+
+    // Re-render contacts tab to show new note
+    const acc = state.accounts.find(a => a.name === accountName);
+    if (acc) renderDetailPanel(acc, 'contacts');
+  } catch(e) {
+    showToast('Could not save note — ' + e.message, 'error');
+  }
+}
+
+// ── AI NEXT BEST ACTION ────────────────────────────────────
+async function generateNextBestAction(accountName) {
+  const apiKey = getAnthropicKey();
+  if (!apiKey) return;
+
+  const acc = state.accounts.find(a => a.name === accountName);
+  if (!acc) return;
+
+  const safeId = btoa(encodeURIComponent(accountName)).replace(/=/g,'');
+  const resultDiv = document.getElementById('nba-result-' + safeId);
+  if (!resultDiv) return;
+
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = `<div class="nba-result"><div class="nba-result-header">⟳ ANALYZING ACCOUNT...</div><div style="color:var(--text-muted);font-size:11px">Reviewing purchase history, RFQs, quotes, and activity...</div></div>`;
+
+  // Gather account data for the prompt
+  const h = state.historyCache[accountName.trim()] || { invoices: [], reqs: [], quotes: [] };
+  const contacts = state.contactsCache[accountName.trim()] || [];
+  const notes = (state.contactNotesCache || {})[accountName.trim()] || [];
+
+  // Top parts purchased
+  const partCounts = {};
+  h.invoices.forEach(inv => { if (inv.part) partCounts[inv.part] = (partCounts[inv.part] || 0) + 1; });
+  const topParts = Object.entries(partCounts).sort((a,b) => b[1]-a[1]).slice(0,5).map(([p]) => p).join(', ');
+
+  // Recent RFQs
+  const recentReqs = h.reqs.slice(0,5).map(r => r.part || r.desc || '').filter(Boolean).join(', ');
+
+  // Open quotes
+  const openQuotes = h.quotes.filter(q => !q.closed).length;
+
+  // Revenue trend
+  const curYear = new Date().getFullYear();
+  const rev2024 = acc[`Y${curYear-1}`] || 0;
+  const rev2025 = acc[`Y${curYear}`] || 0;
+
+  const prompt = `You are a sales intelligence assistant for Intransit Technologies, an aerospace and industrial parts distributor.
+
+Account: ${accountName}
+Status: ${acc.status || 'Unknown'}
+Days inactive: ${acc.daysInactive || 0}
+Last sale: ${acc.lastSale || 'Unknown'}
+Revenue ${curYear-1}: $${Number(rev2024).toLocaleString()}
+Revenue ${curYear} YTD: $${Number(rev2025).toLocaleString()}
+Top purchased parts: ${topParts || 'none on record'}
+Recent RFQs: ${recentReqs || 'none'}
+Open quotes: ${openQuotes}
+Contacts: ${contacts.map(c => c.name + (c.title ? ' (' + c.title + ')' : '')).join(', ') || 'none'}
+Recent contact notes: ${notes.slice(-3).map(n => n.type + ': ' + n.note).join(' | ') || 'none'}
+
+Based on this data, provide exactly 3 specific, actionable next steps for the sales rep. Be concrete — reference specific parts, quote amounts, or contacts by name where relevant. Format as JSON:
+{"actions": [{"priority": "HIGH/MED", "action": "short title", "detail": "specific what to do and why"}]}
+Return ONLY the JSON, no other text.`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 600, messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+    let parsed;
+    try { parsed = JSON.parse(text.replace(/```json|```/g,'').trim()); } catch(e) { parsed = null; }
+
+    if (parsed?.actions?.length) {
+      const priorityColor = p => p === 'HIGH' ? '#e74c3c' : '#e67e22';
+      resultDiv.innerHTML = `
+        <div class="nba-result">
+          <div class="nba-result-header">✦ RECOMMENDED NEXT STEPS</div>
+          ${parsed.actions.map((a,i) => `
+            <div class="nba-action-item">
+              <div class="nba-action-num">${i+1}.</div>
+              <div>
+                <div style="font-size:12px;font-weight:500;color:var(--text);margin-bottom:2px">
+                  <span style="font-size:9px;padding:1px 5px;border-radius:2px;background:${priorityColor(a.priority)}22;color:${priorityColor(a.priority)};font-family:var(--font-mono);margin-right:5px">${a.priority}</span>
+                  ${escHtml(a.action)}
+                </div>
+                <div style="font-size:11px;color:var(--text-dim);line-height:1.5">${escHtml(a.detail)}</div>
+              </div>
+            </div>`).join('')}
+        </div>`;
+    } else {
+      resultDiv.innerHTML = `<div class="nba-result"><div class="nba-result-header">ANALYSIS COMPLETE</div><div style="font-size:11px;color:var(--text-dim)">${escHtml(text)}</div></div>`;
+    }
+  } catch(e) {
+    resultDiv.innerHTML = `<div class="nba-result" style="border-color:var(--accent)"><div style="color:var(--accent);font-size:11px">Error: ${escHtml(e.message)}</div></div>`;
+  }
+}
+
 
 // ── HISTORY TAB ────────────────────────────────────────────
 function renderHistoryTab(acc) {
@@ -1674,6 +1904,7 @@ let state = {
   contactsCache: {},      // keyed by customer name
   historyCache: {},       // keyed by customer name
   collectionsCache: {},   // keyed by customer name
+  contactNotesCache: {},  // keyed by account name — contact-level activity notes
   cacheLoaded: false,
   ordersCache: [],        // open orders (current backlog)
   ordersHistoryCache: [], // orders placed by date (for booked calc)

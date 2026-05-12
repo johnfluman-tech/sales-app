@@ -1088,7 +1088,6 @@ td {
 }
 </style>
 <script src="https://accounts.google.com/gsi/client" async></script>
-<script src="https://apis.google.com/js/api.js" async></script>
 </head>
 <body>
 
@@ -1938,40 +1937,20 @@ function handleGoogleCredential(response) {
   state.user = { email: payload.email, name: payload.name };
   localStorage.setItem('it_user', JSON.stringify(state.user));
   setRepFromEmail(payload.email);
-  // Load gapi and get token
-  loadGapi();
+  // Now get access token for Sheets API
+  requestSheetsToken();
 }
 
-function loadGapi() {
-  if (window.gapi) {
-    gapi.load('client:auth2', initGapiClient);
-  } else {
-    setTimeout(loadGapi, 200);
-  }
-}
-
-async function initGapiClient() {
+function requestSheetsToken() {
+  const hasConsented = localStorage.getItem('it_consented') === 'true';
   try {
-    await new Promise((resolve, reject) => {
-      gapi.load('client', { callback: resolve, onerror: reject });
-    });
-    await gapi.client.init({});
-
-    const hasConsented = localStorage.getItem('it_consented') === 'true';
-
     const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CONFIG.CLIENT_ID,
       scope: CONFIG.SCOPES,
       hint: state.user?.email || '',
-      hosted_domain: 'intransittech.com',
       callback: (tokenResponse) => {
         if (tokenResponse.error) {
-          // If user closed the popup, show a retry message
-          if (tokenResponse.error === 'access_denied' || tokenResponse.error === 'popup_closed_by_user') {
-            showToast('Sign-in cancelled — click Sign In to try again', 'error');
-          } else {
-            showToast('Sign-in error: ' + tokenResponse.error, 'error');
-          }
+          showToast('Sign-in error: ' + tokenResponse.error, 'error');
           return;
         }
         state.accessToken = tokenResponse.access_token;
@@ -1981,13 +1960,19 @@ async function initGapiClient() {
         completeLogin();
       },
     });
-
-    // Use 'consent' prompt first time, then '' for repeat logins
     tokenClient.requestAccessToken({ prompt: hasConsented ? '' : 'consent' });
   } catch(e) {
-    console.error('Auth error:', e);
-    showToast('Sign-in error: ' + (e.error || e.message || JSON.stringify(e)), 'error');
+    showToast('Auth error: ' + e.message, 'error');
   }
+}
+
+function loadGapi() {
+  // No longer needed — using GIS token client directly
+  requestSheetsToken();
+}
+
+async function initGapiClient() {
+  // No longer needed
 }
 function completeLogin() {
   document.getElementById('login-screen').style.display = 'none';
@@ -3299,7 +3284,7 @@ www.intransittech.com"
           Access is granted solely for authorized business use. Unauthorized disclosure is strictly prohibited and may result in termination and/or legal proceedings.<br><br>
           By using this application you confirm acceptance of the <strong style="color:#e8f0fe">Intransit Technologies Confidentiality &amp; Acceptable Use Agreement</strong> presented at login. All sessions are logged and subject to audit.
         </div>
-        <div style="font-size:10px;color:var(--text-muted);margin-top:12px;text-align:right;font-family:var(--font-mono)">&copy; ${new Date().getFullYear()} Intransit Technologies Corp. All rights reserved.</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:12px;text-align:right;font-family:var(--font-mono)">&copy; 2026 Intransit Technologies Corp. All rights reserved.</div>
       </div>
 
     </div>`;

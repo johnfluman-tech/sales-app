@@ -1971,10 +1971,11 @@ async function initGapiClient() {
         }
         state.accessToken = tokenResponse.access_token;
         localStorage.setItem('it_token', state.accessToken);
+        localStorage.setItem('it_token_time', Date.now().toString());
         completeLogin();
       },
     });
-    tokenClient.requestAccessToken({ prompt: 'consent' });
+    tokenClient.requestAccessToken({ prompt: '' });
   } catch(e) {
     console.error('Auth error:', e);
     showToast('Sign-in error: ' + (e.error || e.message || JSON.stringify(e)), 'error');
@@ -2023,7 +2024,16 @@ function setRepFromEmail(email) {
 async function checkAuth() {
   const savedToken = localStorage.getItem('it_token');
   const savedUser  = localStorage.getItem('it_user');
+  const tokenTime  = localStorage.getItem('it_token_time');
   if (savedToken && savedUser) {
+    // Check if token is older than 50 minutes (Google tokens last 60 min)
+    const age = Date.now() - parseInt(tokenTime || '0');
+    if (age > 50 * 60 * 1000) {
+      // Token likely expired — clear it so user gets fresh login
+      localStorage.removeItem('it_token');
+      localStorage.removeItem('it_token_time');
+      return false;
+    }
     state.accessToken = savedToken;
     state.user = JSON.parse(savedUser);
     setRepFromEmail(state.user.email);

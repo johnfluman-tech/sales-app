@@ -2831,6 +2831,18 @@ function refreshDashboard() {
     return d >= from && d <= to && repMatch;
   });
 
+  // Show diagnostic in debug bar
+  const debugEl = document.getElementById('dash-debug');
+  if (debugEl) {
+    const sample = state.gpCache[0];
+    const sampleFiltered = gpFiltered[0];
+    debugEl.innerHTML = `<span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">
+      GP cache: ${state.gpCache.length} rows | Filtered: ${gpFiltered.length} | Rep filter: "${repFilter||'none'}" | Range: ${from}→${to}
+      ${sample ? ` | Keys: ${Object.keys(sample).slice(0,6).join(', ')}` : ' | EMPTY'}
+      ${sampleFiltered ? ` | Sample SALES_REP: "${sampleFiltered.SALES_REP}" | INVOICE_TOTAL: "${sampleFiltered.INVOICE_TOTAL}"` : ''}
+    </span>`;
+  }
+
   const shipped   = gpFiltered.reduce((s,r) => s + parseMoney(r.INVOICE_TOTAL), 0);
   const gp        = gpFiltered.reduce((s,r) => s + parseMoney(r.GP), 0);
   const gpPct     = shipped > 0 ? (gp / shipped * 100) : 0;
@@ -2915,8 +2927,8 @@ function refreshDashboard() {
   `;
 
   // Remove debug bar now that we're done debugging
-  const debugEl = document.getElementById('dash-debug');
-  if (debugEl) debugEl.innerHTML = '';
+  const debugEl2 = document.getElementById('dash-debug');
+  if (debugEl2) debugEl2.innerHTML = '';
 
   // Rep table — admin only and not viewing as a specific rep
   const repTableEl = document.getElementById('dash-rep-table');

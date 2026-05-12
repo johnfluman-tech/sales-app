@@ -580,8 +580,7 @@ body::before {
 .contact-card-title { font-size: 11px; color: var(--text-3); margin-bottom: 6px; }
 .contact-card-links { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 .contact-link { color: var(--blue-b); display: flex; align-items: center; gap: 5px; }
-.contact-blur { filter: blur(4px); transition: filter 0.15s; cursor: pointer; }
-.contact-blur:hover { filter: none; }
+.contact-blur { transition: filter 0.15s; }
 
 /* ── MODAL ─────────────────────────────── */
 .modal-overlay {
@@ -1749,31 +1748,79 @@ async function sheetsGetFrom(spreadsheetId, range) {
   return data.values || [];
 }
 
-async function sheetsUpdate(range, values) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
-  const res = await fetch(url, {
+async function sheetsUpdate(range, values, spreadsheetId) {
+  const sid = spreadsheetId || CONFIG.SPREADSHEET_ID;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+  let res = await fetch(url, {
     method: 'PUT',
-    headers: {
-      Authorization: 'Bearer ' + state.accessToken,
-      'Content-Type': 'application/json',
-    },
+    headers: { Authorization: 'Bearer ' + state.accessToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values })
   });
-  if (!res.ok) throw new Error('Sheets update error ' + res.status);
+  if (res.status === 401 || res.status === 403) {
+    try {
+      await new Promise((resolve, reject) => {
+        if (!window.google?.accounts?.oauth2) return reject('no GIS');
+        const tc = google.accounts.oauth2.initTokenClient({
+          client_id: CONFIG.GOOGLE_CLIENT_ID,
+          scope: CONFIG.SHEETS_SCOPES,
+          prompt: '',
+          callback: (r) => { if(r.access_token){ state.accessToken=r.access_token; resolve(); } else reject('no token'); }
+        });
+        tc.requestAccessToken();
+      });
+      res = await fetch(url, {
+        method: 'PUT',
+        headers: { Authorization: 'Bearer ' + state.accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values })
+      });
+    } catch(e) {
+      throw new Error('Session expired — please refresh the page and sign in again');
+    }
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(()=>'');
+    throw new Error(`Sheets update error ${res.status}: ${body.slice(0,100)}`);
+  }
   return res.json();
 }
 
-async function sheetsAppend(range, values) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
-  const res = await fetch(url, {
+async function sheetsAppend(range, values, spreadsheetId) {
+  const sid = spreadsheetId || CONFIG.SPREADSHEET_ID;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  // Try with current token, refresh if 401/403
+  let token = state.accessToken;
+  let res = await fetch(url, {
     method: 'POST',
-    headers: {
-      Authorization: 'Bearer ' + state.accessToken,
-      'Content-Type': 'application/json',
-    },
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values })
   });
-  if (!res.ok) throw new Error('Sheets append error ' + res.status);
+  if (res.status === 401 || res.status === 403) {
+    // Token expired — try to get a fresh one silently
+    try {
+      await new Promise((resolve, reject) => {
+        if (!window.google?.accounts?.oauth2) return reject('no GIS');
+        const tc = google.accounts.oauth2.initTokenClient({
+          client_id: CONFIG.GOOGLE_CLIENT_ID,
+          scope: CONFIG.SHEETS_SCOPES,
+          prompt: '',
+          callback: (r) => { if(r.access_token){ state.accessToken=r.access_token; resolve(); } else reject('no token'); }
+        });
+        tc.requestAccessToken();
+      });
+      token = state.accessToken;
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values })
+      });
+    } catch(e) {
+      throw new Error('Session expired — please refresh the page and sign in again');
+    }
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(()=>'');
+    throw new Error(`Sheets append error ${res.status}: ${body.slice(0,100)}`);
+  }
   return res.json();
 }
 
@@ -2276,8 +2323,9 @@ function renderNoteInput(acc) {
   return `
     <div class="note-input-area">
       <div class="note-input-label">Add Note</div>
-      <textarea class="note-textarea" id="note-text-input"
-        placeholder="Type your note here... It will be timestamped and locked when saved."></textarea>
+      <textarea class="note-textarea" id="note-text-input" rows="5"
+        style="min-height:110px;font-size:13px;line-height:1.6;resize:vertical"
+        placeholder="Type your note here... It will be timestamped and locked when saved.&#10;&#10;Example: Called 5/12 — spoke with Karen, confirmed PO in process, expects to order Q3 bearings next week."></textarea>
       <div class="note-controls">
         <select class="note-select" id="note-status-select">
           <option value="">— Status —</option>
@@ -2593,6 +2641,23 @@ function useResearchInEmail(accountName, question, answerSnippet) {
     }
   }, 200);
 }
+
+function openAccountFromContact(accountName) {
+  // Switch to My Accounts view and select the account
+  switchView('accounts');
+  setTimeout(() => {
+    const acc = state.accounts.find(a => a.name.trim() === accountName.trim());
+    if (acc) {
+      state.selectedAccount = acc;
+      renderDetail(acc);
+      // Highlight in list
+      document.querySelectorAll('.account-row').forEach(el => {
+        el.classList.toggle('selected', el.dataset.name === accountName);
+      });
+    }
+  }, 150);
+}
+
 
 function renderDashboard() {
   // Determine which rep we are showing
@@ -4020,10 +4085,14 @@ function renderContactsView() {
   const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
 
   let allContacts = [];
+  const seenContactKeys = new Set();
   for (const [accName, contacts] of Object.entries(state.contactsCache)) {
     const acc = state.accounts.find(a => a.name.trim() === accName.trim());
     if (repFilter && acc?.rep !== repFilter) continue;
     contacts.forEach(ct => {
+      const dedupKey = (ct.name||'').trim().toLowerCase() + '|' + accName.trim().toLowerCase();
+      if (seenContactKeys.has(dedupKey)) return;
+      seenContactKeys.add(dedupKey);
       allContacts.push({
         ...ct,
         accountName: accName,
@@ -4114,7 +4183,7 @@ function renderContactsView() {
                 <div style="flex:1;min-width:0">
                   <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(ct.name||'—')}</div>
                   <div style="font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(ct.title||'No title')}</div>
-                  <div style="font-size:10px;color:var(--blue-bright);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(ct.accountName)}</div>
+                  <div style="font-size:10px;color:var(--blue-b);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;text-decoration:underline" onclick="openAccountFromContact('${escHtml(ct.accountName)}')">${escHtml(ct.accountName)}</div>
                 </div>
                 <span style="font-size:9px;font-family:var(--font-mono);color:${typeColor};margin-left:6px;white-space:nowrap">${ct.type === 'AP/Collections' ? 'AP' : 'BUYER'}</span>
               </div>
@@ -4186,7 +4255,7 @@ function selectContactCard(el, accountName, contactName) {
           </div>
         </div>
         <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:11px;color:var(--blue-bright);font-weight:500;margin-bottom:4px">${escHtml(accountName)}</div>
+          <div style="font-size:11px;color:var(--blue-b);font-weight:500;margin-bottom:4px;cursor:pointer;text-decoration:underline" onclick="openAccountFromContact('${escHtml(accountName)}')">${escHtml(accountName)}</div>
           <div style="font-size:11px;color:var(--text-muted)">${escHtml(acc.rep||'')}</div>
           ${statusBadge(acc.status||'')}
           <div style="font-size:11px;color:var(--accent);margin-top:4px;font-family:var(--font-mono)">$${formatNum(acc.total||0)} lifetime</div>

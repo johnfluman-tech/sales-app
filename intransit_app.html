@@ -1441,17 +1441,23 @@ async function loadSupplementalData() {
     } catch(e) { /* _SIGNATURES tab may not exist yet */ }
 
     // Load open invoice balances for collections
-    const collInvRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:I50000");
+    const collInvRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000");
     if (collInvRows.length > 1) {
       const hdrs = collInvRows[0];
+      const iCust    = hdrs.indexOf('CUSTOMER_NAME');
+      const iRep     = hdrs.indexOf('SALES_REP');
       const iInvNum  = hdrs.indexOf('INVOICE_NUMBER');
       const iDate    = hdrs.indexOf('INVOICE_DATE');
       const iTotal   = hdrs.indexOf('INVOICE_TOTAL');
       const iBal     = hdrs.indexOf('INVOICE_BALANCE');
+      const iTerms   = hdrs.indexOf('PAYMENT_TERMS');
+      const iOrder   = hdrs.indexOf('ORDER_NUMBER');
       const iTrack   = hdrs.indexOf('TRACKING_NUMBER');
       const iShipVia = hdrs.indexOf('SHIP_VIA');
-      const iName    = hdrs.indexOf('CUSTOMER_NAME');
-      const iTerms   = hdrs.indexOf('PAYMENT_TERMS');
+      const iCustId  = hdrs.indexOf('CUSTOMER_ID');
+      const iAging   = hdrs.indexOf('AGING_DAYS');
+      // fallback for old column order
+      const iName    = iCust  >= 0 ? iCust  : hdrs.indexOf('CUSTOMER_NAME');
       for (let r = 1; r < collInvRows.length; r++) {
         const row = collInvRows[r];
         const key = (row[iName] || '').trim();
@@ -1462,9 +1468,11 @@ async function loadSupplementalData() {
           date:       row[iDate]    || '',
           total:      parseFloat(row[iTotal]) || 0,
           balance:    parseFloat(row[iBal])   || 0,
+          terms:      row[iTerms]   || '',
+          orderNum:   row[iOrder]   || '',
           tracking:   (row[iTrack] || '').trim(),
           shipVia:    (row[iShipVia]|| '').trim(),
-          terms:      row[iTerms]   || '',
+          agingDays:  parseInt(row[iAging]) || 0,
         });
       }
     }
@@ -3500,9 +3508,49 @@ function selectCollectionsAccount(name) {
       const invoices = state.collectionsInvoicesCache[name] || [];
       if (!invoices.length) return '';
       const today = new Date();
+
+      // Get AP/Collections contacts for this account — these are the POCs for invoices
+      const allContacts = state.contactsCache[name] || [];
+      const apContacts  = allContacts.filter(c => c.type === 'AP/Collections');
+      const buyerContacts = allContacts.filter(c => c.type !== 'AP/Collections');
+      // Primary POC = first AP contact, fallback to first buyer
+      const primaryPOC = apContacts[0] || buyerContacts[0] || null;
+
+      const accSafeId = btoa(encodeURIComponent(name)).replace(/=/g,'');
+
       return `
       <div style="margin-bottom:16px">
-        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--red);margin-bottom:8px">UNPAID INVOICES</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--red)">UNPAID INVOICES (${invoices.length})</div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--accent)">$${formatNum(invoices.reduce((s,i)=>s+i.balance,0))} total outstanding</div>
+        </div>
+
+        ${primaryPOC ? `
+        <div style="padding:10px 12px;background:rgba(52,152,219,0.06);border:1px solid var(--blue);border-left:3px solid var(--blue-bright);margin-bottom:10px;font-size:11px">
+          <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.12em;color:var(--blue-bright);margin-bottom:6px">
+            ${apContacts.length ? '💰 AP/COLLECTIONS CONTACT' : '👤 PRIMARY CONTACT'}
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <div>
+              <div style="font-weight:500;font-size:12px;color:var(--text)">${escHtml(primaryPOC.name||'')}</div>
+              ${primaryPOC.title ? `<div style="font-size:10px;color:var(--text-muted)">${escHtml(primaryPOC.title)}</div>` : ''}
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              ${primaryPOC.email ? `<a href="mailto:${escHtml(primaryPOC.email)}" class="contact-blur" style="font-size:11px;color:var(--blue-bright);text-decoration:none">✉ ${escHtml(primaryPOC.email)}</a>` : ''}
+              ${primaryPOC.phone ? `<span class="contact-blur" style="font-size:11px;color:var(--text-dim)">☎ ${escHtml(primaryPOC.phone)}</span>` : ''}
+              ${primaryPOC.mobile ? `<span class="contact-blur" style="font-size:11px;color:var(--text-dim)">📱 ${escHtml(primaryPOC.mobile)}</span>` : ''}
+              <button onclick="switchView('contacts');setTimeout(()=>{ const cards=document.querySelectorAll('.contact-card'); cards.forEach(c=>{ if((c.dataset.account||'').toLowerCase().includes('${escHtml(name.toLowerCase().replace(/'/g,''))}')){ c.click(); return; } }); },400)"
+                style="font-size:10px;font-family:var(--font-mono);padding:3px 8px;background:transparent;border:1px solid var(--border);color:var(--blue-bright);cursor:pointer;white-space:nowrap">
+                VIEW CONTACT PAGE →
+              </button>
+            </div>
+          </div>
+          ${apContacts.length > 1 ? `<div style="margin-top:6px;font-size:10px;color:var(--text-muted)">${apContacts.length} AP contacts total — <span style="color:var(--blue-bright);cursor:pointer" onclick="document.getElementById('coll-all-poc-${accSafeId}').style.display=document.getElementById('coll-all-poc-${accSafeId}').style.display==='none'?'block':'none'">show all</span></div>
+          <div id="coll-all-poc-${accSafeId}" style="display:none;margin-top:8px;display:flex;flex-direction:column;gap:4px">
+            ${apContacts.slice(1).map(c=>`<div style="font-size:11px;color:var(--text-dim);padding:4px 0;border-top:1px solid var(--border-light)">${escHtml(c.name||'')}${c.title?` — ${escHtml(c.title)}`:''} ${c.email?`<a href="mailto:${escHtml(c.email)}" class="contact-blur" style="color:var(--blue-bright);text-decoration:none;margin-left:6px">✉</a>`:''}</div>`).join('')}
+          </div>` : ''}
+        </div>` : ''}
+
         ${invoices.map(inv => {
           const invDate = new Date(inv.date);
           const termsStr = (inv.terms||'').toUpperCase();
@@ -3512,17 +3560,19 @@ function selectCollectionsAccount(name) {
           const dueDate = new Date(invDate); dueDate.setDate(dueDate.getDate() + termsDays);
           const daysPast = Math.max(0, Math.floor((today - dueDate) / 86400000));
           const trackUrl = getTrackingUrl(inv.tracking, inv.shipVia);
+          const agingColor = daysPast > 60 ? 'var(--red)' : daysPast > 30 ? 'var(--orange)' : daysPast > 0 ? 'var(--orange)' : 'var(--green)';
           return `<div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${daysPast>30?'var(--red)':daysPast>0?'var(--orange)':'var(--border)'};margin-bottom:6px;font-size:12px">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-              <div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <span style="font-family:var(--font-mono);font-weight:600">#${escHtml(inv.invoiceNum)}</span>
-                <span style="color:var(--text-muted);font-size:11px;margin-left:8px">${escHtml(inv.date)}</span>
+                <span style="color:var(--text-muted);font-size:11px">${escHtml(inv.date)}</span>
+                ${inv.orderNum ? `<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">PO#${escHtml(inv.orderNum)}</span>` : ''}
               </div>
-              <span style="font-family:var(--font-mono);color:var(--red)">$${formatNum(inv.balance)}</span>
+              <span style="font-family:var(--font-mono);color:var(--red);font-weight:600">$${formatNum(inv.balance)}</span>
             </div>
-            <div style="display:flex;gap:12px;font-size:11px;flex-wrap:wrap">
+            <div style="display:flex;gap:12px;font-size:11px;flex-wrap:wrap;align-items:center">
               <span style="color:var(--text-muted)">Total: $${formatNum(inv.total)}</span>
-              <span style="color:${daysPast>30?'var(--red)':daysPast>0?'var(--orange)':'var(--green)'}">${daysPast > 0 ? daysPast + ' days past due' : '✓ Current'}</span>
+              <span style="color:${agingColor};font-weight:500">${daysPast > 0 ? daysPast + ' days past due' : '✓ Current'}</span>
               ${inv.terms ? `<span style="color:var(--text-muted)">Terms: ${escHtml(inv.terms)}</span>` : ''}
             </div>
             ${inv.tracking ? `<div style="margin-top:6px;font-size:11px">

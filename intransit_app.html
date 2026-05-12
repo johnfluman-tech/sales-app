@@ -3264,10 +3264,13 @@ function openAccountFromContact(accountName) {
 
 
 async function renderRemovalsView() {
+  // ── ACCESS CONTROL: Admin / FJohn only ───────────────────────────────────
   if (!state.isAdmin) {
-    document.getElementById('main-content').innerHTML = '<div style="padding:40px;color:var(--text-3)">Admin only.</div>';
+    document.getElementById('main-content').innerHTML =
+      '<div style="padding:40px;color:var(--text-3);font-family:var(--mono)">🔒 Admin access only.</div>';
     return;
   }
+
   const el = document.getElementById('main-content');
   el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div style="font-family:var(--mono);letter-spacing:0.15em">LOADING REQUESTS...</div></div>';
 
@@ -3283,18 +3286,14 @@ async function renderRemovalsView() {
     a.johnApproval?.toUpperCase() !== 'YES'
   );
   dLog('Removal requests (REMOVE_FLAG set): ' + pendingRemovals.length);
-  if (pendingRemovals.length === 0) {
-    const sample = state.accounts.filter(a => a.removeFlag).slice(0,3);
-    sample.forEach(a => dLog('  Sample flag: "' + a.removeFlag + '" approval="' + (a.johnApproval||'—') + '"'));
-  }
 
-  // ── 2. LOG-BASED REQUESTS (hold, transfer) ───────────────────────────────
+  // ── 2. LOG-BASED REQUESTS (hold, transfer) ────────────────────────────────
   let holdReqs = [], transferReqs = [], logError = '';
   try {
-    const logRows = await sheetsGet("'_LOG'!A1:E2000");
+    const logRows = await sheetsGet("'_LOG'!A1:E5000");
     dLog('_LOG rows loaded: ' + logRows.length);
-    holdReqs     = logRows.filter((r,i) => i>0 && (r[2]||'')==='HOLD_REQUEST').slice().reverse().slice(0,30);
-    transferReqs = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_REQUEST').slice().reverse().slice(0,30);
+    holdReqs     = logRows.filter((r,i) => i>0 && (r[2]||'')==='HOLD_REQUEST').slice().reverse().slice(0,50);
+    transferReqs = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_REQUEST').slice().reverse().slice(0,50);
     dLog('Hold requests in log: ' + holdReqs.length);
     dLog('Transfer requests in log: ' + transferReqs.length);
   } catch(e) {
@@ -3310,6 +3309,14 @@ async function renderRemovalsView() {
     dLog('NDA log entries: ' + ndaRows.length);
   } catch(e) { dLog('NDA log: ' + e.message, false); }
 
+  // ── 4. ACTION HISTORY (from _REQUEST_HISTORY in History sheet) ────────────
+  let historyRows = [];
+  try {
+    const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_REQUEST_HISTORY'!A1:H2000");
+    historyRows = (raw||[]).filter((_,i) => i > 0).slice().reverse(); // skip header, newest first
+    dLog('Request history entries: ' + historyRows.length);
+  } catch(e) { dLog('Request history: ' + e.message, false); }
+
   const totalPending = pendingRemovals.length + holdReqs.length + transferReqs.length;
   const badge = document.getElementById('badge-removals');
   if (badge) badge.textContent = pendingRemovals.length || '';
@@ -3320,14 +3327,23 @@ async function renderRemovalsView() {
     catch { return ts; }
   };
 
+  // Helper to build action badge color
+  const actionColor = (action) => {
+    if (!action) return 'var(--text-3)';
+    const a = action.toUpperCase();
+    if (a.includes('APPROV') || a.includes('COMPLET')) return 'var(--green)';
+    if (a.includes('REJECT') || a.includes('DENY')) return 'var(--red)';
+    return 'var(--orange)';
+  };
+
   el.innerHTML = `
-    <div style="flex:1;overflow-y:auto;padding:24px;max-width:900px">
+    <div style="flex:1;overflow-y:auto;padding:24px;max-width:960px">
 
       <!-- Page header -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
         <div>
-          <div style="font-size:20px;font-weight:700;margin-bottom:3px">🗑 Requests & Approvals</div>
-          <div style="font-size:12px;color:var(--text-3)">${totalPending} pending · Only John can approve</div>
+          <div style="font-size:20px;font-weight:700;margin-bottom:3px">🗑 Requests &amp; Approvals</div>
+          <div style="font-size:12px;color:var(--text-3)">${totalPending} pending · Admin only</div>
         </div>
         <button onclick="toggleRemovalsDiag()"
           style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 12px;cursor:pointer;border-radius:var(--r)">
@@ -3340,21 +3356,21 @@ async function renderRemovalsView() {
         <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:8px">DIAGNOSTIC LOG</div>
         ${diagItems.map(d=>`<div style="font-size:11px;color:${d.ok?'var(--green)':'var(--red)'};margin-bottom:2px">${d.ok?'✓':'✗'} ${escHtml(d.msg)}</div>`).join('')}
         <div style="margin-top:8px;font-size:10px;color:var(--text-3)">
-          To request removal: go to any account → Notes tab → scroll down → fill in the REP REQUESTS section
+          Reps submit requests via: My Accounts → account → Notes tab → scroll to REP REQUESTS
         </div>
       </div>
 
-      <!-- How reps submit requests -->
+      <!-- How reps submit -->
       <div style="background:rgba(52,152,219,0.07);border:1px solid rgba(52,152,219,0.25);border-radius:var(--r2);padding:12px 16px;margin-bottom:24px;font-size:12px">
         <div style="font-weight:600;margin-bottom:4px">ℹ How reps submit requests</div>
         <div style="color:var(--text-2);line-height:1.7">
           Reps go to <strong>My Accounts → click any account → Notes tab → scroll to the bottom</strong>.
-          There they can submit: 🗑 Removal · 🔒 Hold · ⇄ Transfer requests. John reviews them here.
+          There they can submit: 🗑 Removal · 🔒 Hold · ⇄ Transfer requests. John reviews and acts here.
         </div>
       </div>
 
-      <!-- ① REMOVAL REQUESTS ────────────────────────────────────────── -->
-      <div style="margin-bottom:28px">
+      <!-- ① REMOVAL REQUESTS ─────────────────────────────────────────────── -->
+      <div style="margin-bottom:32px">
         <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
           🗑 Removal Requests
           <span style="background:${pendingRemovals.length?'var(--red)':'var(--s2)'};color:${pendingRemovals.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${pendingRemovals.length}</span>
@@ -3374,14 +3390,14 @@ async function renderRemovalsView() {
                   ${escHtml(acc.removeFlag)}
                 </div>
               </div>
-              <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0;min-width:130px">
+              <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0;min-width:150px">
                 <button onclick="approveRemovalDirect('${escHtml(acc.name)}')"
                   style="background:var(--red);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:7px 14px;cursor:pointer;border-radius:var(--r);font-weight:700">
                   ✓ APPROVE
                 </button>
                 <button onclick="denyRemoval('${escHtml(acc.name)}')"
                   style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:7px 14px;cursor:pointer;border-radius:var(--r)">
-                  ✗ DENY / KEEP
+                  ✗ REJECT / KEEP
                 </button>
               </div>
             </div>`).join('')}
@@ -3392,28 +3408,45 @@ async function renderRemovalsView() {
         </div>`}
       </div>
 
-      <!-- ② HOLD REQUESTS ──────────────────────────────────────────── -->
-      <div style="margin-bottom:28px">
+      <!-- ② CREDIT HOLD REQUESTS ────────────────────────────────────────── -->
+      <div style="margin-bottom:32px">
         <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
           🔒 Credit Hold Requests
           <span style="background:${holdReqs.length?'var(--orange)':'var(--s2)'};color:${holdReqs.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${holdReqs.length}</span>
         </div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Approve these in CRM → Accounts → Credit Hold (not in this app)</div>
         ${holdReqs.length ? `
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${holdReqs.map(r => {
+          ${holdReqs.map((r, idx) => {
             const msg = r[3]||'';
             const rep = (r[1]||'').replace('@intransittech.com','');
             const accMatch = msg.match(/hold for: (.+?)\. Reason:/);
             const reasonMatch = msg.match(/Reason: (.+)$/);
-            return `<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:12px 16px">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-                <div style="font-size:13px;font-weight:600">${escHtml(accMatch?.[1]||msg.slice(0,40))}</div>
-                <div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-left:12px;white-space:nowrap">${fmt(r[0])}</div>
+            const accountName = accMatch?.[1] || msg.slice(0,40);
+            const safeAcc = accountName.replace(/'/g, "\\'");
+            const safeRep = rep.replace(/'/g, "\\'");
+            const safeReason = (reasonMatch?.[1]||'').replace(/'/g, "\\'");
+            return `<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:14px 18px;display:flex;align-items:flex-start;gap:16px">
+              <div style="flex:1">
+                <div style="font-size:14px;font-weight:600;margin-bottom:4px">${escHtml(accountName)}</div>
+                <div style="font-size:11px;color:var(--blue-b);margin-bottom:6px">From: ${escHtml(rep)} · ${fmt(r[0])}</div>
+                ${reasonMatch?.[1]?`<div style="font-size:12px;color:var(--text-2);background:var(--s2);padding:8px 12px;border-radius:var(--r)">
+                  <span style="font-family:var(--mono);font-size:9px;color:var(--orange);letter-spacing:0.1em;display:block;margin-bottom:3px">REP'S REASON:</span>
+                  ${escHtml(reasonMatch[1])}</div>`:''}
               </div>
-              <div style="font-size:11px;color:var(--blue-b);margin-bottom:4px">From: ${escHtml(rep)}</div>
-              ${reasonMatch?.[1]?`<div style="font-size:12px;color:var(--text-2);background:var(--s2);padding:6px 10px;border-radius:var(--r)">${escHtml(reasonMatch[1])}</div>`:''}
-              <div style="margin-top:8px;font-size:10px;color:var(--text-3);font-family:var(--mono)">→ Action required in CRM: Accounts → find account → Credit Hold toggle</div>
+              <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;min-width:180px">
+                <button onclick="resolveHoldRequest('${safeAcc}', '${safeRep}', '${safeReason}', 'COMPLETED_IN_CRM')"
+                  style="background:var(--green);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:7px 10px;cursor:pointer;border-radius:var(--r);font-weight:700;text-align:left">
+                  ✓ COMPLETED IN CRM
+                </button>
+                <button onclick="resolveHoldRequest('${safeAcc}', '${safeRep}', '${safeReason}', 'APPROVED_APP_AND_CRM')"
+                  style="background:var(--orange);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:7px 10px;cursor:pointer;border-radius:var(--r);font-weight:700;text-align:left">
+                  ✓ APPROVED — APP &amp; CRM
+                </button>
+                <button onclick="resolveHoldRequest('${safeAcc}', '${safeRep}', '${safeReason}', 'REJECTED')"
+                  style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:7px 10px;cursor:pointer;border-radius:var(--r)">
+                  ✗ REJECT HOLD
+                </button>
+              </div>
             </div>`;
           }).join('')}
         </div>` : `
@@ -3423,28 +3456,42 @@ async function renderRemovalsView() {
         </div>`}
       </div>
 
-      <!-- ③ TRANSFER REQUESTS ──────────────────────────────────────── -->
-      <div style="margin-bottom:28px">
+      <!-- ③ TERRITORY TRANSFER REQUESTS ──────────────────────────────────── -->
+      <div style="margin-bottom:32px">
         <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
           ⇄ Territory Transfer Requests
           <span style="background:${transferReqs.length?'var(--blue-b)':'var(--s2)'};color:${transferReqs.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${transferReqs.length}</span>
         </div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Approve these in CRM → reassign the account's rep, then re-run the Python script</div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Completing a transfer: change the account's rep in CRM, then re-run sales_report.py</div>
         ${transferReqs.length ? `
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${transferReqs.map(r => {
+          ${transferReqs.map((r, idx) => {
             const msg = r[3]||'';
             const rep = (r[1]||'').replace('@intransittech.com','');
             const accMatch = msg.match(/requests: (.+?)\. Note:/);
             const noteMatch = msg.match(/Note: (.+)$/);
-            return `<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--blue-b);border-radius:var(--r2);padding:12px 16px">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-                <div style="font-size:13px;font-weight:600">${escHtml(accMatch?.[1]||msg.slice(0,40))}</div>
-                <div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-left:12px;white-space:nowrap">${fmt(r[0])}</div>
+            const accountName = accMatch?.[1] || msg.slice(0,40);
+            const safeAcc = accountName.replace(/'/g, "\\'");
+            const safeRep = rep.replace(/'/g, "\\'");
+            const safeNote = (noteMatch?.[1]||'').replace(/'/g, "\\'");
+            return `<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--blue-b);border-radius:var(--r2);padding:14px 18px;display:flex;align-items:flex-start;gap:16px">
+              <div style="flex:1">
+                <div style="font-size:14px;font-weight:600;margin-bottom:4px">${escHtml(accountName)}</div>
+                <div style="font-size:11px;color:var(--blue-b);margin-bottom:6px">Requested by: ${escHtml(rep)} · ${fmt(r[0])}</div>
+                ${noteMatch?.[1]&&noteMatch[1]!=='none'?`<div style="font-size:12px;color:var(--text-2);background:var(--s2);padding:8px 12px;border-radius:var(--r)">
+                  <span style="font-family:var(--mono);font-size:9px;color:var(--blue-b);letter-spacing:0.1em;display:block;margin-bottom:3px">REP'S NOTE:</span>
+                  ${escHtml(noteMatch[1])}</div>`:''}
               </div>
-              <div style="font-size:11px;color:var(--blue-b);margin-bottom:4px">Requested by: ${escHtml(rep)}</div>
-              ${noteMatch?.[1]&&noteMatch[1]!=='none'?`<div style="font-size:12px;color:var(--text-2);background:var(--s2);padding:6px 10px;border-radius:var(--r)">${escHtml(noteMatch[1])}</div>`:''}
-              <div style="margin-top:8px;font-size:10px;color:var(--text-3);font-family:var(--mono)">→ Approve in CRM: change account's rep, then re-run sales_report.py</div>
+              <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;min-width:180px">
+                <button onclick="resolveTransferRequest('${safeAcc}', '${safeRep}', '${safeNote}', 'COMPLETED_IN_CRM')"
+                  style="background:var(--green);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:7px 10px;cursor:pointer;border-radius:var(--r);font-weight:700;text-align:left">
+                  ✓ COMPLETED IN CRM
+                </button>
+                <button onclick="resolveTransferRequest('${safeAcc}', '${safeRep}', '${safeNote}', 'REJECTED')"
+                  style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:7px 10px;cursor:pointer;border-radius:var(--r)">
+                  ✗ REJECT TRANSFER
+                </button>
+              </div>
             </div>`;
           }).join('')}
         </div>` : `
@@ -3454,8 +3501,8 @@ async function renderRemovalsView() {
         </div>`}
       </div>
 
-      <!-- ④ NDA LOG ─────────────────────────────────────────────────── -->
-      <div>
+      <!-- ④ NDA LOG ─────────────────────────────────────────────────────── -->
+      <div style="margin-bottom:32px">
         <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
           🔒 NDA Acceptance Log
           <span style="background:var(--s2);color:var(--text-3);font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${ndaRows.length}</span>
@@ -3474,16 +3521,72 @@ async function renderRemovalsView() {
                 <div style="color:var(--blue-b);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r[2]||'')}</div>
                 <div style="font-size:10px;color:var(--text-2)">${escHtml(r[4]||'')}</div>
                 <div style="font-size:10px;color:var(--text-3)">${escHtml(r[5]||'')}</div>
-                <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:${(r[7]||'')==='ACCEPTED'?'var(--green)':'var(--red)'}">${escHtml(r[7]||'')}</div>
+                <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:${(r[7]||'')==='ACCEPTED'?'var(--green)':'var(--red)'}">
+                  ${escHtml(r[7]||'')}</div>
               </div>`).join('')}
           </div>
         </div>` : `
         <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)">
-          <div style="font-family:var(--mono);font-size:11px">No NDA records yet — log populates when users accept at login</div>
+          <div style="font-family:var(--mono);font-size:11px">No NDA records yet</div>
+        </div>`}
+      </div>
+
+      <!-- ⑤ REQUEST HISTORY LOG ─────────────────────────────────────────── -->
+      <div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:10px">
+          📋 Request History Log
+          <span style="background:var(--s2);color:var(--text-3);font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${historyRows.length}</span>
+          <button onclick="exportRequestHistory()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 10px;cursor:pointer;border-radius:var(--r);margin-left:auto">⬇ EXPORT CSV</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:12px">All completed/rejected actions. Click any row to edit the admin note.</div>
+        ${historyRows.length ? `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">
+          <div style="display:grid;grid-template-columns:130px 70px 1fr 80px 90px 1fr;background:var(--s2);border-bottom:1px solid var(--border);padding:8px 14px;font-family:var(--mono);font-size:9px;color:var(--text-3)">
+            <div>DATE</div><div>TYPE</div><div>ACCOUNT</div><div>REP</div><div>ACTION</div><div>ADMIN NOTE</div>
+          </div>
+          <div style="max-height:400px;overflow-y:auto" id="history-log-body">
+            ${historyRows.map((r, i) => {
+              // Columns: 0=timestamp, 1=type, 2=account, 3=rep, 4=action, 5=reason, 6=admin_note, 7=actioned_by
+              const rowIdxFromEnd = i;
+              const actionCol = actionColor(r[4]);
+              return `<div style="display:grid;grid-template-columns:130px 70px 1fr 80px 90px 1fr;padding:8px 14px;border-bottom:1px solid var(--border);font-size:11px;cursor:pointer"
+                id="hist-row-${i}"
+                onmouseover="this.style.background='var(--s2)'" onmouseout="if(!document.getElementById('hist-edit-${i}'))this.style.background=''">
+                <div style="font-family:var(--mono);font-size:10px;color:var(--text-3)">${escHtml((r[0]||'').slice(0,16))}</div>
+                <div style="font-size:10px;font-family:var(--mono);color:var(--text-2)">${escHtml(r[1]||'')}</div>
+                <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r[2]||'')}">${escHtml(r[2]||'')}</div>
+                <div style="font-size:10px;color:var(--blue-b)">${escHtml(r[3]||'')}</div>
+                <div style="font-family:var(--mono);font-size:9px;font-weight:700;color:${actionCol}">${escHtml(r[4]||'')}</div>
+                <div style="color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px">
+                  <span id="hist-note-display-${i}">${escHtml(r[6]||'—')}</span>
+                  <button onclick="editHistoryNote(${i})" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:8px;padding:1px 6px;cursor:pointer;border-radius:var(--r);flex-shrink:0">✏</button>
+                </div>
+              </div>
+              <div id="hist-edit-${i}" style="display:none;padding:8px 14px 12px;background:var(--s2);border-bottom:1px solid var(--border)">
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">Edit admin note for: <strong>${escHtml(r[2]||'')}</strong></div>
+                <div style="display:flex;gap:8px">
+                  <input id="hist-note-input-${i}" type="text" value="${escHtml(r[6]||'')}"
+                    style="flex:1;background:var(--s1);border:1px solid var(--border);color:var(--text-1);padding:6px 10px;border-radius:var(--r);font-size:12px"
+                    placeholder="Add a note..." />
+                  <button onclick="saveHistoryNote(${i}, ${historyRows.length - 1 - i})"
+                    style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:6px 14px;cursor:pointer;border-radius:var(--r)">SAVE</button>
+                  <button onclick="cancelHistoryEdit(${i})"
+                    style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:6px 10px;cursor:pointer;border-radius:var(--r)">✕</button>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>` : `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:28px;text-align:center;color:var(--text-3)">
+          <div style="font-size:22px;margin-bottom:8px">📋</div>
+          <div style="font-family:var(--mono);font-size:11px">No action history yet — actions you take on requests will appear here</div>
         </div>`}
       </div>
 
     </div>`;
+
+  // Store historyRows count in state for save operations
+  window._requestHistoryCount = historyRows.length;
 }
 
 function toggleRemovalsDiag() {
@@ -3491,13 +3594,35 @@ function toggleRemovalsDiag() {
   if (d) d.style.display = d.style.display === 'none' ? 'block' : 'none';
 }
 
+// ── SHARED: write to _REQUEST_HISTORY tab ────────────────────────────────────
+async function logRequestHistory(type, accountName, rep, action, reason, adminNote) {
+  const ts = new Date().toISOString();
+  const actBy = state.user?.email || 'admin';
+  const row = [ts, type, accountName, rep, action, reason||'', adminNote||'', actBy];
+  try {
+    // Try to create header row if the tab is new
+    let existing;
+    try {
+      existing = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_REQUEST_HISTORY'!A1:H1");
+    } catch(e) { existing = []; }
+    if (!existing || existing.length === 0) {
+      await sheetsAppend("'_REQUEST_HISTORY'!A1",
+        [['TIMESTAMP','TYPE','ACCOUNT','REP','ACTION','REASON','ADMIN_NOTE','ACTIONED_BY']],
+        CONFIG.HISTORY_SPREADSHEET_ID);
+    }
+    await sheetsAppend("'_REQUEST_HISTORY'!A1", [row], CONFIG.HISTORY_SPREADSHEET_ID);
+  } catch(e) {
+    console.warn('logRequestHistory failed:', e.message);
+  }
+}
 
+// ── REMOVAL: Approve ─────────────────────────────────────────────────────────
 async function approveRemovalDirect(accountName) {
-  if (!confirm(`Approve removal of "${accountName}"? This will exclude it from all future reports.`)) return;
+  if (!confirm('Approve removal of "' + accountName + '"?\n\nThis will set JOHN_APPROVAL = YES and exclude it from all future reports.')) return;
   const acc = state.accounts.find(a => a.name === accountName);
   if (!acc) return;
   try {
-    const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
+    const range = "'" + acc.tabName + "'!A" + (acc.rowIndex + 1) + ':Z' + (acc.rowIndex + 1);
     const rows = await sheetsGet(range);
     const row = rows[0] || [];
     const newRow = [...row];
@@ -3506,17 +3631,20 @@ async function approveRemovalDirect(accountName) {
     if (iJohn >= 0) newRow[iJohn] = 'YES';
     await sheetsUpdate(range, [newRow]);
     acc.johnApproval = 'YES';
-    showToast(`${accountName} approved for removal ✓`, 'success');
+    // Log to _REQUEST_HISTORY
+    await logRequestHistory('REMOVAL', accountName, acc.rep||'', 'APPROVED', acc.removeFlag||'', '');
+    showToast(accountName + ' approved for removal ✓', 'success');
     renderRemovalsView();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
+// ── REMOVAL: Deny/Reject ─────────────────────────────────────────────────────
 async function denyRemoval(accountName) {
-  if (!confirm(`Deny removal request for "${accountName}" and clear the flag?`)) return;
+  if (!confirm('Reject removal request for "' + accountName + '" and clear the flag?')) return;
   const acc = state.accounts.find(a => a.name === accountName);
   if (!acc) return;
   try {
-    const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
+    const range = "'" + acc.tabName + "'!A" + (acc.rowIndex + 1) + ':Z' + (acc.rowIndex + 1);
     const rows = await sheetsGet(range);
     const row = rows[0] || [];
     const newRow = [...row];
@@ -3525,10 +3653,85 @@ async function denyRemoval(accountName) {
     if (iRemove >= 0) newRow[iRemove] = '';
     await sheetsUpdate(range, [newRow]);
     acc.removeFlag = '';
-    showToast(`Removal request denied for ${accountName} ✓`, 'success');
+    // Log to _REQUEST_HISTORY
+    await logRequestHistory('REMOVAL', accountName, acc.rep||'', 'REJECTED', acc.removeFlag||'', '');
+    showToast('Removal request rejected for ' + accountName + ' ✓', 'success');
     renderRemovalsView();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
+
+// ── HOLD: Resolve ─────────────────────────────────────────────────────────────
+async function resolveHoldRequest(accountName, rep, reason, action) {
+  const labels = {
+    'COMPLETED_IN_CRM':   'Mark as completed in CRM',
+    'APPROVED_APP_AND_CRM': 'Approve hold in app AND CRM',
+    'REJECTED':           'Reject this hold request'
+  };
+  if (!confirm((labels[action]||action) + ' for "' + accountName + '"?')) return;
+  try {
+    await logRequestHistory('HOLD', accountName, rep, action, reason, '');
+    showToast('Hold request ' + action.toLowerCase().replace(/_/g,' ') + ' for ' + accountName + ' ✓', 'success');
+    renderRemovalsView();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── TRANSFER: Resolve ─────────────────────────────────────────────────────────
+async function resolveTransferRequest(accountName, rep, note, action) {
+  const labels = {
+    'COMPLETED_IN_CRM': 'Mark transfer as completed in CRM',
+    'REJECTED':         'Reject this transfer request'
+  };
+  if (!confirm((labels[action]||action) + ' for "' + accountName + '"?')) return;
+  try {
+    await logRequestHistory('TRANSFER', accountName, rep, action, note, '');
+    showToast('Transfer request ' + action.toLowerCase().replace(/_/g,' ') + ' for ' + accountName + ' ✓', 'success');
+    renderRemovalsView();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── HISTORY: Edit note ────────────────────────────────────────────────────────
+function editHistoryNote(displayIdx) {
+  const editDiv = document.getElementById('hist-edit-' + displayIdx);
+  if (editDiv) editDiv.style.display = 'block';
+}
+function cancelHistoryEdit(displayIdx) {
+  const editDiv = document.getElementById('hist-edit-' + displayIdx);
+  if (editDiv) editDiv.style.display = 'none';
+}
+async function saveHistoryNote(displayIdx, sheetRowIdx) {
+  const input = document.getElementById('hist-note-input-' + displayIdx);
+  if (!input) return;
+  const newNote = input.value.trim();
+  try {
+    // sheetRowIdx is 0-based from top of data (row 1=header, row 2=first data)
+    // historyRows is reversed (newest first), so sheetRowIdx from end needs inversion
+    const totalRows = window._requestHistoryCount || 0;
+    const actualDataRow = totalRows - sheetRowIdx; // 0-based from top
+    const sheetRow = actualDataRow + 2; // +1 for header, +1 for 1-based
+    const range = "'_REQUEST_HISTORY'!G" + sheetRow;
+    await sheetsUpdate(range, [[newNote]], CONFIG.HISTORY_SPREADSHEET_ID);
+    // Update display
+    const display = document.getElementById('hist-note-display-' + displayIdx);
+    if (display) display.textContent = newNote || '—';
+    cancelHistoryEdit(displayIdx);
+    showToast('Note saved ✓', 'success');
+  } catch(e) { showToast('Error saving note: ' + e.message, 'error'); }
+}
+
+// ── EXPORT: Request History CSV ───────────────────────────────────────────────
+async function exportRequestHistory() {
+  try {
+    const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_REQUEST_HISTORY'!A1:H2000");
+    if (!raw || raw.length < 2) { showToast('No history to export', 'error'); return; }
+    const csv = raw.map(r => r.map(c => '"' + String(c||'').replace(/"/g,'""') + '"').join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'request_history_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click(); URL.revokeObjectURL(url);
+  } catch(e) { showToast('Export error: ' + e.message, 'error'); }
+}
+
 
 
 function renderDashboard() {

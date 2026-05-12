@@ -3607,8 +3607,13 @@ async function renderAccessLog() {
       }));
     }
   } catch(e) {
-    el.innerHTML = '<div style="padding:40px;color:var(--red)">Error loading access log: ' + escHtml(e.message) + '</div>';
-    return;
+    // 400 = tab doesn't exist yet — treat as empty (first login will create it)
+    if (e.message && (e.message.includes('400') || e.message.includes('Unable to parse range'))) {
+      rows = []; // no data yet — fall through to render empty state
+    } else {
+      el.innerHTML = '<div style="padding:40px;color:var(--red)">Error loading access log: ' + escHtml(e.message) + '</div>';
+      return;
+    }
   }
 
   // Also merge any in-memory entries from this session not yet in Sheet
@@ -4394,6 +4399,113 @@ async function refreshDashboard() {
   } else if (repTableEl) {
     repTableEl.innerHTML = '';
   }
+
+  // ── Invoice detail table ───────────────────────────────────────
+  const acctEl = document.getElementById('dash-accounts');
+  if (acctEl) {
+    // Sort invoices newest first
+    const sorted = [...gpFiltered].sort((a, b) => {
+      const da = normDate(a[gpDateCol] || a.INVOICE_DATE || '');
+      const db = normDate(b[gpDateCol] || b.INVOICE_DATE || '');
+      return db.localeCompare(da);
+    });
+
+    // Build unique customer name lookup from accounts
+    const custLookup = {};
+    state.accounts.forEach(a => { custLookup[a.name] = a.rep; });
+
+    const isCostAdj = r => {
+      const cust = (r.CUSTOMER_NAME || r.customer || '').toLowerCase();
+      const desc  = (r.DESCRIPTION  || r.description  || '').toLowerCase();
+      return cust.includes('deleted') || desc.includes('cost adj') || desc.includes('inventory adj');
+    };
+
+    acctEl.innerHTML = `
+    <div style="margin-top:4px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="section-label">Invoice Detail — ${from.slice(5)} → ${to.slice(5)}
+          <span style="font-size:11px;font-weight:400;color:var(--text-3);margin-left:8px">${sorted.length} invoices</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" placeholder="Search invoice, customer, part…" id="dash-inv-search"
+            oninput="filterDashInvoices(this.value)"
+            style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px 10px;outline:none;border-radius:var(--r);font-family:var(--font);width:220px">
+          <button onclick="exportDashInvoices()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r)">⬇ EXPORT CSV</button>
+        </div>
+      </div>
+      <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">
+        <table class="data-table" id="dash-inv-table" style="width:100%">
+          <thead><tr>
+            <th>Invoice #</th>
+            <th>Date</th>
+            ${repFilter ? '' : '<th>Rep</th>'}
+            <th>Customer</th>
+            <th class="right">Shipped $</th>
+            <th class="right">GP $</th>
+            <th class="right">GP %</th>
+          </tr></thead>
+          <tbody id="dash-inv-body">
+' + sorted.map(r => {
+              const invNum   = r.INVOICE_NUMBER || r.invoice_number || '—';
+              const invDate  = normDate(r[gpDateCol] || r.INVOICE_DATE || '').slice(5);
+              const repName  = (r[gpSalesRepCol] || r.SALES_REP || '').trim();
+              const customer = r.CUSTOMER_NAME || r.customer || '—';
+              const shipAmt  = parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE || 0);
+              const gpAmt    = parseMoney(r[gpGPCol] || r.GP || 0);
+              const gpPctRow = shipAmt > 0 ? (gpAmt / shipAmt * 100) : 0;
+              const costAdj  = isCostAdj(r);
+              const rowColor = costAdj ? 'rgba(249,115,22,0.06)' : '';
+              const gpColor  = gpPctRow >= 30 ? 'var(--green)' : gpPctRow >= 15 ? 'var(--gold)' : gpPctRow > 0 ? 'var(--red)' : 'var(--text-3)';
+              return '<tr style="background:' + rowColor + '" data-search="' + escHtml((invNum+' '+customer+' '+repName).toLowerCase()) + '">' +
+                '<td class="mono" style="font-size:11px;color:var(--text-2)">' + escHtml(String(invNum).replace('.0','')) + (costAdj ? ' <span style="font-size:9px;color:var(--orange);font-family:var(--mono)">COST ADJ</span>' : '') + '</td>' +
+                '<td class="mono" style="font-size:11px;color:var(--text-3)">' + escHtml(invDate) + '</td>' +
+                (repFilter ? '' : '<td class="mono" style="font-size:11px;color:var(--accent)">' + escHtml(repName) + '</td>') +
+                '<td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(customer) + '">' + escHtml(customer.slice(0,35)) + (customer.length>35?'…':'') + '</td>' +
+                '<td class="mono right" style="font-size:11px">' + (shipAmt !== 0 ? '$'+formatNum(Math.abs(shipAmt)) : '—') + '</td>' +
+                '<td class="mono right" style="font-size:11px;color:' + (gpAmt < 0 ? 'var(--red)' : '') + '">' + (gpAmt !== 0 ? (gpAmt<0?'-':'')+'$'+formatNum(Math.abs(gpAmt)) : '—') + '</td>' +
+                '<td class="mono right" style="font-size:11px;color:' + gpColor + '">' + (gpPctRow !== 0 ? gpPctRow.toFixed(1)+'%' : '—') + '</td>' +
+              '</tr>';
+            }).join('') + '
+          </tbody>
+        </table>
+        ${sorted.length === 0 ? '<div style="padding:32px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">No invoices in this date range</div>' : ''}
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:24px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--text-3)">
+        <span>Total: <strong style="color:var(--text)">$${formatNum(shipped)}</strong></span>
+        <span>GP: <strong style="color:var(--green)">$${formatNum(gp)}</strong></span>
+        <span>GP%: <strong style="color:${gpPct >= 30 ? 'var(--green)' : gpPct >= 15 ? 'var(--gold)' : 'var(--red)'}">` + `${gpPct.toFixed(1)}%</strong></span>
+      </div>
+    </div>`;
+  }
+}
+
+function filterDashInvoices(q) {
+  const term = (q || '').toLowerCase().trim();
+  document.querySelectorAll('#dash-inv-body tr').forEach(row => {
+    row.style.display = !term || (row.dataset.search || '').includes(term) ? '' : 'none';
+  });
+}
+
+function exportDashInvoices() {
+  const table = document.getElementById('dash-inv-table');
+  if (!table) { showToast('No data to export', 'error'); return; }
+  const rows = [];
+  table.querySelectorAll('tr').forEach(tr => {
+    const cells = Array.from(tr.querySelectorAll('th,td')).map(c =>
+      '"' + c.innerText.replace(/"/g,'""').replace(/\n/g,' ').trim() + '"'
+    );
+    if (cells.length) rows.push(cells.join(','));
+  });
+  const csv = rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'dashboard_invoices_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Invoices exported ✓', 'success');
 }
 
 function switchViewAs(rep) {

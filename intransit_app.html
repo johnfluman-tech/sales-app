@@ -1649,15 +1649,15 @@ async function saveContactNote(accountName, contactName, safeId) {
 }
 
 // ── AI NEXT BEST ACTION ────────────────────────────────────
-async function generateNextBestAction(accountName) {
+async function generateNextBestAction(accountName, resultDivId) {
   const apiKey = getAnthropicKey();
   if (!apiKey) return;
 
   const acc = state.accounts.find(a => a.name === accountName);
   if (!acc) return;
 
-  const safeId = btoa(encodeURIComponent(accountName)).replace(/=/g,'');
-  const resultDiv = document.getElementById('nba-result-' + safeId);
+  const safeId = resultDivId || ('nba-result-' + btoa(encodeURIComponent(accountName)).replace(/=/g,''));
+  const resultDiv = document.getElementById(safeId);
   if (!resultDiv) return;
 
   resultDiv.style.display = 'block';
@@ -3113,18 +3113,17 @@ Return ONLY a JSON object with two keys: "subject" and "body". No preamble, no m
 
     let parsed;
     try {
-      const clean = text.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
+      const clean = text.replace(/```json|```/g, '').trim();
       parsed = JSON.parse(clean);
     } catch(e) {
-      const subMatch  = text.match(/"subject"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
-      const bodyMatch = text.match(/"body"\s*:\s*"((?:[^"\\]|\\.|\n)*)"/s);
+      // Try to extract subject/body manually
+      const subMatch = text.match(/"subject"\s*:\s*"([^"]+)"/);
+      const bodyMatch = text.match(/"body"\s*:\s*"([\s\S]+?)"\s*\}/);
       parsed = {
-        subject: subMatch?.[1]?.replace(/\\n/g,' ').replace(/\\"/g,'"') || 'Following up — ' + acc.name,
-        body:    bodyMatch?.[1]?.replace(/\\n/g,'\n').replace(/\\"/g,'"') || text,
+        subject: subMatch?.[1] || 'Following up — ' + acc.name,
+        body: bodyMatch?.[1]?.replace(/\\n/g, '\n') || text,
       };
     }
-    if (parsed.body)    parsed.body    = String(parsed.body).replace(/\\n/g,'\n').replace(/\\"/g,'"');
-    if (parsed.subject) parsed.subject = String(parsed.subject).replace(/\\n/g,' ');
 
     const sig = getSignatureForCurrentRep();
     const disclaimer = getDisclaimer();
@@ -3301,7 +3300,7 @@ function getSignatureForCurrentRep() {
 }
 
 function getDisclaimer() {
-  const email = state.user?.email || 'john.fluman@intransittech.com';
+  const email = state.user || 'john.fluman@intransittech.com';
   return `CONFIDENTIALITY NOTICE: This email and any attachments are intended solely for the named recipient(s) and may contain confidential, proprietary, or legally privileged information belonging to Intransit Technologies Corp. Unauthorized review, use, disclosure, dissemination, or copying of this communication is strictly prohibited. If you have received this message in error, please notify the sender immediately at ${email}, permanently delete this message and all copies from your system, and do not retain, print, or forward any portion of its contents. Thank you.`;
 }
 function renderCollectionsView() {
@@ -3698,21 +3697,12 @@ Return ONLY a JSON object with keys "subject" and "body". No preamble.`;
     const data = await response.json();
     const text = data.content?.[0]?.text || '';
     let parsed;
-    try {
-      // Clean the text and parse JSON
-      const cleaned = text.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
-      parsed = JSON.parse(cleaned);
-    } catch(e) {
-      // Fallback: extract subject and body manually
-      const subMatch  = text.match(/"subject"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
-      const bodyMatch = text.match(/"body"\s*:\s*"((?:[^"\\]|\\.|\n)*)"/s);
-      const subject   = subMatch?.[1]?.replace(/\\n/g,'\n').replace(/\\"/g,'"') || 'Payment Reminder';
-      const body      = bodyMatch?.[1]?.replace(/\\n/g,'\n').replace(/\\"/g,'"') || text;
-      parsed = { subject, body };
+    try { parsed = JSON.parse(text.replace(/```json|```/g,'').trim()); }
+    catch(e) {
+      const subMatch = text.match(/"subject"\s*:\s*"([^"]+)"/);
+      const bodyMatch = text.match(/"body"\s*:\s*"([\s\S]+?)"\s*\}/);
+      parsed = { subject: subMatch?.[1] || 'Payment Reminder', body: bodyMatch?.[1]?.replace(/\\n/g,'\n') || text };
     }
-    // Ensure body is a string and unescape newlines
-    if (parsed.body) parsed.body = String(parsed.body).replace(/\\n/g,'\n').replace(/\\"/g,'"');
-    if (parsed.subject) parsed.subject = String(parsed.subject).replace(/\\n/g,' ');
     document.getElementById('coll-email-fields').style.display = 'block';
     document.getElementById('coll-email-subject').value = parsed.subject || '';
     const collSig = getSignatureForCurrentRep();
@@ -3793,7 +3783,6 @@ function renderContactsView() {
   const content = document.getElementById('main-content');
   const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
 
-  // Flatten all contacts with account info
   let allContacts = [];
   for (const [accName, contacts] of Object.entries(state.contactsCache)) {
     const acc = state.accounts.find(a => a.name.trim() === accName.trim());
@@ -3812,107 +3801,317 @@ function renderContactsView() {
     });
   }
 
-  const totalContacts   = allContacts.length;
-  const withEmail       = allContacts.filter(c => c.email).length;
-  const apContacts      = allContacts.filter(c => c.type === 'AP/Collections').length;
-  const inactiveAccts   = new Set(allContacts.filter(c => c.isInactiveAcc).map(c => c.accountName)).size;
+  const totalContacts = allContacts.length;
+  const withEmail     = allContacts.filter(c => c.email).length;
+  const apContacts    = allContacts.filter(c => c.type === 'AP/Collections').length;
+  const inactiveAccts = new Set(allContacts.filter(c => c.isInactiveAcc).map(c => c.accountName)).size;
 
   content.innerHTML = `
-    <div style="flex:1;overflow-y:auto;padding:24px" id="contacts-main">
+  <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
 
-      <!-- KPIs -->
-      <div class="dashboard-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
-        <div class="stat-card">
+    <!-- Top bar with KPIs + filters -->
+    <div style="flex-shrink:0;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--navy-light)">
+      <div style="display:flex;gap:10px;margin-bottom:14px">
+        <div class="stat-card" style="flex:1;padding:10px 14px">
           <div class="stat-label">Total Contacts</div>
-          <div class="stat-value accent" style="font-size:22px">${totalContacts}</div>
-          <div class="stat-sub">across all accounts</div>
+          <div class="stat-value accent" style="font-size:20px">${totalContacts}</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" style="flex:1;padding:10px 14px">
           <div class="stat-label">Have Email</div>
-          <div class="stat-value green">${withEmail}</div>
+          <div class="stat-value green" style="font-size:20px">${withEmail}</div>
           <div class="stat-sub">${Math.round(withEmail/Math.max(totalContacts,1)*100)}% reachable</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" style="flex:1;padding:10px 14px">
           <div class="stat-label">AP / Collections</div>
-          <div class="stat-value accent">${apContacts}</div>
-          <div class="stat-sub">finance contacts</div>
+          <div class="stat-value accent" style="font-size:20px">${apContacts}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">At Inactive Accounts</div>
-          <div class="stat-value orange">${inactiveAccts}</div>
-          <div class="stat-sub">accounts need re-engagement</div>
+        <div class="stat-card" style="flex:1;padding:10px 14px">
+          <div class="stat-label">Inactive Accounts</div>
+          <div class="stat-value orange" style="font-size:20px">${inactiveAccts}</div>
+          <div class="stat-sub">need re-engagement</div>
         </div>
       </div>
-
-      <!-- Filters -->
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="filter-btn active" onclick="filterContactsView('all',this)">ALL</button>
         <button class="filter-btn" onclick="filterContactsView('purchasing',this)">PURCHASING</button>
         <button class="filter-btn" onclick="filterContactsView('ap',this)">AP/COLLECTIONS</button>
         <button class="filter-btn" onclick="filterContactsView('inactive',this)">INACTIVE ACCOUNTS</button>
         <button class="filter-btn" onclick="filterContactsView('email',this)">HAS EMAIL</button>
+        <div style="display:flex;gap:6px;align-items:center;margin-left:8px">
+          <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">SORT:</span>
+          <button class="filter-btn active" onclick="sortContactsView('account',this)" style="padding:3px 7px;font-size:10px">ACCOUNT</button>
+          <button class="filter-btn" onclick="sortContactsView('name',this)" style="padding:3px 7px;font-size:10px">NAME</button>
+          <button class="filter-btn" onclick="sortContactsView('inactive',this)" style="padding:3px 7px;font-size:10px">INACTIVE</button>
+          <button class="filter-btn" onclick="sortContactsView('value',this)" style="padding:3px 7px;font-size:10px">VALUE</button>
+        </div>
         <input type="text" id="contacts-search" placeholder="Search name, account, email..."
           oninput="filterContactsView('search',null)"
           style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);
-                 font-family:var(--font-main);font-size:12px;padding:6px 10px;outline:none;margin-left:auto;width:220px">
+                 font-family:var(--font-main);font-size:12px;padding:6px 10px;outline:none;margin-left:auto;width:240px">
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);white-space:nowrap" id="contacts-count">${totalContacts} contacts</span>
       </div>
+    </div>
 
-      <!-- Sort -->
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;font-size:11px;color:var(--text-muted)">
-        <span style="font-family:var(--font-mono);font-size:10px">SORT:</span>
-        <button class="filter-btn active" onclick="sortContactsView('account',this)" style="padding:4px 8px;font-size:10px">ACCOUNT</button>
-        <button class="filter-btn" onclick="sortContactsView('name',this)" style="padding:4px 8px;font-size:10px">NAME</button>
-        <button class="filter-btn" onclick="sortContactsView('inactive',this)" style="padding:4px 8px;font-size:10px">MOST INACTIVE</button>
-        <button class="filter-btn" onclick="sortContactsView('value',this)" style="padding:4px 8px;font-size:10px">ACCOUNT VALUE</button>
-        <span style="margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--text-muted)" id="contacts-count">${totalContacts} contacts</span>
-      </div>
+    <!-- Split panel body -->
+    <div style="display:flex;flex:1;overflow:hidden" id="contacts-main">
 
-      <!-- Contact cards grid -->
-      <div id="contacts-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px">
-        ${allContacts.map(ct => {
-          const statusColor = ct.isInactiveAcc ? 'var(--orange)' : 'var(--green)';
-          const typeColor   = ct.type === 'AP/Collections' ? 'var(--accent)' : 'var(--blue-bright)';
-          const accStatusClean = (ct.accStatus || '').replace(/[🔴🟠⚫🟡]/g,'').trim();
-          return `<div class="contact-card"
-            data-type="${escHtml(ct.type||'')}"
-            data-inactive="${ct.isInactiveAcc?'1':'0'}"
-            data-email="${ct.email?'1':'0'}"
-            data-name="${escHtml((ct.name||'').toLowerCase())}"
-            data-account="${escHtml((ct.accountName||'').toLowerCase())}"
-            data-emailval="${escHtml((ct.email||'').toLowerCase())}"
-            data-days="${ct.daysInactive}"
-            data-value="${ct.accTotal}"
-            style="background:var(--navy-light);border:1px solid var(--border);border-top:2px solid ${typeColor};padding:14px;cursor:pointer;transition:background 0.15s"
-            onclick="selectContactCard(this,'${escHtml(ct.accountName)}')">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-              <div>
-                <div style="font-weight:500;font-size:13px">${escHtml(ct.name||'—')}</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:1px">${escHtml(ct.title||'No title')}</div>
+      <!-- LEFT — scrollable contact list -->
+      <div style="width:320px;min-width:320px;border-right:1px solid var(--border);overflow-y:auto;background:var(--navy-dark)" id="contacts-list-panel">
+        <div id="contacts-grid">
+          ${allContacts.map(ct => {
+            const typeColor = ct.type === 'AP/Collections' ? 'var(--accent)' : 'var(--blue-bright)';
+            const statusColor = ct.isInactiveAcc ? 'var(--orange)' : 'var(--green)';
+            return `<div class="contact-card"
+              data-type="${escHtml(ct.type||'')}"
+              data-inactive="${ct.isInactiveAcc?'1':'0'}"
+              data-email="${ct.email?'1':'0'}"
+              data-name="${escHtml((ct.name||'').toLowerCase())}"
+              data-account="${escHtml((ct.accountName||'').toLowerCase())}"
+              data-emailval="${escHtml((ct.email||'').toLowerCase())}"
+              data-days="${ct.daysInactive}"
+              data-value="${ct.accTotal}"
+              data-accname="${escHtml(ct.accountName)}"
+              data-ctname="${escHtml(ct.name||'')}"
+              style="padding:12px 14px;border-bottom:1px solid var(--border);border-left:3px solid ${typeColor};cursor:pointer;transition:background 0.12s"
+              onclick="selectContactCard(this,'${escHtml(ct.accountName)}','${escHtml(ct.name||'')}')">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(ct.name||'—')}</div>
+                  <div style="font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(ct.title||'No title')}</div>
+                  <div style="font-size:10px;color:var(--blue-bright);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(ct.accountName)}</div>
+                </div>
+                <span style="font-size:9px;font-family:var(--font-mono);color:${typeColor};margin-left:6px;white-space:nowrap">${ct.type === 'AP/Collections' ? 'AP' : 'BUYER'}</span>
               </div>
-              <span style="font-size:9px;font-family:var(--font-mono);color:${typeColor};background:rgba(0,0,0,0.2);padding:2px 6px;white-space:nowrap">
-                ${ct.type === 'AP/Collections' ? 'AP' : 'BUYER'}
-              </span>
-            </div>
-            <div style="font-size:11px;color:var(--blue-bright);margin-bottom:6px;font-weight:500">${escHtml(ct.accountName)}</div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-              ${ct.email ? `<a href="mailto:${escHtml(ct.email)}" onclick="event.stopPropagation()" style="font-size:10px;color:var(--blue-bright);text-decoration:none">✉ ${escHtml(ct.email)}</a>` : '<span style="font-size:10px;color:var(--text-muted)">No email</span>'}
-              ${ct.phone ? `<span style="font-size:10px;color:var(--text-muted)">☎ ${escHtml(ct.phone)}</span>` : ''}
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);border-top:1px solid var(--border-light);padding-top:6px">
-              <span style="color:${statusColor}">${ct.isInactiveAcc ? `Inactive ${ct.daysInactive}d` : 'Active'}</span>
-              <span>${escHtml(ct.rep)}</span>
-              <span style="color:var(--accent)">$${formatNum(ct.accTotal)}</span>
-            </div>
-          </div>`;
-        }).join('')}
+              <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-top:5px">
+                <span style="color:${statusColor}">${ct.isInactiveAcc ? `${ct.daysInactive}d inactive` : 'Active'}</span>
+                <span>${escHtml(ct.rep)}</span>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
       </div>
+
+      <!-- RIGHT — full contact detail panel -->
+      <div style="flex:1;overflow-y:auto;background:var(--navy-mid)" id="contacts-detail-panel">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:10px">
+          <div style="font-size:32px;opacity:0.2">👤</div>
+          <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em">SELECT A CONTACT</div>
+          <div style="font-size:12px;opacity:0.5">Click any contact on the left to view details</div>
+        </div>
+      </div>
+
+    </div>
+  </div>`;
+}
+
+function selectContactCard(el, accountName, contactName) {
+  document.querySelectorAll('.contact-card').forEach(c => {
+    c.style.background = '';
+    c.style.boxShadow = '';
+  });
+  el.style.background = 'var(--navy-mid)';
+  el.style.boxShadow = 'inset 0 0 0 1px var(--blue)';
+
+  const acc = state.accounts.find(a => a.name.trim() === accountName.trim());
+  if (!acc) return;
+
+  const contacts = state.contactsCache[accountName.trim()] || [];
+  const ct = contacts.find(c => c.name === contactName) || contacts[0];
+  const acctNotes = (state.contactNotesCache || {})[accountName.trim()] || [];
+  const ctNotes = acctNotes.filter(n => n.contact === contactName);
+  const h = state.historyCache[accountName.trim()] || { invoices: [], reqs: [], quotes: [] };
+  const allContacts = contacts;
+
+  const typeColor = ct?.type === 'AP/Collections' ? 'var(--accent)' : 'var(--blue-bright)';
+  const safeId = btoa(encodeURIComponent(contactName)).replace(/=/g,'');
+  const accSafeId = btoa(encodeURIComponent(accountName)).replace(/=/g,'');
+
+  // Recent invoices for this account
+  const recentInvoices = h.invoices.slice(0,5);
+  // Recent RFQs
+  const recentReqs = h.reqs.slice(0,5);
+
+  const panel = document.getElementById('contacts-detail-panel');
+  panel.innerHTML = `
+    <div style="padding:20px 24px">
+
+      <!-- Contact header -->
+      <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+        <div style="width:48px;height:48px;border-radius:50%;background:rgba(52,152,219,0.15);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:var(--blue-bright);flex-shrink:0">
+          ${(contactName||'?').charAt(0).toUpperCase()}
+        </div>
+        <div style="flex:1">
+          <div style="font-size:18px;font-weight:600;color:var(--text)">${escHtml(contactName||'Unknown')}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${escHtml(ct?.title||'No title')}</div>
+          <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
+            ${ct?.email ? `<a href="mailto:${escHtml(ct.email)}" class="contact-blur" style="font-size:12px;color:var(--blue-bright);text-decoration:none">✉ ${escHtml(ct.email)}</a>` : ''}
+            ${ct?.phone ? `<span class="contact-blur" style="font-size:12px;color:var(--text-dim)">☎ ${escHtml(ct.phone)}</span>` : ''}
+            ${ct?.mobile ? `<span class="contact-blur" style="font-size:12px;color:var(--text-dim)">📱 ${escHtml(ct.mobile)}</span>` : ''}
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:11px;color:var(--blue-bright);font-weight:500;margin-bottom:4px">${escHtml(accountName)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${escHtml(acc.rep||'')}</div>
+          ${statusBadge(acc.status||'')}
+          <div style="font-size:11px;color:var(--accent);margin-top:4px;font-family:var(--font-mono)">$${formatNum(acc.total||0)} lifetime</div>
+        </div>
+      </div>
+
+      <!-- All contacts at this account (quick list) -->
+      ${allContacts.length > 1 ? `
+      <div style="margin-bottom:20px">
+        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:8px">ALL CONTACTS AT THIS ACCOUNT (${allContacts.length})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${allContacts.map(c => `
+            <div onclick="selectContactCard(document.querySelector('[data-ctname=\\'${escHtml(c.name||'')}\\']') || document.querySelector('.contact-card'),'${escHtml(accountName)}','${escHtml(c.name||'')}')"
+              style="padding:4px 10px;background:${c.name===contactName?'var(--blue)':'var(--navy-light)'};border:1px solid ${c.name===contactName?'var(--blue)':'var(--border)'};font-size:11px;cursor:pointer;border-radius:2px;color:${c.name===contactName?'#fff':'var(--text-dim)'};white-space:nowrap">
+              ${escHtml(c.name||'?')}
+              <span style="font-size:9px;opacity:0.7;margin-left:4px">${c.type==='AP/Collections'?'AP':'BUYER'}</span>
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      <!-- 3-column grid: AI NBA + Activity + History -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px">
+
+        <!-- AI Next Best Action -->
+        <div style="background:var(--navy-light);border:1px solid var(--border);padding:14px">
+          <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--blue-bright);margin-bottom:10px">✦ AI NEXT BEST ACTION</div>
+          <button class="nba-btn" onclick="generateNextBestAction('${escHtml(accountName)}','contacts-nba-${accSafeId}')">
+            ✦ ANALYZE &amp; RECOMMEND
+          </button>
+          <div id="contacts-nba-${accSafeId}" style="display:none;margin-top:10px"></div>
+        </div>
+
+        <!-- Account quick stats -->
+        <div style="background:var(--navy-light);border:1px solid var(--border);padding:14px">
+          <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:10px">ACCOUNT ACTIVITY</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between;font-size:12px">
+              <span style="color:var(--text-muted)">Last sale</span>
+              <span style="color:var(--text)">${escHtml(String(acc.lastSale||'Unknown'))}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px">
+              <span style="color:var(--text-muted)">Days inactive</span>
+              <span style="color:${acc.daysInactive>183?'var(--orange)':'var(--green)'}">${acc.daysInactive||0}d</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px">
+              <span style="color:var(--text-muted)">Open RFQs</span>
+              <span style="color:var(--text)">${h.reqs.filter(r=>!r.closed).length}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px">
+              <span style="color:var(--text-muted)">Open quotes</span>
+              <span style="color:var(--text)">${h.quotes.filter(q=>!q.closed).length}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px">
+              <span style="color:var(--text-muted)">Total invoices</span>
+              <span style="color:var(--text)">${h.invoices.length}</span>
+            </div>
+          </div>
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+            <button style="width:100%;padding:6px;background:transparent;border:1px solid var(--border);color:var(--blue-bright);font-size:10px;font-family:var(--font-mono);cursor:pointer;letter-spacing:0.05em"
+              onclick="switchView('accounts');setTimeout(()=>{const a=state.accounts.find(x=>x.name.trim()==='${escHtml(accountName)}');if(a){state.selectedAccount=a;renderDetail(a,'history');}},150)">
+              VIEW FULL HISTORY →
+            </button>
+          </div>
+        </div>
+
+        <!-- Recent purchases -->
+        <div style="background:var(--navy-light);border:1px solid var(--border);padding:14px">
+          <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:10px">RECENT PURCHASES</div>
+          ${recentInvoices.length ? recentInvoices.map(inv => `
+            <div style="font-size:11px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border-light)">
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--text-dim);font-family:var(--font-mono)">#${escHtml(String(inv.invoiceNum||''))}</span>
+                <span style="color:var(--accent);font-family:var(--font-mono)">$${formatNum(inv.total||0)}</span>
+              </div>
+              <div style="color:var(--text-muted);font-size:10px;margin-top:1px">${escHtml(String(inv.date||''))}</div>
+              ${inv.part ? `<div style="color:var(--blue-bright);font-size:10px;font-family:var(--font-mono)">${escHtml(inv.part)}</div>` : ''}
+            </div>`).join('') : '<div style="font-size:11px;color:var(--text-muted)">No recent purchases</div>'}
+        </div>
+      </div>
+
+      <!-- Contact Notes — full width -->
+      <div style="background:var(--navy-light);border:1px solid var(--border);padding:14px;margin-bottom:16px">
+        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--blue-bright);margin-bottom:10px">📋 CONTACT NOTES — ${escHtml(contactName||'')}</div>
+
+        <!-- Existing notes -->
+        ${ctNotes.length ? `
+        <div style="max-height:200px;overflow-y:auto;margin-bottom:12px;display:flex;flex-direction:column;gap:6px">
+          ${ctNotes.slice().reverse().map(n => `
+            <div class="cnote-entry">
+              <div class="cnote-entry-meta">
+                <span class="cnote-type-badge ${(n.type||'').toLowerCase()}">${(n.type||'NOTE').toUpperCase()}</span>
+                <span>${escHtml(n.rep||'')}</span>
+                <span>${escHtml(n.date||'')}</span>
+              </div>
+              <div>${escHtml(n.note||'')}</div>
+            </div>`).join('')}
+        </div>` : `<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">No notes yet for this contact.</div>`}
+
+        <!-- Note form -->
+        <div class="cnote-form">
+          <div class="cnote-row">
+            <select class="cnote-type-sel" id="cntype-cv-${safeId}">
+              <option value="Call">Call</option>
+              <option value="Email">Email</option>
+              <option value="Meeting">Meeting</option>
+              <option value="Note">Note</option>
+            </select>
+            <textarea class="cnote-text-input" id="cnnote-cv-${safeId}"
+              placeholder="Log a call, email, or note for ${escHtml(contactName||'')}..."></textarea>
+          </div>
+          <button class="cnote-save-btn" onclick="saveContactNoteFromView('${escHtml(accountName)}','${escHtml(contactName||'')}','cv-${safeId}')">
+            SAVE NOTE
+          </button>
+        </div>
+      </div>
+
+      <!-- Recent RFQs -->
+      ${recentReqs.length ? `
+      <div style="background:var(--navy-light);border:1px solid var(--border);padding:14px">
+        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:10px">RECENT RFQs (${h.reqs.length} total)</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${recentReqs.map(r => `
+            <div style="font-size:11px;display:flex;justify-content:space-between;padding:6px 8px;background:var(--navy-mid);border:1px solid var(--border)">
+              <span style="color:var(--blue-bright);font-family:var(--font-mono)">${escHtml(r.part||r.desc||'—')}</span>
+              <span style="color:var(--text-muted)">${escHtml(String(r.date||''))}</span>
+              <span style="color:${r.closed?'var(--text-muted)':'var(--green)'};font-size:10px">${r.closed?'CLOSED':'OPEN'}</span>
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
+
     </div>`;
+}
+
+// Save note from the contacts page view (re-renders detail panel)
+async function saveContactNoteFromView(accountName, contactName, safeId) {
+  const typeEl = document.getElementById('cntype-' + safeId);
+  const noteEl = document.getElementById('cnnote-' + safeId);
+  if (!typeEl || !noteEl) return;
+  const type = typeEl.value;
+  const note = noteEl.value.trim();
+  if (!note) { showToast('Please enter a note', 'error'); return; }
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'}) + ' ' +
+                  now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  const rep = state.user?.email || 'unknown';
+  try {
+    await sheetsAppend("'_CONTACT_NOTES'!A1", [[accountName, contactName, type, note, dateStr, rep]]);
+    showToast('Note saved ✓', 'success');
+    if (!state.contactNotesCache) state.contactNotesCache = {};
+    if (!state.contactNotesCache[accountName]) state.contactNotesCache[accountName] = [];
+    state.contactNotesCache[accountName].push({ contact: contactName, type, note, date: dateStr, rep });
+    // Find the list item and re-select to refresh the panel
+    const card = document.querySelector(`.contact-card[data-ctname="${CSS.escape(contactName)}"]`);
+    selectContactCard(card || document.querySelector('.contact-card[style*="navy-mid"]'), accountName, contactName);
+  } catch(e) { showToast('Could not save: ' + e.message, 'error'); }
 }
 
 function filterContactsView(type, btn) {
   if (btn) {
     document.querySelectorAll('#contacts-main .filter-btn').forEach(b => {
-      if (['ALL','PURCHASING','AP/COLLECTIONS','INACTIVE ACCOUNTS','HAS EMAIL'].includes(b.textContent)) b.classList.remove('active');
+      if (['ALL','PURCHASING','AP/COLLECTIONS','INACTIVE ACCOUNTS','HAS EMAIL'].includes(b.textContent.trim())) b.classList.remove('active');
     });
     btn.classList.add('active');
   }
@@ -3940,7 +4139,7 @@ function filterContactsView(type, btn) {
 
 function sortContactsView(by, btn) {
   document.querySelectorAll('#contacts-main .filter-btn').forEach(b => {
-    if (['ACCOUNT','NAME','MOST INACTIVE','ACCOUNT VALUE'].includes(b.textContent)) b.classList.remove('active');
+    if (['ACCOUNT','NAME','INACTIVE','VALUE'].includes(b.textContent.trim())) b.classList.remove('active');
   });
   btn?.classList.add('active');
   const grid = document.getElementById('contacts-grid');
@@ -3956,19 +4155,6 @@ function sortContactsView(by, btn) {
   cards.forEach(c => grid.appendChild(c));
 }
 
-function selectContactCard(el, accountName) {
-  document.querySelectorAll('.contact-card').forEach(c => c.style.background = 'var(--navy-light)');
-  el.style.background = 'var(--navy-mid)';
-  // Navigate to account detail
-  const acc = state.accounts.find(a => a.name.trim() === accountName.trim());
-  if (acc) {
-    switchView('accounts');
-    setTimeout(() => {
-      state.selectedAccount = acc;
-      renderDetail(acc);
-    }, 100);
-  }
-}
 function statusBadge(status) {
   const s = status || '';
   let cls = 'status-active', label = 'Active';

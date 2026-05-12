@@ -1086,6 +1086,28 @@ td {
 @media (max-width: 1100px) {
   .detail-panel { width: 360px; min-width: 360px; }
 }
+/* ── ATTACK PLAN ──────────────────────────────────────────── */
+.ap-board { position:relative; width:100%; height:100%; overflow:hidden; background:var(--navy); user-select:none; }
+.ap-card {
+  position:absolute; width:164px; cursor:grab; border-radius:3px;
+  background:var(--navy-light); border:1px solid var(--border);
+  padding:8px 10px; font-size:11px; transition:box-shadow 0.12s;
+  touch-action:none;
+}
+.ap-card:hover { box-shadow:0 4px 16px rgba(0,0,0,0.4); }
+.ap-card.dragging { cursor:grabbing; box-shadow:0 10px 30px rgba(0,0,0,0.6); transform:scale(1.05); z-index:2000; opacity:0.9; }
+.ap-card.solid { border-left:3px solid var(--accent); }
+.ap-card.center { border-left:3px solid var(--blue-bright); }
+.ap-card.ring { border-left:3px solid #27ae60; }
+.ap-card.pool { background:rgba(22,32,50,0.7); border-left:3px solid var(--text-muted); }
+.ap-card.transfer-cand { border-left:3px solid var(--orange); background:rgba(211,84,0,0.08); }
+.ap-card-name { font-weight:600; color:var(--text); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ap-card-sub { color:var(--text-muted); font-size:10px; margin-top:2px; font-family:var(--font-mono); }
+.ap-card-revenue { font-family:var(--font-mono); font-size:10px; color:var(--accent); margin-top:2px; }
+.ap-zone-label {
+  position:absolute; font-family:var(--font-mono); font-size:9px; letter-spacing:0.15em;
+  pointer-events:none; opacity:0.3; text-transform:uppercase;
+}
 </style>
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script src="https://apis.google.com/js/api.js" async></script>
@@ -1168,6 +1190,9 @@ td {
       <div class="nav-item" id="nav-contacts" data-view="contacts" onclick="switchView('contacts')">
         <span class="nav-icon">👥</span> Contacts
         <span class="nav-badge" id="badge-contacts">—</span>
+      </div>
+      <div class="nav-item" id="nav-attack" data-view="attack" onclick="switchView('attack')">
+        <span class="nav-icon">⚔</span> Attack Plan
       </div>
       <div class="nav-item" id="nav-all" data-view="all" onclick="switchView('all')" style="display:none">
         <span class="nav-icon">⊞</span> All Reps
@@ -1922,6 +1947,7 @@ let state = {
   collectionsInvoicesCache: {}, // keyed by customer name — open invoices
   signaturesCache: {},          // keyed by rep ID — email signatures
   notesByAccount: {},  // keyed by account name
+  attackPlan: {},      // keyed by rep — { center: [...], ring: [...] }
   loading: false,
   accessToken: null,
 };
@@ -1983,6 +2009,18 @@ function completeLogin() {
     document.getElementById('filter-all').style.display = 'inline-block';
     document.getElementById('view-as-section').style.display = 'block';
   }
+  // Load signatures immediately so Settings always shows them
+  sheetsGet("'_SIGNATURES'!A1:D100").then(rows => {
+    if (rows.length > 1) {
+      const hdrs = rows[0];
+      const iRep = hdrs.indexOf('REP');
+      const iSig = hdrs.indexOf('SIGNATURE_TEXT');
+      for (let r = 1; r < rows.length; r++) {
+        const rep = (rows[r][iRep] || '').trim();
+        if (rep) state.signaturesCache[rep] = rows[r][iSig] || '';
+      }
+    }
+  }).catch(() => {});
   loadAllAccounts().then(() => {
     renderAccountsView();
     updateBadges();
@@ -2247,6 +2285,7 @@ function switchView(view) {
     dashboard:   'Dashboard',
     collections: 'Collections',
     contacts:    'Contacts',
+    attack:      'Sales Attack Plan',
     settings:    'Settings',
     all:         'All Accounts — All Reps',
   };
@@ -2275,6 +2314,8 @@ function switchView(view) {
     } else {
       renderContactsView();
     }
+  } else if (view === 'attack') {
+    renderAttackPlan();
   } else if (view === 'settings') {
     renderSettingsView();
   } else {
@@ -4626,6 +4667,429 @@ function getAnthropicKey() {
     return null;
   }
   return key;
+}
+
+// ══════════════════════════════════════════════════════════
+//  ATTACK PLAN
+// ══════════════════════════════════════════════════════════
+async function loadAttackPlan(rep) {
+  try {
+    const rows = await sheetsGet("'_ATTACK_PLAN'!A1:F2000");
+    if (rows.length < 2) return {};
+    const hdrs = rows[0];
+    const iRep  = hdrs.indexOf('REP');
+    const iName = hdrs.indexOf('ACCOUNT_NAME');
+    const iZone = hdrs.indexOf('ZONE');  // SOLID, CENTER, RING, POOL
+    const iPos  = hdrs.indexOf('POSITION'); // JSON {x,y}
+    const plan = {};
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      const repKey = (row[iRep]||'').trim();
+      if (!plan[repKey]) plan[repKey] = [];
+      plan[repKey].push({
+        name: (row[iName]||'').trim(),
+        zone: (row[iZone]||'POOL').trim(),
+        pos:  (() => { try { return JSON.parse(row[iPos]||'{}'); } catch(e){ return {}; } })(),
+      });
+    }
+    return plan;
+  } catch(e) { return {}; }
+}
+
+async function saveAttackPlan(rep, cards) {
+  try {
+    // Load all rows, replace this rep's rows, write back
+    let rows;
+    try {
+      const existing = await sheetsGet("'_ATTACK_PLAN'!A1:F2000");
+      rows = existing.length > 0 ? existing : [['REP','ACCOUNT_NAME','ZONE','POSITION','TOTAL','LAST_UPDATED']];
+    } catch(e) {
+      rows = [['REP','ACCOUNT_NAME','ZONE','POSITION','TOTAL','LAST_UPDATED']];
+    }
+    // Remove existing rows for this rep
+    const hdrs = rows[0];
+    const filtered = rows.filter((r, i) => i === 0 || (r[0]||'').trim() !== rep);
+    // Add updated rows
+    const now = new Date().toLocaleString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+    cards.forEach(c => {
+      const acc = state.accounts.find(a => a.name === c.name);
+      filtered.push([rep, c.name, c.zone, JSON.stringify(c.pos), acc ? formatNum(acc.total) : '', now]);
+    });
+    await sheetsUpdate("'_ATTACK_PLAN'!A1:F" + filtered.length, filtered);
+    showToast('Attack plan saved ✓', 'success');
+  } catch(e) {
+    showToast('Error saving: ' + e.message, 'error');
+  }
+}
+
+async function requestTransfer(accountName, fromRep) {
+  const reason = prompt(`Request transfer of "${accountName}" to your territory?\n\nOptional note to John:`);
+  if (reason === null) return; // cancelled
+  try {
+    const ts = new Date().toISOString();
+    await sheetsAppend("'_LOG'!A1", [[
+      ts,
+      state.user?.email || fromRep,
+      'TRANSFER_REQUEST',
+      `Rep ${fromRep} requests transfer of account: ${accountName}. Note: ${reason || 'none'}`,
+    ]]);
+    showToast(`Transfer request sent to John for "${accountName}" ✓`, 'success');
+  } catch(e) {
+    showToast('Error sending request: ' + e.message, 'error');
+  }
+}
+
+async function renderAttackPlan() {
+  const content = document.getElementById('main-content');
+  content.innerHTML = `<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-family:var(--font-mono)">LOADING ATTACK PLAN...</div>`;
+
+  const repFilter = state.isAdmin ? (state.viewAsRep || state.repId || 'FJohn') : state.repId;
+  if (!repFilter) { content.innerHTML = `<div style="padding:40px;color:var(--text-muted)">Select a rep to view their attack plan.</div>`; return; }
+
+  // Load saved plan
+  const allPlans = await loadAttackPlan(repFilter);
+  const savedCards = allPlans[repFilter] || [];
+
+  // Get rep's accounts sorted by total revenue
+  const repAccs = state.accounts
+    .filter(a => a.rep === repFilter)
+    .sort((a, b) => (b.total || 0) - (a.total || 0));
+
+  // Get all other rep accounts as transfer candidates
+  const otherAccs = state.accounts
+    .filter(a => a.rep !== repFilter)
+    .sort((a, b) => (b.total || 0) - (a.total || 0))
+    .slice(0, 40);
+
+  // Build initial card state — merge saved positions with accounts
+  const boardW = content.clientWidth || 1200;
+  const boardH = Math.max(content.clientHeight || 700, 700);
+  const cx = boardW / 2;
+  const cy = boardH / 2;
+  const cardW = 164, cardH = 72, gap = 12;
+
+  // Default layout if no saved plan
+  function defaultLayout(accs) {
+    const cards = [];
+    // Center column: top 20 accounts
+    const centerAccs = accs.slice(0, 20);
+    centerAccs.forEach((acc, i) => {
+      const zone = i < 10 ? 'SOLID' : 'CENTER';
+      const x = cx - cardW / 2;
+      const y = cy - (10 * (cardH + gap) / 2) + i * (cardH + gap);
+      cards.push({ name: acc.name, zone, pos: { x, y } });
+    });
+    // Ring: next 30 accounts in a circle
+    const ringAccs = accs.slice(20, 50);
+    const ringR = Math.min(boardW, boardH) * 0.38;
+    ringAccs.forEach((acc, i) => {
+      const angle = (i / ringAccs.length) * 2 * Math.PI - Math.PI / 2;
+      const x = cx + ringR * Math.cos(angle) - cardW / 2;
+      const y = cy + ringR * Math.sin(angle) - cardH / 2;
+      cards.push({ name: acc.name, zone: 'RING', pos: { x, y } });
+    });
+    return cards;
+  }
+
+  // Merge saved positions with accounts
+  let cards = [];
+  if (savedCards.length > 0) {
+    // Use saved positions, add any new accounts to pool
+    const savedNames = new Set(savedCards.map(c => c.name));
+    cards = [...savedCards];
+    repAccs.forEach(acc => {
+      if (!savedNames.has(acc.name)) {
+        cards.push({ name: acc.name, zone: 'POOL', pos: { x: 0, y: 0 } });
+      }
+    });
+  } else {
+    cards = defaultLayout(repAccs);
+    // Add remaining as pool
+    repAccs.slice(50).forEach(acc => {
+      cards.push({ name: acc.name, zone: 'POOL', pos: { x: 0, y: 0 } });
+    });
+  }
+
+  // Pool cards get stacked in a side panel — only board cards have x,y positions
+  const boardCards = cards.filter(c => ['SOLID','CENTER','RING'].includes(c.zone));
+  const poolCards  = cards.filter(c => c.zone === 'POOL');
+
+  // Zone counts
+  const solidCount  = boardCards.filter(c => c.zone === 'SOLID').length;
+  const centerCount = boardCards.filter(c => c.zone === 'CENTER').length;
+  const ringCount   = boardCards.filter(c => c.zone === 'RING').length;
+
+  content.innerHTML = `
+    <div style="display:flex;flex:1;height:100%;overflow:hidden">
+
+      <!-- LEFT: Pool panel -->
+      <div id="ap-pool-panel" style="width:200px;min-width:200px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--navy-light);overflow:hidden">
+        <div style="padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
+          <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:4px">YOUR POOL</div>
+          <div style="font-size:11px;color:var(--text-dim)">Drag onto board to add to plan</div>
+        </div>
+        <div id="ap-pool-list" style="flex:1;overflow-y:auto;padding:8px">
+          ${poolCards.map(c => {
+            const acc = state.accounts.find(a => a.name === c.name);
+            return `<div class="ap-card pool" data-name="${escHtml(c.name)}" data-zone="POOL" style="position:relative;width:auto;margin-bottom:6px;cursor:grab">
+              <div class="ap-card-name">${escHtml(c.name)}</div>
+              <div class="ap-card-revenue">$${formatNum(acc?.total||0)}</div>
+              <div class="ap-card-sub">${escHtml(acc?.status||'')}</div>
+            </div>`;
+          }).join('')}
+          ${poolCards.length === 0 ? '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:20px 0">All accounts on board</div>' : ''}
+        </div>
+
+        <!-- Transfer candidates -->
+        <div style="border-top:1px solid var(--border);flex-shrink:0">
+          <div style="padding:8px 12px;border-bottom:1px solid var(--border)">
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--orange);margin-bottom:2px">TRANSFER CANDIDATES</div>
+            <div style="font-size:10px;color:var(--text-dim)">Click to request from John</div>
+          </div>
+          <div style="max-height:180px;overflow-y:auto;padding:8px">
+            ${otherAccs.slice(0,15).map(acc => `
+              <div class="ap-card transfer-cand" onclick="requestTransfer('${escHtml(acc.name)}','${escHtml(repFilter)}')"
+                style="position:relative;width:auto;margin-bottom:6px;cursor:pointer" title="Click to request transfer">
+                <div class="ap-card-name">${escHtml(acc.name)}</div>
+                <div class="ap-card-revenue">$${formatNum(acc.total||0)}</div>
+                <div class="ap-card-sub">${escHtml(acc.rep)} · ${escHtml(acc.status||'')}</div>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTER: Interactive board -->
+      <div style="flex:1;position:relative;overflow:hidden">
+
+        <!-- Zone labels -->
+        <div class="ap-zone-label" style="left:50%;transform:translateX(-50%);top:12px;color:var(--accent)">
+          ★ SOLID CORE (top 10) &nbsp;·&nbsp; ◈ CENTER PURSUE (next 10) &nbsp;·&nbsp; ○ OUTER RING (30)
+        </div>
+
+        <!-- Status bar -->
+        <div id="ap-status" style="position:absolute;bottom:0;left:0;right:0;height:36px;background:var(--navy-light);border-top:1px solid var(--border);display:flex;align-items:center;gap:16px;padding:0 16px;font-family:var(--font-mono);font-size:10px;z-index:100">
+          <span style="color:var(--accent)">★ SOLID: <strong id="ap-count-solid">${solidCount}</strong>/10</span>
+          <span style="color:var(--blue-bright)">◈ CENTER: <strong id="ap-count-center">${centerCount}</strong>/10</span>
+          <span style="color:#27ae60">○ RING: <strong id="ap-count-ring">${ringCount}</strong>/30</span>
+          <span style="color:var(--text-muted)">Rep: ${escHtml(repFilter)}</span>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <button onclick="resetAttackPlan('${escHtml(repFilter)}')"
+              style="padding:5px 12px;background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:10px;cursor:pointer">
+              RESET DEFAULT
+            </button>
+            <button onclick="saveCurrentAttackPlan('${escHtml(repFilter)}')"
+              style="padding:5px 14px;background:var(--blue);border:none;color:white;font-family:var(--font-mono);font-size:10px;cursor:pointer;letter-spacing:0.05em">
+              SAVE PLAN ✓
+            </button>
+          </div>
+        </div>
+
+        <!-- Board canvas -->
+        <div id="ap-board" class="ap-board" style="position:absolute;inset:0;bottom:36px">
+          ${boardCards.map(c => {
+            const acc = state.accounts.find(a => a.name === c.name);
+            const zoneClass = c.zone === 'SOLID' ? 'solid' : c.zone === 'CENTER' ? 'center' : 'ring';
+            const badge = c.zone === 'SOLID' ? `<span class="ap-card-badge" style="background:rgba(232,160,32,0.15);color:var(--accent)">★ SOLID</span>`
+                        : c.zone === 'CENTER' ? `<span class="ap-card-badge" style="background:rgba(37,137,216,0.15);color:var(--blue-bright)">◈ PURSUE</span>`
+                        : `<span class="ap-card-badge" style="background:rgba(39,174,96,0.12);color:#27ae60">○ RING</span>`;
+            return `<div class="ap-card ${zoneClass}" data-name="${escHtml(c.name)}" data-zone="${c.zone}"
+              style="left:${Math.round(c.pos.x||cx-cardW/2)}px;top:${Math.round(c.pos.y||cy)}px"
+              onmousedown="apStartDrag(event,this)">
+              <div class="ap-card-name" title="${escHtml(c.name)}">${escHtml(c.name)}</div>
+              <div class="ap-card-revenue">$${formatNum(acc?.total||0)}</div>
+              ${badge}
+            </div>`;
+          }).join('')}
+
+          <!-- Zone ring guide -->
+          <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:0.07" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="50%" cy="50%" r="${Math.min(boardW,boardH)*0.38}" stroke="#27ae60" stroke-width="1" fill="none" stroke-dasharray="6,4"/>
+            <rect x="${cx-cardW/2-8}" y="24" width="${cardW+16}" height="${Math.min(20*(cardH+gap),boardH-60)}" rx="4" stroke="var(--blue)" stroke-width="1" fill="none" stroke-dasharray="4,3"/>
+          </svg>
+        </div>
+      </div>
+
+    </div>`;
+
+  // Init drag on pool cards too
+  document.querySelectorAll('#ap-pool-list .ap-card').forEach(el => {
+    el.addEventListener('mousedown', (e) => apStartDragFromPool(e, el));
+  });
+}
+
+// ── DRAG ENGINE ────────────────────────────────────────────
+let apDrag = null;
+
+function apStartDrag(e, el) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  const board = document.getElementById('ap-board');
+  const rect  = board.getBoundingClientRect();
+  apDrag = {
+    el, board,
+    offX: e.clientX - el.getBoundingClientRect().left,
+    offY: e.clientY - el.getBoundingClientRect().top,
+    fromPool: false,
+  };
+  el.classList.add('dragging');
+  el.style.zIndex = 2000;
+  document.addEventListener('mousemove', apOnDrag);
+  document.addEventListener('mouseup',   apEndDrag);
+}
+
+function apStartDragFromPool(e, el) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  const board = document.getElementById('ap-board');
+  if (!board) return;
+
+  // Clone card and place on board
+  const clone = document.createElement('div');
+  clone.className = 'ap-card center dragging';
+  clone.dataset.name = el.dataset.name;
+  clone.dataset.zone = 'CENTER';
+  const acc = state.accounts.find(a => a.name === el.dataset.name);
+  clone.innerHTML = `<div class="ap-card-name" title="${escHtml(el.dataset.name)}">${escHtml(el.dataset.name)}</div>
+    <div class="ap-card-revenue">$${formatNum(acc?.total||0)}</div>
+    <span class="ap-card-badge" style="background:rgba(37,137,216,0.15);color:var(--blue-bright)">◈ PURSUE</span>`;
+  const boardRect = board.getBoundingClientRect();
+  clone.style.left = (e.clientX - boardRect.left - 82) + 'px';
+  clone.style.top  = (e.clientY - boardRect.top  - 36) + 'px';
+  clone.style.zIndex = 2000;
+  board.appendChild(clone);
+
+  // Bind drag handler
+  clone.addEventListener('mousedown', (ev) => apStartDrag(ev, clone));
+
+  apDrag = {
+    el: clone, board,
+    offX: 82, offY: 36,
+    fromPool: true,
+    poolEl: el,
+  };
+  document.addEventListener('mousemove', apOnDrag);
+  document.addEventListener('mouseup',   apEndDrag);
+}
+
+function apOnDrag(e) {
+  if (!apDrag) return;
+  const rect = apDrag.board.getBoundingClientRect();
+  let x = e.clientX - rect.left - apDrag.offX;
+  let y = e.clientY - rect.top  - apDrag.offY;
+  // Clamp to board
+  x = Math.max(0, Math.min(rect.width  - 164, x));
+  y = Math.max(0, Math.min(rect.height -  72, y));
+  apDrag.el.style.left = x + 'px';
+  apDrag.el.style.top  = y + 'px';
+  // Detect zone based on position relative to center
+  const bw = rect.width, bh = rect.height;
+  const cx = bw/2, cy = bh/2;
+  const cardCx = x + 82, cardCy = y + 36;
+  const dist = Math.sqrt((cardCx-cx)**2 + (cardCy-cy)**2);
+  const ringR = Math.min(bw,bh)*0.38;
+  let zone = 'RING';
+  if (dist < ringR * 0.35) zone = 'SOLID';
+  else if (dist < ringR * 0.7) zone = 'CENTER';
+  apDrag.detectedZone = zone;
+}
+
+function apEndDrag(e) {
+  if (!apDrag) return;
+  document.removeEventListener('mousemove', apOnDrag);
+  document.removeEventListener('mouseup',   apEndDrag);
+  const el = apDrag.el;
+  el.classList.remove('dragging');
+  el.style.zIndex = '';
+  // Check if dropped outside board (back to pool)
+  const boardRect = apDrag.board.getBoundingClientRect();
+  if (e.clientX < boardRect.left) {
+    // Dropped back onto pool panel — remove from board
+    el.remove();
+    if (apDrag.fromPool && apDrag.poolEl) {
+      // already in pool — nothing to do
+    } else {
+      // Add back to pool
+      apAddToPool(el.dataset.name);
+    }
+  } else {
+    // Apply detected zone
+    const zone = apDrag.detectedZone || el.dataset.zone || 'RING';
+    el.dataset.zone = zone;
+    const zoneClass = zone === 'SOLID' ? 'solid' : zone === 'CENTER' ? 'center' : 'ring';
+    el.className = `ap-card ${zoneClass}`;
+    const badge = zone === 'SOLID'  ? `<span class="ap-card-badge" style="background:rgba(232,160,32,0.15);color:var(--accent)">★ SOLID</span>`
+                : zone === 'CENTER' ? `<span class="ap-card-badge" style="background:rgba(37,137,216,0.15);color:var(--blue-bright)">◈ PURSUE</span>`
+                :                    `<span class="ap-card-badge" style="background:rgba(39,174,96,0.12);color:#27ae60">○ RING</span>`;
+    const acc = state.accounts.find(a => a.name === el.dataset.name);
+    el.innerHTML = `<div class="ap-card-name" title="${escHtml(el.dataset.name)}">${escHtml(el.dataset.name)}</div>
+      <div class="ap-card-revenue">$${formatNum(acc?.total||0)}</div>
+      ${badge}`;
+    el.addEventListener('mousedown', (ev) => apStartDrag(ev, el));
+    // Remove from pool if it was there
+    if (apDrag.fromPool && apDrag.poolEl) apDrag.poolEl.remove();
+  }
+  apUpdateCounts();
+  apDrag = null;
+}
+
+function apAddToPool(name) {
+  const pool = document.getElementById('ap-pool-list');
+  if (!pool) return;
+  const acc = state.accounts.find(a => a.name === name);
+  const div = document.createElement('div');
+  div.className = 'ap-card pool';
+  div.dataset.name = name;
+  div.dataset.zone = 'POOL';
+  div.style.cssText = 'position:relative;width:auto;margin-bottom:6px;cursor:grab';
+  div.innerHTML = `<div class="ap-card-name">${escHtml(name)}</div>
+    <div class="ap-card-revenue">$${formatNum(acc?.total||0)}</div>
+    <div class="ap-card-sub">${escHtml(acc?.status||'')}</div>`;
+  div.addEventListener('mousedown', (e) => apStartDragFromPool(e, div));
+  pool.appendChild(div);
+}
+
+function apUpdateCounts() {
+  const cards = document.querySelectorAll('#ap-board .ap-card');
+  let solid=0, center=0, ring=0;
+  cards.forEach(c => {
+    if (c.dataset.zone==='SOLID')  solid++;
+    else if (c.dataset.zone==='CENTER') center++;
+    else if (c.dataset.zone==='RING')   ring++;
+  });
+  const s = document.getElementById('ap-count-solid');
+  const cn = document.getElementById('ap-count-center');
+  const rn = document.getElementById('ap-count-ring');
+  if (s)  { s.textContent = solid;  s.style.color = solid  >= 10 ? '#27ae60' : 'var(--accent)'; }
+  if (cn) { cn.textContent = center; cn.style.color = center >= 10 ? '#27ae60' : 'var(--blue-bright)'; }
+  if (rn) { rn.style.color = ring   >= 30 ? '#27ae60' : '#27ae60'; rn.textContent = ring; }
+}
+
+function saveCurrentAttackPlan(rep) {
+  const boardCards = [];
+  document.querySelectorAll('#ap-board .ap-card').forEach(el => {
+    boardCards.push({
+      name: el.dataset.name,
+      zone: el.dataset.zone || 'RING',
+      pos:  { x: parseInt(el.style.left)||0, y: parseInt(el.style.top)||0 },
+    });
+  });
+  document.querySelectorAll('#ap-pool-list .ap-card').forEach(el => {
+    boardCards.push({ name: el.dataset.name, zone: 'POOL', pos: {} });
+  });
+  saveAttackPlan(rep, boardCards);
+}
+
+async function resetAttackPlan(rep) {
+  if (!confirm('Reset to default layout? This will lose your current arrangement.')) return;
+  // Clear saved plan for this rep
+  try {
+    const rows = await sheetsGet("'_ATTACK_PLAN'!A1:F2000");
+    if (rows.length > 1) {
+      const filtered = rows.filter((r, i) => i === 0 || (r[0]||'').trim() !== rep);
+      await sheetsUpdate("'_ATTACK_PLAN'!A1:F" + filtered.length, filtered);
+    }
+  } catch(e) {}
+  renderAttackPlan();
 }
 
 // ══════════════════════════════════════════════════════════

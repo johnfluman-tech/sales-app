@@ -3113,17 +3113,18 @@ Return ONLY a JSON object with two keys: "subject" and "body". No preamble, no m
 
     let parsed;
     try {
-      const clean = text.replace(/```json|```/g, '').trim();
+      const clean = text.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
       parsed = JSON.parse(clean);
     } catch(e) {
-      // Try to extract subject/body manually
-      const subMatch = text.match(/"subject"\s*:\s*"([^"]+)"/);
-      const bodyMatch = text.match(/"body"\s*:\s*"([\s\S]+?)"\s*\}/);
+      const subMatch  = text.match(/"subject"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+      const bodyMatch = text.match(/"body"\s*:\s*"((?:[^"\\]|\\.|\n)*)"/s);
       parsed = {
-        subject: subMatch?.[1] || 'Following up — ' + acc.name,
-        body: bodyMatch?.[1]?.replace(/\\n/g, '\n') || text,
+        subject: subMatch?.[1]?.replace(/\\n/g,' ').replace(/\\"/g,'"') || 'Following up — ' + acc.name,
+        body:    bodyMatch?.[1]?.replace(/\\n/g,'\n').replace(/\\"/g,'"') || text,
       };
     }
+    if (parsed.body)    parsed.body    = String(parsed.body).replace(/\\n/g,'\n').replace(/\\"/g,'"');
+    if (parsed.subject) parsed.subject = String(parsed.subject).replace(/\\n/g,' ');
 
     const sig = getSignatureForCurrentRep();
     const disclaimer = getDisclaimer();
@@ -3300,7 +3301,7 @@ function getSignatureForCurrentRep() {
 }
 
 function getDisclaimer() {
-  const email = state.user || 'john.fluman@intransittech.com';
+  const email = state.user?.email || 'john.fluman@intransittech.com';
   return `CONFIDENTIALITY NOTICE: This email and any attachments are intended solely for the named recipient(s) and may contain confidential, proprietary, or legally privileged information belonging to Intransit Technologies Corp. Unauthorized review, use, disclosure, dissemination, or copying of this communication is strictly prohibited. If you have received this message in error, please notify the sender immediately at ${email}, permanently delete this message and all copies from your system, and do not retain, print, or forward any portion of its contents. Thank you.`;
 }
 function renderCollectionsView() {
@@ -3697,12 +3698,21 @@ Return ONLY a JSON object with keys "subject" and "body". No preamble.`;
     const data = await response.json();
     const text = data.content?.[0]?.text || '';
     let parsed;
-    try { parsed = JSON.parse(text.replace(/```json|```/g,'').trim()); }
-    catch(e) {
-      const subMatch = text.match(/"subject"\s*:\s*"([^"]+)"/);
-      const bodyMatch = text.match(/"body"\s*:\s*"([\s\S]+?)"\s*\}/);
-      parsed = { subject: subMatch?.[1] || 'Payment Reminder', body: bodyMatch?.[1]?.replace(/\\n/g,'\n') || text };
+    try {
+      // Clean the text and parse JSON
+      const cleaned = text.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
+      parsed = JSON.parse(cleaned);
+    } catch(e) {
+      // Fallback: extract subject and body manually
+      const subMatch  = text.match(/"subject"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+      const bodyMatch = text.match(/"body"\s*:\s*"((?:[^"\\]|\\.|\n)*)"/s);
+      const subject   = subMatch?.[1]?.replace(/\\n/g,'\n').replace(/\\"/g,'"') || 'Payment Reminder';
+      const body      = bodyMatch?.[1]?.replace(/\\n/g,'\n').replace(/\\"/g,'"') || text;
+      parsed = { subject, body };
     }
+    // Ensure body is a string and unescape newlines
+    if (parsed.body) parsed.body = String(parsed.body).replace(/\\n/g,'\n').replace(/\\"/g,'"');
+    if (parsed.subject) parsed.subject = String(parsed.subject).replace(/\\n/g,' ');
     document.getElementById('coll-email-fields').style.display = 'block';
     document.getElementById('coll-email-subject').value = parsed.subject || '';
     const collSig = getSignatureForCurrentRep();

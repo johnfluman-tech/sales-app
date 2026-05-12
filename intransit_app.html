@@ -117,12 +117,12 @@ body::before {
 
 /* ── SIDEBAR ───────────────────────────── */
 .sidebar {
-  width: 220px; min-width: 220px;
+  width: 240px; min-width: 240px;
   background: var(--s0); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
 }
 .sidebar-header {
-  padding: 18px 16px 16px;
+  padding: 18px 20px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--s1);
 }
@@ -136,7 +136,7 @@ body::before {
   background: var(--blue-b); box-shadow: 0 0 7px var(--blue-b); flex-shrink: 0;
 }
 .sidebar-title { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
-.sidebar-user { padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.sidebar-user { padding: 10px 20px; border-bottom: 1px solid var(--border); }
 .sidebar-user-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-user-role { color: var(--text-3); font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; margin-top: 2px; text-transform: uppercase; }
 .sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0; }
@@ -150,7 +150,7 @@ body::before {
 }
 .nav-item-inner {
   display: flex; align-items: center; gap: 9px;
-  padding: 8px 16px; width: 100%;
+  padding: 8px 20px 8px 16px; width: 100%;
   font-size: 13px; color: var(--text-2); transition: all 0.1s;
 }
 .nav-item:hover .nav-item-inner { background: var(--s2); color: var(--text); }
@@ -578,9 +578,9 @@ body::before {
 }
 .apk-pool-strip {
   border-top: 1px solid var(--border); background: var(--s1);
-  height: 180px; min-height: 80px; max-height: 500px;
+  min-height: 80px;
   display: flex; flex-direction: column;
-  overflow: hidden; flex-shrink: 0;
+  overflow: hidden; flex: 1;
 }
 .apk-pool-header {
   padding: 7px 12px; display: flex; align-items: center; gap: 10px;
@@ -927,6 +927,7 @@ body::before {
       <button class="signout-btn" onclick="handleSignout()">Sign Out</button>
     </div>
   </div>
+  <div id="sidebar-splitter" onmousedown="startSplitH(event,'sidebar-splitter','__main__','sidebar-splitter')" style="width:5px;min-width:5px;flex-shrink:0;background:var(--border);cursor:col-resize;transition:background 0.15s;z-index:10" onmouseover="this.style.background='var(--blue-b)'" onmouseout="if(!this.classList.contains('dragging'))this.style.background='var(--border)'"></div>
 
   <!-- MAIN -->
   <div class="main">
@@ -1023,6 +1024,7 @@ body::before {
 //  CONFIGURATION
 // ══════════════════════════════════════════════════════════
 const CONFIG = {
+  WORKER_URL:             'https://intransit-worker.intransit-sales.workers.dev',
   SPREADSHEET_ID:         '1xH_OC_fvSwQWZet95xBlJ951LsaQWru-glv2rkSnDm4',
   HISTORY_SPREADSHEET_ID: '192ELLBgiEUZ3z6ytkWXbmA24wS2BjHmclJdf_UF_c24',
   ACTIVITY_SPREADSHEET_ID:'12dJ0eLFQse-_pi1k6rXc25yTkwwYTjMm32v11tGKeRo',
@@ -1515,16 +1517,7 @@ Based on this data, provide exactly 3 specific, actionable next steps for the sa
 Return ONLY the JSON, no other text.`;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 600, messages: [{ role: 'user', content: prompt }] })
-    });
+    const response = await callAI({ model: 'claude-sonnet-4-5', max_tokens: 600, messages: [{ role: 'user', content: prompt }] });
     const data = await response.json();
     const text = data.content?.[0]?.text || '';
     let parsed;
@@ -1608,19 +1601,10 @@ Contacts: ${contacts.map(c=>c.name+(c.title?' ('+c.title+')':'')).join(', ')||'n
 Answer the rep's question concisely and specifically. If you don't know something (like number of locations), say so clearly and suggest how they might find out.`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
+    const resp = await callAI({
         model: 'claude-sonnet-4-5', max_tokens: 400,
         messages: [{ role: 'user', content: context + '\n\nQuestion: ' + question }]
-      })
-    });
+      });
     const data = await resp.json();
     const answer = data.content?.[0]?.text || 'No response';
     const thinkEl = document.getElementById(thinkingId);
@@ -2262,12 +2246,12 @@ async function sheetsGet(range) {
 }
 
 async function sheetsGetFrom(spreadsheetId, range) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+  const url = CONFIG.WORKER_URL + '/sheets/' + spreadsheetId + '/values/' + encodeURIComponent(range);
   const res = await fetch(url, {
-    headers: { Authorization: 'Bearer ' + state.accessToken }
+    headers: { 'X-Google-Token': state.accessToken }
   });
   if (!res.ok) {
-    if (res.status === 401) { handleSignout(); throw new Error('Session expired'); }
+    if (res.status === 401 || res.status === 403) { handleSignout(); throw new Error('Session expired'); }
     throw new Error('Sheets API error ' + res.status);
   }
   const data = await res.json();
@@ -2275,26 +2259,12 @@ async function sheetsGetFrom(spreadsheetId, range) {
 }
 
 async function sheetsUpdateIn(spreadsheetId, range, values) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
-  let token = state.accessToken;
-  let res = await fetch(url, {
+  const url = CONFIG.WORKER_URL + '/sheets/' + spreadsheetId + '/values/' + encodeURIComponent(range) + '?valueInputOption=USER_ENTERED';
+  const res = await fetch(url, {
     method: 'PUT',
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values })
   });
-  if (res.status === 401 || res.status === 403) {
-    token = await new Promise(resolve => {
-      google.accounts.oauth2.initTokenClient({
-        client_id: CONFIG.CLIENT_ID, scope: CONFIG.SCOPES, prompt: '',
-        callback: r => { if(r.access_token){state.accessToken=r.access_token;localStorage.setItem('it_token',r.access_token);localStorage.setItem('it_token_time',Date.now());} resolve(r.access_token||token); }
-      }).requestAccessToken();
-    });
-    res = await fetch(url, {
-      method: 'PUT',
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values })
-    });
-  }
   if (!res.ok) {
     const err = await res.text();
     throw new Error('Sheets update error ' + res.status + ': ' + err.slice(0, 200));
@@ -2304,76 +2274,30 @@ async function sheetsUpdateIn(spreadsheetId, range, values) {
 
 async function sheetsUpdate(range, values, spreadsheetId) {
   const sid = spreadsheetId || CONFIG.SPREADSHEET_ID;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
-  let res = await fetch(url, {
+  const url = CONFIG.WORKER_URL + '/sheets/' + sid + '/values/' + encodeURIComponent(range) + '?valueInputOption=USER_ENTERED';
+  const res = await fetch(url, {
     method: 'PUT',
-    headers: { Authorization: 'Bearer ' + state.accessToken, 'Content-Type': 'application/json' },
+    headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values })
   });
-  if (res.status === 401 || res.status === 403) {
-    try {
-      await new Promise((resolve, reject) => {
-        if (!window.google?.accounts?.oauth2) return reject('no GIS');
-        const tc = google.accounts.oauth2.initTokenClient({
-          client_id: CONFIG.GOOGLE_CLIENT_ID,
-          scope: CONFIG.SHEETS_SCOPES,
-          prompt: '',
-          callback: (r) => { if(r.access_token){ state.accessToken=r.access_token; resolve(); } else reject('no token'); }
-        });
-        tc.requestAccessToken();
-      });
-      res = await fetch(url, {
-        method: 'PUT',
-        headers: { Authorization: 'Bearer ' + state.accessToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values })
-      });
-    } catch(e) {
-      throw new Error('Session expired — please refresh the page and sign in again');
-    }
-  }
   if (!res.ok) {
     const body = await res.text().catch(()=>'');
-    throw new Error(`Sheets update error ${res.status}: ${body.slice(0,100)}`);
+    throw new Error('Sheets update error ' + res.status + ': ' + body.slice(0,100));
   }
   return res.json();
 }
 
 async function sheetsAppend(range, values, spreadsheetId) {
   const sid = spreadsheetId || CONFIG.SPREADSHEET_ID;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
-  // Try with current token, refresh if 401/403
-  let token = state.accessToken;
-  let res = await fetch(url, {
+  const url = CONFIG.WORKER_URL + '/sheets/' + sid + '/values/' + encodeURIComponent(range) + ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
+  const res = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values })
   });
-  if (res.status === 401 || res.status === 403) {
-    // Token expired — try to get a fresh one silently
-    try {
-      await new Promise((resolve, reject) => {
-        if (!window.google?.accounts?.oauth2) return reject('no GIS');
-        const tc = google.accounts.oauth2.initTokenClient({
-          client_id: CONFIG.GOOGLE_CLIENT_ID,
-          scope: CONFIG.SHEETS_SCOPES,
-          prompt: '',
-          callback: (r) => { if(r.access_token){ state.accessToken=r.access_token; resolve(); } else reject('no token'); }
-        });
-        tc.requestAccessToken();
-      });
-      token = state.accessToken;
-      res = await fetch(url, {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values })
-      });
-    } catch(e) {
-      throw new Error('Session expired — please refresh the page and sign in again');
-    }
-  }
   if (!res.ok) {
     const body = await res.text().catch(()=>'');
-    throw new Error(`Sheets append error ${res.status}: ${body.slice(0,100)}`);
+    throw new Error('Sheets append error ' + res.status + ': ' + body.slice(0,100));
   }
   return res.json();
 }
@@ -2572,12 +2496,16 @@ function switchView(view) {
   };
   if (view === 'settings') {
     renderSettingsView();
+    setTimeout(restoreSplitPositions, 30);
   } else if (view === 'removals') {
     renderRemovalsView();
+    setTimeout(restoreSplitPositions, 30);
   } else if (view === 'access') {
     renderAccessLog();
+    setTimeout(restoreSplitPositions, 30);
   } else if (viewRenderers[view]) {
     viewRenderers[view]();
+    setTimeout(restoreSplitPositions, 30);
     ensureCacheLoaded().then(() => {
       if (state.activeView === view) {
         viewRenderers[view]();
@@ -3261,22 +3189,13 @@ Contacts on file: ${contacts.map(c=>c.name+(c.title?' ('+c.title+')':'')).join('
 Use the web_search tool to find current information when needed. Be specific and actionable. If you find multiple locations, list them. If you find news, summarize it. Always tie your research back to how it can help the sales rep sell more.`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
+    const resp = await callAI({
         model: 'claude-sonnet-4-5',
         max_tokens: 1200,
         system: systemPrompt,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         messages: [{ role: 'user', content: question }]
-      })
-    });
+      });
     const data = await resp.json();
 
     // Extract text from potentially multi-block response
@@ -3539,9 +3458,9 @@ async function logAccessEntry(locationClaim) {
       }
     } catch(e) { /* create tab first */
       try {
-        await fetch('https://sheets.googleapis.com/v4/spreadsheets/' + CONFIG.HISTORY_SPREADSHEET_ID + ':batchUpdate', {
+        await fetch(CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + ':batchUpdate', {
           method:'POST',
-          headers:{ Authorization:'Bearer ' + state.accessToken, 'Content-Type':'application/json' },
+          headers:{ 'X-Google-Token': state.accessToken, 'Content-Type':'application/json' },
           body: JSON.stringify({ requests:[{ addSheet:{ properties:{ title:'_ACCESS_LOG' } } }] })
         });
         await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!A1:P1", [[
@@ -4714,20 +4633,11 @@ Return ONLY a JSON object with two keys: "subject" and "body". No preamble, no m
 
     const apiKey = getAnthropicKey();
     if (!apiKey) return;
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
+    const response = await callAI({
         model: 'claude-sonnet-4-5',
         max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
-      })
-    });
+      });
     const data = await response.json();
     const text = data.content?.[0]?.text || '';
 
@@ -4871,37 +4781,10 @@ function renderSettingsView() {
       <div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px">
         <div style="font-size:15px;font-weight:600;margin-bottom:4px">AI Configuration</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
-          Set the Anthropic API key to enable AI email generation for all reps. Stored locally in this browser — never sent to any server or saved in code.
+          AI email generation is powered by the Intransit Cloudflare Worker. The API key is stored securely in Cloudflare — no browser key needed.
         </div>
-        <div style="margin-bottom:12px">
-          <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:6px">ANTHROPIC API KEY</div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input type="password" id="api-key-input" placeholder="sk-ant-api03-..."
-              value="${localStorage.getItem('it_anthro_key') ? '••••••••••••••••••••••••••••••••' : ''}"
-              style="flex:1;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);
-                     font-family:var(--font-mono);font-size:12px;padding:9px 12px;outline:none;
-                     border-radius:2px;letter-spacing:0.05em"
-              onfocus="if(this.value.startsWith('•'))this.value=''"
-            >
-            <button onclick="saveApiKey()"
-              style="background:var(--blue);border:none;color:white;font-family:var(--font-mono);
-                     font-size:11px;padding:9px 18px;cursor:pointer;letter-spacing:0.08em;white-space:nowrap">
-              SAVE KEY
-            </button>
-            <button onclick="clearApiKey()"
-              style="background:transparent;border:1px solid var(--border);color:var(--text-muted);
-                     font-family:var(--font-mono);font-size:11px;padding:9px 14px;cursor:pointer">
-              CLEAR
-            </button>
-          </div>
-          <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">
-            Status: <span style="color:${localStorage.getItem('it_anthro_key') ? 'var(--green)' : 'var(--accent)'};font-weight:500" id="api-key-status">
-              ${localStorage.getItem('it_anthro_key') ? '✓ API key is set — AI emails enabled' : '⚠ No key set — AI emails disabled'}
-            </span>
-          </div>
-          <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
-            Get your key at: <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--blue-bright)">console.anthropic.com</a>
-          </div>
+        <div style="background:rgba(39,174,96,0.1);border-left:3px solid var(--green);padding:12px 14px;font-size:12px;color:var(--green)">
+          ✓ AI emails enabled — key secured in Cloudflare Worker
         </div>
       </div>` : ''}
 
@@ -5069,10 +4952,10 @@ async function saveSignature() {
     if (!saved) {
       // Create the tab via batchUpdate, then write
       try {
-        const createUrl = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.HISTORY_SPREADSHEET_ID}:batchUpdate`;
+        const createUrl = CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + ':batchUpdate';
         const createRes = await fetch(createUrl, {
           method: 'POST',
-          headers: { Authorization: 'Bearer ' + state.accessToken, 'Content-Type': 'application/json' },
+          headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
           body: JSON.stringify({ requests: [{ addSheet: { properties: { title: '_SIGNATURES' } } }] })
         });
         const createData = await createRes.json();
@@ -5611,20 +5494,11 @@ No markdown, no code fences, no explanation. Just the JSON.`;
     showToast('Generating ' + toneLabel + '...', 'success');
     const apiKey = getAnthropicKey();
     if (!apiKey) return;
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
+    const response = await callAI({
         model: 'claude-sonnet-4-5',
         max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }]
-      })
-    });
+      });
     const data = await response.json();
 
     // Check for API-level errors
@@ -6379,15 +6253,23 @@ function updateBadges() {
 }
 
 // ══════════════════════════════════════════════════════════
-//  ANTHROPIC API KEY — stored in session memory only, never in code
+//  AI API — routed through Cloudflare Worker (key never in browser)
 // ══════════════════════════════════════════════════════════
 function getAnthropicKey() {
-  const key = localStorage.getItem('it_anthro_key') || sessionStorage.getItem('it_ak');
-  if (!key) {
-    showToast('No API key set — go to Settings → AI Configuration to add your key', 'error');
-    return null;
+  return 'worker'; // Key lives in Cloudflare — no longer needed in browser
+}
+
+async function callAI(payload) {
+  const res = await fetch(CONFIG.WORKER_URL + '/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Google-Token': state.accessToken },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(()=>'');
+    throw new Error('AI API error ' + res.status + ': ' + err.slice(0,200));
   }
-  return key;
+  return res.json();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -6444,20 +6326,11 @@ Return ONLY a JSON object with keys "subject" and "body". No preamble, no markdo
   try {
     const apiKey = getAnthropicKey();
     if (!apiKey) return;
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
+    const response = await callAI({
         model: 'claude-sonnet-4-5',
         max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
-      })
-    });
+      });
     const data = await response.json();
     const text = data.content?.[0]?.text || '';
 
@@ -6582,9 +6455,9 @@ async function saveAttackPlan(rep, cards) {
     if (!saved) {
       // Create tab first
       try {
-        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.HISTORY_SPREADSHEET_ID}:batchUpdate`, {
+        await fetch(CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + ':batchUpdate', {
           method: 'POST',
-          headers: { Authorization: 'Bearer '+state.accessToken, 'Content-Type': 'application/json' },
+          headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
           body: JSON.stringify({ requests:[{ addSheet:{ properties:{ title:'_ATTACK_PLAN' } } }] })
         });
       } catch(e) { /* tab may already exist */ }
@@ -6825,7 +6698,7 @@ function apkRender(repAccs, otherAccs, rep) {
 
       <!-- Pool strip -->
       <div class="splitter-v" onmousedown="startSplitV(event,'apk-pool-wrap','apk-splitter-v')" id="apk-splitter-v"></div>
-      <div style="flex-shrink:0;border-top:2px solid var(--border);background:var(--s1)" id="apk-pool-wrap">
+      <div style="flex:1;border-top:2px solid var(--border);background:var(--s1);display:flex;flex-direction:column;overflow:hidden" id="apk-pool-wrap">
         <div style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid var(--border);gap:10px">
           <span style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3)" id="apk-pool-count">POOL</span>
           <span style="font-size:11px;color:var(--text-3)">Click zone buttons on a card to assign it · ↑ star to add, ↓ to return to pool</span>
@@ -7473,10 +7346,10 @@ async function apkApproveGlobalRemove(name, reason, requestRow) {
     } catch(e) {
       // Tab doesn't exist yet — create it first
       try {
-        const createUrl = 'https://sheets.googleapis.com/v4/spreadsheets/' + sid + ':batchUpdate';
+        const createUrl = CONFIG.WORKER_URL + '/sheets/' + sid + ':batchUpdate';
         await fetch(createUrl, {
           method: 'POST',
-          headers: { Authorization: 'Bearer ' + state.accessToken, 'Content-Type': 'application/json' },
+          headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
           body: JSON.stringify({ requests: [{ addSheet: { properties: { title: '_POOL_REMOVED' } } }] })
         });
       } catch(ce) { /* tab may have been created by another call */ }
@@ -7632,20 +7505,11 @@ INSTRUCTIONS:
 - Focus on what will drive the most revenue and re-engagement.`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
+    const resp = await callAI({
         model: 'claude-sonnet-4-5',
         max_tokens: 600,
         messages: [{ role: 'user', content: prompt }]
-      })
-    });
+      });
     const data = await resp.json();
     const answer = data.content?.[0]?.text || 'No response';
     const thinkEl = document.getElementById(thinkId);
@@ -7932,21 +7796,12 @@ App overview:
 Answer the user's question clearly and concisely. If they ask how to do something, give step-by-step instructions. Be friendly and practical.`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
+    const resp = await callAI({
         model: 'claude-sonnet-4-5',
         max_tokens: 500,
         system: systemPrompt,
         messages: [{ role: 'user', content: question }]
-      })
-    });
+      });
     const data = await resp.json();
     const answer = data.content?.[0]?.text || 'No response';
     const thinkEl = document.getElementById(thinkId);
@@ -7972,6 +7827,15 @@ document.addEventListener('keydown', e => {
 
 
 async function init() {
+  // Restore sidebar width immediately before anything else renders
+  const savedSidebar = localStorage.getItem('it_split_sidebar');
+  if (savedSidebar) {
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+      sidebar.style.cssText = (sidebar.style.cssText||'') + ';width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important';
+    }
+  }
+
   setLoading(true, currentLang==='es' ? 'VERIFICANDO SESIÓN...' : 'CHECKING SESSION...', 10);
 
   const authed = await checkAuth();
@@ -7994,8 +7858,33 @@ init();
 function startSplitH(e, leftId, rightId, splitterId) {
   e.preventDefault();
   const splitter = document.getElementById(splitterId);
-  const leftEl   = document.getElementById(leftId);
-  const rightEl  = document.getElementById(rightId);
+  if (!splitter) return;
+
+  // Special case: sidebar splitter resizes the sidebar itself
+  if (splitterId === 'sidebar-splitter') {
+    const sidebar = document.querySelector('.sidebar');
+    if (!sidebar) return;
+    splitter.style.background = 'var(--blue-b)';
+    const startX = e.clientX;
+    const startW = sidebar.getBoundingClientRect().width;
+
+    function onMove(ev) {
+      const newW = Math.max(160, Math.min(startW + (ev.clientX - startX), 380));
+      sidebar.style.cssText = sidebar.style.cssText.replace(/width:[^;]+;?/g,'').replace(/min-width:[^;]+;?/g,'') + ';width:' + newW + 'px!important;min-width:' + newW + 'px!important';
+      try { localStorage.setItem('it_split_sidebar', newW); } catch(e){}
+    }
+    function onUp() {
+      splitter.style.background = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return;
+  }
+
+  const leftEl  = document.getElementById(leftId);
+  const rightEl = document.getElementById(rightId);
   if (!leftEl || !rightEl) return;
 
   splitter.classList.add('dragging');
@@ -8012,7 +7901,6 @@ function startSplitH(e, leftId, rightId, splitterId) {
     leftEl.style.maxWidth = newW + 'px';
     leftEl.style.flex     = 'none';
     rightEl.style.flex    = '1';
-    // Save position
     try { localStorage.setItem('it_split_' + leftId, newW); } catch(e){}
   }
 
@@ -8059,12 +7947,19 @@ function startSplitV(e, bottomId, splitterId) {
 }
 
 function restoreSplitPositions() {
-  // Restore saved splitter positions from localStorage
+  // Restore sidebar width
+  const savedSidebar = localStorage.getItem('it_split_sidebar');
+  if (savedSidebar) {
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+      sidebar.style.cssText = sidebar.style.cssText.replace(/width:[^;]+;?/g,'').replace(/min-width:[^;]+;?/g,'') + ';width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important';
+    }
+  }
+  // Restore panel splitter positions
   const panels = [
     { id: 'account-list',       type: 'h' },
     { id: 'coll-list',          type: 'h' },
-    { id: 'contacts-list-panel',type: 'h' },
-    { id: 'apk-pool-wrap',      type: 'v' }
+    { id: 'contacts-list-panel',type: 'h' }
   ];
   panels.forEach(p => {
     const saved = localStorage.getItem('it_split_' + p.id);

@@ -1114,7 +1114,6 @@ td {
 .apk-transfer-panel { width:220px; min-width:220px; border-left:1px solid var(--border); display:flex; flex-direction:column; background:var(--navy-light); overflow-y:auto; }
 </style>
 <script src="https://accounts.google.com/gsi/client" async></script>
-<script src="https://apis.google.com/js/api.js" async></script>
 </head>
 <body>
 
@@ -1967,23 +1966,24 @@ function handleGoogleCredential(response) {
   state.user = { email: payload.email, name: payload.name };
   localStorage.setItem('it_user', JSON.stringify(state.user));
   setRepFromEmail(payload.email);
-  loadGapi();
+  requestSheetsToken();
 }
 
 function loadGapi() {
-  if (window.gapi) {
-    gapi.load('client', initGapiClient);
-  } else {
-    setTimeout(loadGapi, 200);
-  }
+  // Not used — kept for compatibility
+  requestSheetsToken();
 }
 
 async function initGapiClient() {
+  // Not used — kept for compatibility
+}
+
+function requestSheetsToken() {
   try {
-    await gapi.client.init({});
     const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CONFIG.CLIENT_ID,
       scope: CONFIG.SCOPES,
+      hint: state.user?.email || '',
       callback: (tokenResponse) => {
         if (tokenResponse.error) {
           showToast('Sign-in error: ' + tokenResponse.error, 'error');
@@ -1997,7 +1997,7 @@ async function initGapiClient() {
     });
     tokenClient.requestAccessToken({ prompt: '' });
   } catch(e) {
-    showToast('Sign-in error: ' + (e.message || JSON.stringify(e)), 'error');
+    showToast('Sign-in error: ' + (e.error || e.message || JSON.stringify(e)), 'error');
   }
 }
 function completeLogin() {

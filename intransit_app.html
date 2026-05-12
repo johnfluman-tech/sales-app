@@ -536,6 +536,7 @@ body::before {
 .apk-zone-card-meta { font-family:var(--mono);font-size:9px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px; }
 .apk-zone-card-btns { display:flex;gap:2px;flex-shrink:0;opacity:0;transition:opacity 0.15s; }
 .apk-zone-card:hover .apk-zone-card-btns { opacity:1; }
+@media (hover: none) { .apk-zone-card-btns { opacity:1; } }
 .apk-zone-btn {
   padding:2px 5px;font-size:9px;font-family:var(--mono);
   background:transparent;border:1px solid var(--border);color:var(--text-3);
@@ -974,7 +975,7 @@ const CONFIG = {
   REP_EMAIL_MAP: {
     // Map @intransittech.com emails to CRM rep IDs
     // Update these with the actual email addresses
-    'john.fluman@intransittech.com': 'ADMIN',
+    'john.fluman@intransittech.com': 'FJohn',
     'kmancebo@intransittech.com':   'CKaren',
     'bill.pratt@intransittech.com': 'BillP',
     'ian.pitman@intransittech.com': 'PIan',
@@ -2043,6 +2044,7 @@ let state = {
   activeFilter: 'active',
   activeDetailTab: 'notes',
   viewAsRep: null,
+  dashPeriod: 'mtd',   // persists selected dashboard period across re-renders
   contactsCache: {},      // keyed by customer name
   historyCache: {},       // keyed by customer name
   collectionsCache: {},   // keyed by customer name
@@ -2587,6 +2589,21 @@ function parseDate(str) {
   }
   return str.slice(0, 10);
 }
+// normDate: normalize any date string to YYYY-MM-DD for comparison
+// Handles M/D/YYYY, MM/DD/YYYY, ISO, and partial ISO formats
+function normDate(str) {
+  if (!str) return '';
+  const s = String(str).trim();
+  // Already ISO YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  // M/D/YYYY or MM/DD/YYYY
+  const parts = s.split('/');
+  if (parts.length === 3) {
+    const y = parts[2].length === 4 ? parts[2] : '20' + parts[2].slice(-2);
+    return y + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0');
+  }
+  return s.slice(0, 10);
+}
 
 // ══════════════════════════════════════════════════════════
 //  RENDER — ACCOUNTS VIEW
@@ -2935,8 +2952,9 @@ function renderEmailTab(acc) {
         <div style="font-size:11px;color:var(--orange);padding:8px 12px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:var(--r);margin-bottom:6px">
           ⚠ No email contacts found for: <strong>${escHtml(name)}</strong>
         </div>
-        <div style="margin-top:8px">
-            <input type="text" id="coll-manual-email" placeholder="Enter email manually..."
+        <div style="margin-top:8px;padding:8px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r)">
+          <div style="font-size:10px;color:var(--text-3);font-family:var(--mono);margin-bottom:5px">Enter email manually to proceed:</div>
+            <input type="text" id="coll-manual-email" placeholder="accounts@company.com"
               style="background:var(--s1);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px 8px;width:200px;font-family:var(--font);outline:none;border-radius:var(--r)">
             <button onclick="applyManualEmail()" style="background:var(--blue-b);border:none;color:#fff;font-size:10px;font-family:var(--mono);padding:5px 10px;cursor:pointer;border-radius:var(--r);margin-left:6px">USE THIS EMAIL</button>
           </div>
@@ -3296,9 +3314,35 @@ function openAccountFromContact(accountName) {
 }
 
 
+function exportNDALog() {
+  // Build CSV from ndaRows cached during last renderRemovalsView call
+  const rows = window._ndaRowsCache || [];
+  if (!rows.length) { showToast('No NDA log data to export', 'error'); return; }
+  const headers = ['Timestamp','Email','Action','Device','Timezone','Version'];
+  const csvRows = [headers.join(',')];
+  rows.forEach(r => {
+    // NDA log columns: 0=timestamp, 1=email, 7=action, 8=device, 9=timezone, 10=version
+    const cols = [
+      r[0]||'', r[1]||'', r[7]||'', r[8]||'', r[9]||'', r[10]||''
+    ].map(v => '"' + String(v).replace(/"/g,'""') + '"');
+    csvRows.push(cols.join(','));
+  });
+  const csv = csvRows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'intransit_nda_log_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('NDA log exported ✓', 'success');
+}
+
 async function renderRemovalsView() {
-  if (!state.isAdmin) {
-    document.getElementById('main-content').innerHTML = '<div style="padding:40px;color:var(--text-3)">Admin only.</div>';
+  if (!state.isAdmin || state.viewAsRep) {
+    document.getElementById('main-content').innerHTML = '<div style="padding:40px;color:var(--text-3)">Admin only — not available in rep view.</div>';
     return;
   }
   const el = document.getElementById('main-content');
@@ -3328,6 +3372,7 @@ async function renderRemovalsView() {
   try {
     const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_NDA_LOG'!A1:L2000");
     ndaRows = (raw||[]).filter(r => r[7] === 'ACCEPTED' || r[7] === 'DECLINED').slice().reverse();
+    window._ndaRowsCache = ndaRows; // cache for exportNDALog()
   } catch(e) { /* ignore */ }
 
   const totalPending = pendingRemovals.length + holdReqs.length + transferReqs.length;
@@ -3491,7 +3536,7 @@ async function renderRemovalsView() {
         </div>`}
       </div>
 
-      <!-- ⑤ GLOBAL POOL REMOVE REQUESTS -->
+      <!-- GLOBAL POOL REMOVE REQUESTS -->
       <div style="margin-bottom:28px" id="section-global-remove-reqs">
         <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
           🚫 Global Pool Removal Requests
@@ -3528,7 +3573,7 @@ async function renderRemovalsView() {
         ) : '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)"><div style="font-size:22px;margin-bottom:8px">✓</div><div style="font-family:var(--mono);font-size:11px">No global removal requests</div></div>'}
       </div>
 
-      <!-- ⑥ ALL GLOBALLY REMOVED ACCOUNTS -->
+      <!-- ALL GLOBALLY REMOVED ACCOUNTS -->
       <div style="margin-bottom:28px" id="section-global-removed">
         <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
           🗄 All Globally Removed Accounts
@@ -3553,7 +3598,7 @@ async function renderRemovalsView() {
         </div>
       </div>
 
-      <!-- ⑦ NDA LOG  ─────────────────────────────────────────────────── -->
+      <!-- NDA LOG  ─────────────────────────────────────────────────── -->
       <div>
         <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
           🔒 NDA Acceptance Log
@@ -3589,6 +3634,7 @@ async function renderRemovalsView() {
 
 
 async function approveRemovalDirect(accountName) {
+  if (!state.isAdmin) { showToast('Admin only', 'error'); return; }
   if (!confirm(`Approve removal of "${accountName}"? This will exclude it from all future reports.`)) return;
   const acc = state.accounts.find(a => a.name === accountName);
   if (!acc) return;
@@ -3636,8 +3682,11 @@ function renderDashboard() {
   const now   = new Date();
   const y     = now.getFullYear();
   const m     = String(now.getMonth() + 1).padStart(2,'0');
-  const defFrom = `${y}-${m}-01`;
-  const defTo   = now.toISOString().slice(0,10);
+  // Restore previously selected date range if available
+  const storedFrom = document.getElementById('dash-from')?.value || `${y}-${m}-01`;
+  const storedTo   = document.getElementById('dash-to')?.value   || now.toISOString().slice(0,10);
+  const defFrom = storedFrom;
+  const defTo   = storedTo;
 
   const content = document.getElementById('main-content');
   content.innerHTML = `
@@ -3646,13 +3695,13 @@ function renderDashboard() {
       <!-- Date range controls -->
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
         <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;color:var(--text-muted)">DATE RANGE</div>
-        <button class="filter-btn active" onclick="setDashPeriod('mtd',this)">MTD</button>
-        <button class="filter-btn" onclick="setDashPeriod('ytd',this)">YTD</button>
-        <button class="filter-btn" onclick="setDashPeriod('q1',this)">Q1</button>
-        <button class="filter-btn" onclick="setDashPeriod('q2',this)">Q2</button>
-        <button class="filter-btn" onclick="setDashPeriod('q3',this)">Q3</button>
-        <button class="filter-btn" onclick="setDashPeriod('q4',this)">Q4</button>
-        <button class="filter-btn" onclick="setDashPeriod('custom',this)">CUSTOM</button>
+        <button class="filter-btn ${state.dashPeriod==='mtd'?'active':''}" onclick="setDashPeriod('mtd',this)">MTD</button>
+        <button class="filter-btn ${state.dashPeriod==='ytd'?'active':''}" onclick="setDashPeriod('ytd',this)">YTD</button>
+        <button class="filter-btn ${state.dashPeriod==='q1'?'active':''}" onclick="setDashPeriod('q1',this)">Q1</button>
+        <button class="filter-btn ${state.dashPeriod==='q2'?'active':''}" onclick="setDashPeriod('q2',this)">Q2</button>
+        <button class="filter-btn ${state.dashPeriod==='q3'?'active':''}" onclick="setDashPeriod('q3',this)">Q3</button>
+        <button class="filter-btn ${state.dashPeriod==='q4'?'active':''}" onclick="setDashPeriod('q4',this)">Q4</button>
+        <button class="filter-btn ${state.dashPeriod==='custom'?'active':''}" onclick="setDashPeriod('custom',this)">CUSTOM</button>
         <input type="date" id="dash-from" value="${defFrom}"
           style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:6px 8px;outline:none"
           onchange="refreshDashboard()">
@@ -3683,6 +3732,7 @@ function renderDashboard() {
 }
 
 function setDashPeriod(period, btn) {
+  state.dashPeriod = period;
   const now = new Date();
   const y = now.getFullYear();
   let from, to = now.toISOString().slice(0,10);
@@ -3863,6 +3913,10 @@ function filterByRep(rep) {
 async function saveNote() {
   const acc = state.selectedAccount;
   if (!acc) return;
+  if (!state.isAdmin && acc.rep !== state.repId) {
+    showToast('You can only edit notes for your own accounts', 'error');
+    return;
+  }
 
   const text = document.getElementById('note-text-input')?.value.trim();
   if (!text) { showToast('Please enter a note first', 'error'); return; }
@@ -4404,7 +4458,7 @@ async function saveSignature() {
 }
 
 function getSignatureForCurrentRep(asHtml) {
-  const rep = state.isAdmin ? (state.viewAsRep || 'FJohn') : state.repId;
+  const rep = state.viewAsRep || state.repId || 'FJohn';
   const raw = state.signaturesCache[rep] || '';
   // If the saved value looks like HTML, convert to plain text for textarea emails
   // unless asHtml=true is explicitly requested
@@ -4760,6 +4814,12 @@ function selectCollectionsAccount(name) {
 }
 
 function saveCollectionsNote(name) {
+  const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
+  const acc = state.accounts.find(a => a.name === name);
+  if (!state.isAdmin && acc && acc.rep !== state.repId) {
+    showToast('You can only add notes for your own accounts', 'error');
+    return;
+  }
   const note          = document.getElementById('coll-note-text')?.value.trim() || '';
   const status        = document.getElementById('coll-status-select')?.value || '';
   const promisedDate  = document.getElementById('coll-promised-date')?.value || '';
@@ -6002,6 +6062,14 @@ async function renderAttackPlan() {
   window.apkState = planState;
   apkLoadHiddenTransferAccounts();
   await apkLoadGloballyRemoved(); // must complete before building otherAccs
+  // Init MY HIDDEN badge immediately
+  const _initHidden = apkGetMyHiddenSet();
+  const _hiddenBtn = document.getElementById('apk-hidden-btn');
+  if (_hiddenBtn && _initHidden.size > 0) {
+    _hiddenBtn.textContent = 'MY HIDDEN (' + _initHidden.size + ')';
+    _hiddenBtn.style.color = 'var(--orange)';
+    _hiddenBtn.style.borderColor = 'var(--orange)';
+  }
   // Build otherAccs AFTER globallyRemovedFromPool is loaded so filter is accurate
   const otherAccs = state.accounts.filter(a => a.rep !== repFilter && isInactive(a) && !state.globallyRemovedFromPool.has(a.name)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
   apkRender(repAccs, otherAccs, repFilter);
@@ -6009,8 +6077,11 @@ async function renderAttackPlan() {
 
 function apkGetCols() {
   const cols = { solid: [], center: [], ring: [], pool: [] };
+  const globalRemoved = state.globallyRemovedFromPool || new Set();
   const repAccs = state.accounts.filter(a => a.rep === window.apkRep).sort((a, b) => (b.total || 0) - (a.total || 0));
   repAccs.forEach(a => {
+    // Globally removed accounts should not appear in zone columns either
+    if (globalRemoved.has(a.name)) return;
     const z = window.apkState[a.name] || 'pool';
     if (cols[z]) cols[z].push(a.name);
     else cols.pool.push(a.name);
@@ -6339,7 +6410,7 @@ function apkShowTransferActionModal(name) {
         <button onclick="apkDoRemoveFromPool('${escHtml(name)}')"
           style="width:100%;padding:10px 16px;background:rgba(100,100,100,0.1);border:1px solid var(--border);color:var(--text-2);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;text-align:left">
           ✕ REMOVE FROM MY LIST
-          <span style="display:block;font-size:10px;font-weight:400;opacity:0.7;margin-top:2px">Hide from your inactive pool only — you can restore it yourself anytime</span>
+          <span style="display:block;font-size:10px;font-weight:400;opacity:0.7;margin-top:2px">Hide from your pool only — no approval needed, restore anytime from MY HIDDEN</span>
         </button>
         <button onclick="apkDoRequestGlobalRemove('${escHtml(name)}')"
           style="width:100%;padding:10px 16px;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.4);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;text-align:left">
@@ -6624,17 +6695,24 @@ function apkSaveMyHiddenSet(repId) {
 
 function apkDoRemoveFromMyPool(name) {
   // Called from the action modal "Remove from my list"
-  const note = document.getElementById('apk-action-note')?.value.trim() || '';
   document.getElementById('apk-action-modal-overlay')?.remove();
   const repId = window.apkRep || state.repId || '';
   const hidden = apkGetMyHiddenSet();
   hidden.add(name);
   apkSaveMyHiddenSet(repId);
   showToast(name.slice(0,24) + ' hidden from your pool ✓', 'success');
-  // Re-render pool
+  // Re-render pool and transfer panel
   const repAccs = state.accounts.filter(a => a.rep === repId);
   apkRenderPool(repAccs);
   apkRenderHeaders();
+  // Also update transfer panel so it reflects new hidden state
+  const transferEl = document.getElementById('apk-transfer');
+  if (transferEl) {
+    const globalRemoved = state.globallyRemovedFromPool || new Set();
+    const otherAccs = state.accounts.filter(a => a.rep !== repId && isInactive(a) && !globalRemoved.has(a.name))
+      .sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,50);
+    apkRenderTransferPanel(transferEl, otherAccs, repId);
+  }
 }
 
 function apkShowMyHidden() {
@@ -6736,7 +6814,7 @@ function apkApproveGlobalRemoveById(btn) {
 }
 
 async function apkApproveGlobalRemove(name, reason, requestRow) {
-  if (!state.isAdmin) return;
+  if (!state.isAdmin || state.viewAsRep) { showToast('Admin only', 'error'); return; }
   if (!confirm('Approve global removal of "' + name + '" from all users\' inactive pool?\n\nThis cannot be self-reversed by reps.')) return;
   try {
     const sid = CONFIG.HISTORY_SPREADSHEET_ID;

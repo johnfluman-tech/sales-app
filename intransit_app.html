@@ -1079,7 +1079,7 @@ async function loadSupplementalData() {
     }
 
     // Load GP data
-    const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:H200000");
+    const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:Z200000");
     if (gpRows.length > 1) {
       const hdrs = gpRows[0];
       state.gpCache = gpRows.slice(1).map(r => {
@@ -2465,7 +2465,7 @@ async function refreshDashboard() {
           <div>${diagCheck(gpSalesRepCol !== 'NOT FOUND', 'SALES_REP col: "' + gpSalesRepCol + '"')}</div>
           <div>${diagCheck(gpInvTotalCol !== 'NOT FOUND', 'Shipped col: "' + gpInvTotalCol + '"')}</div>
           <div>${diagCheck(gpDateCol !== 'NOT FOUND', 'Date col: "' + gpDateCol + '"')}</div>
-          <div>${diagCheck(sampleRepVal.trim() === (repFilter || sampleRepVal.trim()), 'Sample REP value: "' + sampleRepVal + '"')}</div>
+          <div><span style="color:var(--text-2)">✓ Sample REP value: "${sampleRepVal}"</span></div>
           <div>${diagCheck(repFilter !== null, 'Rep filter: "' + (repFilter || 'All') + '"')}</div>
           <div>${diagCheck(gpFiltered.length > 0, 'GP rows in range: ' + gpFiltered.length)}</div>
           <div>${diagCheck(shipped > 0, 'Shipped: $' + formatNum(shipped))}</div>
@@ -2502,6 +2502,7 @@ async function refreshDashboard() {
               <tr style="background:var(--s2);position:sticky;top:0">
                 <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">DATE</th>
                 <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border)">CUSTOMER</th>
+                <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">INVOICE #</th>
                 <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">SALES REP</th>
                 <th style="padding:7px 12px;text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border);white-space:nowrap">SHIPPED $</th>
                 <th style="padding:7px 12px;text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);border-bottom:1px solid var(--border)">GP $</th>
@@ -2525,7 +2526,8 @@ async function refreshDashboard() {
                 const bgStyle = isAdj ? 'background:rgba(249,115,22,0.05)' : '';
                 return `<tr style="border-bottom:1px solid rgba(82,130,190,0.06);${bgStyle}" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='${isAdj ? 'rgba(249,115,22,0.05)' : ''}'">
                   <td style="padding:6px 12px;font-family:var(--mono);font-size:11px;white-space:nowrap;color:var(--text-2)">${rowDate}</td>
-                  <td style="padding:6px 12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${isAdj ? 'color:var(--orange)' : ''}" title="${escHtml(custName)}">${escHtml(custName.length > 38 ? custName.slice(0,38)+'…' : custName)}</td>
+                  <td style="padding:6px 12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${isAdj ? 'color:var(--orange)' : ''}" title="${escHtml(custName)}">${escHtml(custName.length > 35 ? custName.slice(0,35)+'…' : custName)}</td>
+                  <td style="padding:6px 12px;font-family:var(--mono);font-size:11px;white-space:nowrap;color:var(--blue-b)">${escHtml(String(r.INVOICE_NUMBER || r.INVOICE_NUM || r.INV_NUM || '—'))}</td>
                   <td style="padding:6px 12px;font-family:var(--mono);font-size:11px;white-space:nowrap;color:var(--text-2)">${escHtml((r[gpSalesRepCol]||r.SALES_REP||'').trim())}</td>
                   <td style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:11px;white-space:nowrap;color:${rowShipped > 0 ? 'var(--text)' : 'var(--text-3)'}">$${formatNum(rowShipped)}</td>
                   <td style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:11px;white-space:nowrap;color:${rowGP < 0 ? 'var(--red)' : rowGP > 0 ? 'var(--green)' : 'var(--text-3)'}">$${formatNum(rowGP)}</td>
@@ -2534,7 +2536,7 @@ async function refreshDashboard() {
                 </tr>`;
               }).join('')}
               <tr style="background:var(--s2);border-top:2px solid var(--border-hi)">
-                <td colspan="3" style="padding:8px 12px;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text)">TOTAL (${state.gpCache.filter(r=>{ const d=normDate(r[gpDateCol]||r.INVOICE_DATE||''); return d>=from&&d<=to&&(!repFilter||(r[gpSalesRepCol]||r.SALES_REP||'').trim()===repFilter); }).length} rows incl. adjustments)</td>
+                <td colspan="4" style="padding:8px 12px;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text)">TOTAL (${state.gpCache.filter(r=>{ const d=normDate(r[gpDateCol]||r.INVOICE_DATE||''); return d>=from&&d<=to&&(!repFilter||(r[gpSalesRepCol]||r.SALES_REP||'').trim()===repFilter); }).length} rows incl. adjustments)</td>
                 <td style="padding:8px 12px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--green)">$${formatNum(shipped)}</td>
                 <td style="padding:8px 12px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${gp >= 0 ? 'var(--green)' : 'var(--red)'}">$${formatNum(gp)}</td>
                 <td style="padding:8px 12px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${gpPct >= 30 ? 'var(--green)' : gpPct >= 15 ? 'var(--gold)' : 'var(--red)'}">${gpPct.toFixed(1)}%</td>
@@ -2545,6 +2547,7 @@ async function refreshDashboard() {
         </div>
         <div style="padding:8px 14px;border-top:1px solid var(--border);font-size:10px;color:var(--text-3);font-family:var(--mono)">
           ⚠ COST ADJ rows (Deleted Inventory, $0 shipped) are excluded from KPI cards but shown here for full transparency.
+          Invoice # shows only if the _GP sheet includes that column (re-run sales_report.py to include it).
           Compare this list against your CRM Performance Dashboard to verify completeness.
         </div>
       </div>`;

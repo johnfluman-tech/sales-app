@@ -6366,17 +6366,77 @@ function apkConfirmReset() {
 }
 
 function apkRequestTransfer(name) {
-  const reason = prompt('Request "' + name + '" be transferred to your territory?\n\nNote for John (optional):');
-  if (reason === null) return;
+  // Show styled action modal instead of browser prompt
+  apkShowTransferActionModal(name);
+}
+
+function apkShowTransferActionModal(name) {
+  // Remove any existing
+  const ex = document.getElementById('apk-action-modal-overlay');
+  if (ex) ex.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'apk-action-modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9500;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);width:440px;max-width:94vw;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+      <!-- Header -->
+      <div style="padding:16px 20px 12px;border-bottom:1px solid var(--border);background:var(--s0)">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--orange);margin-bottom:4px">⇄ TRANSFER CANDIDATE</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text-1);line-height:1.3">${escHtml(name)}</div>
+      </div>
+
+      <!-- Note field -->
+      <div style="padding:14px 20px 10px">
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:6px;font-family:var(--mono);letter-spacing:0.08em">NOTE FOR JOHN (optional)</div>
+        <input id="apk-action-note" type="text" placeholder="e.g. I have a contact there, good fit for my territory…"
+          style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-size:12px;border-radius:var(--r);outline:none"
+          onkeydown="if(event.key==='Escape')document.getElementById('apk-action-modal-overlay').remove()">
+      </div>
+
+      <!-- Two action buttons -->
+      <div style="padding:6px 20px 18px;display:flex;flex-direction:column;gap:8px">
+        <button onclick="apkDoRequestTransfer('${escHtml(name)}')"
+          style="width:100%;padding:10px 16px;background:rgba(249,115,22,0.15);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;text-align:left">
+          ⇄ REQUEST TRANSFER
+          <span style="display:block;font-size:10px;font-weight:400;opacity:0.8;margin-top:2px">Ask John to reassign this account to your territory</span>
+        </button>
+        <button onclick="apkDoRemoveFromPool('${escHtml(name)}')"
+          style="width:100%;padding:10px 16px;background:rgba(100,100,100,0.1);border:1px solid var(--border);color:var(--text-2);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;text-align:left">
+          ✕ REMOVE FROM MY LIST
+          <span style="display:block;font-size:10px;font-weight:400;opacity:0.7;margin-top:2px">Hide this account from your transfer panel — won't show again</span>
+        </button>
+        <button onclick="document.getElementById('apk-action-modal-overlay').remove()"
+          style="width:100%;padding:7px 16px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">
+          CANCEL
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  // Focus the note field
+  setTimeout(() => document.getElementById('apk-action-note')?.focus(), 50);
+}
+
+function apkDoRequestTransfer(name) {
+  const note = document.getElementById('apk-action-note')?.value.trim() || 'none';
+  document.getElementById('apk-action-modal-overlay')?.remove();
   sheetsAppend("'_LOG'!A1", [[
     new Date().toISOString(), state.user?.email || window.apkRep, 'TRANSFER_REQUEST',
-    'Rep ' + (window.apkRep || '') + ' requests: ' + name + '. Note: ' + (reason || 'none')
-  ]]).then(() => showToast('Transfer request sent ✓', 'success'))
+    'Rep ' + (window.apkRep || '') + ' requests: ' + name + '. Note: ' + note
+  ]]).then(() => showToast('Transfer request sent to John ✓', 'success'))
     .catch(e => showToast('Error: ' + e.message, 'error'));
 }
 
-function apkRequestHideTransfer(name) {
-  if (!confirm('Hide "' + name + '" from your transfer list?\n\nThis sends John a request. Until he approves, it will be shown as hidden.')) return;
+function apkDoRemoveFromPool(name) {
+  const note = document.getElementById('apk-action-note')?.value.trim() || 'none';
+  document.getElementById('apk-action-modal-overlay')?.remove();
+  apkRequestHideTransfer(name, note);
+}
+
+function apkRequestHideTransfer(name, existingNote) {
+  const note = existingNote !== undefined ? existingNote : '';
   const repId = window.apkRep || state.repId || '';
   // Mark locally hidden immediately
   if (!state.hiddenTransferAccounts[repId]) state.hiddenTransferAccounts[repId] = new Set();
@@ -6390,8 +6450,8 @@ function apkRequestHideTransfer(name) {
   // Log request
   sheetsAppend("'_LOG'!A1", [[
     new Date().toISOString(), state.user?.email || repId, 'TRANSFER_HIDE_REQUEST',
-    'Rep ' + repId + ' requests hide from transfer list: ' + name
-  ]]).then(() => showToast('Hide request sent to John ✓', 'success'))
+    'Rep ' + repId + ' requests hide from transfer list: ' + name + (note && note !== 'none' ? '. Note: ' + note : '')
+  ]]).then(() => showToast('Removed from your list ✓', 'success'))
     .catch(e => showToast('Error: ' + e.message, 'error'));
   // Re-render transfer panel
   const repAccs = state.accounts.filter(a => a.rep === repId);
@@ -6574,7 +6634,7 @@ function apkRenderTransferModalBody() {
         <div style="font-family:var(--mono);font-size:11px;color:var(--orange);text-align:right;align-self:center">$${formatNum(acc.total||0)}</div>
         <div style="font-size:10px;color:${statusColor};text-align:center;align-self:center;padding:0 4px">${escHtml(statusShort)}</div>
         <div style="display:flex;gap:5px;align-self:center;padding-left:8px" onclick="event.stopPropagation()">
-          <button onclick="apkRequestTransfer('${escHtml(acc.name)}')"
+          <button onclick="apkShowTransferActionModal('${escHtml(acc.name)}')"
             style="font-size:10px;padding:4px 8px;background:rgba(249,115,22,0.15);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r);font-family:var(--mono);white-space:nowrap"
             title="Request this account be transferred to your territory">⇄ REQUEST</button>
           ${isHidden ?
@@ -6583,7 +6643,7 @@ function apkRenderTransferModalBody() {
               title="Unhide this account">↺ SHOW</button>` :
             `<button onclick="apkRequestHideTransfer('${escHtml(acc.name)}')"
               style="font-size:10px;padding:4px 8px;background:rgba(0,0,0,0);border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono)"
-              title="Hide this account from your transfer list">✕ HIDE</button>`
+              title="Remove from your list">✕ HIDE</button>`
           }
         </div>
       </div>`;

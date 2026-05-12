@@ -752,6 +752,43 @@ body::before {
 </div>
 
 <!-- LOGIN -->
+<!-- Location Claim Modal — fires after NDA acceptance -->
+<div id="location-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10002;align-items:center;justify-content:center">
+  <div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid var(--blue-b);border-radius:var(--r2);width:420px;max-width:94vw;padding:24px 28px;box-shadow:0 24px 64px rgba(0,0,0,0.7)">
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.2em;color:var(--blue-b);margin-bottom:6px">🛡 ACCESS VERIFICATION</div>
+    <div style="font-size:17px;font-weight:700;margin-bottom:6px">Where are you accessing from?</div>
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:20px;line-height:1.6">Your IP address and location claim are logged for security. This helps verify authorized access and detect unusual activity.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px" id="location-btns">
+      <button onclick="selectLocation('Office')" class="loc-btn" style="padding:14px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r2);text-align:center;transition:all 0.15s" onmouseover="this.style.borderColor='var(--blue-b)';this.style.color='var(--blue-b)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">
+        🏢<div style="font-size:13px;font-weight:600;margin:4px 0 2px">Office</div><div style="font-size:10px;opacity:0.7">Intransit Technologies</div>
+      </button>
+      <button onclick="selectLocation('Home')" class="loc-btn" style="padding:14px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r2);text-align:center;transition:all 0.15s" onmouseover="this.style.borderColor='var(--blue-b)';this.style.color='var(--blue-b)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">
+        🏠<div style="font-size:13px;font-weight:600;margin:4px 0 2px">Home</div><div style="font-size:10px;opacity:0.7">Working remotely</div>
+      </button>
+      <button onclick="selectLocation('Travel')" class="loc-btn" style="padding:14px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r2);text-align:center;transition:all 0.15s" onmouseover="this.style.borderColor='var(--blue-b)';this.style.color='var(--blue-b)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">
+        ✈<div style="font-size:13px;font-weight:600;margin:4px 0 2px">Travel / Field</div><div style="font-size:10px;opacity:0.7">On the road</div>
+      </button>
+      <button onclick="selectLocation('Other')" class="loc-btn" style="padding:14px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r2);text-align:center;transition:all 0.15s" onmouseover="this.style.borderColor='var(--blue-b)';this.style.color='var(--blue-b)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">
+        📍<div style="font-size:13px;font-weight:600;margin:4px 0 2px">Other</div><div style="font-size:10px;opacity:0.7">Specify below</div>
+      </button>
+    </div>
+    <div id="location-other-input" style="display:none;margin-bottom:16px">
+      <input id="location-custom" type="text" placeholder="Describe your location (e.g. Client site, Conference)" maxlength="80"
+        style="width:100%;box-sizing:border-box;padding:8px 12px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;border-radius:var(--r);outline:none"
+        onkeydown="if(event.key==='Enter')confirmLocation()">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button id="location-confirm-btn" onclick="confirmLocation()" disabled
+        style="flex:1;padding:10px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;cursor:not-allowed;border-radius:var(--r);opacity:0.5;letter-spacing:0.08em">
+        CONFIRM & CONTINUE
+      </button>
+    </div>
+    <div style="font-size:10px;color:var(--text-3);text-align:center;margin-top:10px;line-height:1.5">
+      Your IP address is automatically captured. Location claim is for security tracking only.
+    </div>
+  </div>
+</div>
+
 <div id="login-screen">
   <div class="login-box">
     <div class="login-logo">Intransit Technologies</div>
@@ -840,6 +877,14 @@ body::before {
           <span class="nav-badge red" id="badge-removals"></span>
         </div>
       </div>
+      <!-- Admin-only: Access Activity Log -->
+      <div class="nav-item" id="nav-access" data-view="access" onclick="switchView('access')"
+           style="display:none;border-left:2px solid var(--blue-b)">
+        <div class="nav-item-inner">
+          <span class="nav-icon">🛡</span> Access Log
+          <span class="nav-badge blue" id="badge-access"></span>
+        </div>
+      </div>
       <div class="nav-item" id="nav-settings" data-view="settings" onclick="switchView('settings')">
         <div class="nav-item-inner">
           <span class="nav-icon">◧</span> Settings
@@ -913,7 +958,7 @@ body::before {
 
 <!-- HELP MODAL -->
 <div id="help-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:flex-end;justify-content:flex-end;padding:16px">
-  <div style="background:var(--s1);border:1px solid var(--border-hi);border-radius:var(--r2);width:420px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.7)">
+  <div style="background:var(--s1);border:1px solid var(--border-hi);border-radius:var(--r2);width:520px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.7)">
     <!-- Header -->
     <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
       <div>
@@ -937,7 +982,7 @@ body::before {
     </div>
 
     <!-- Guide content -->
-    <div id="help-guide-content" style="flex:1;overflow-y:auto;padding:16px 18px;font-size:13px;line-height:1.7">
+    <div id="help-guide-content" style="flex:1;overflow-y:auto;padding:0;font-size:13px;line-height:1.7">
       <!-- Injected per view -->
     </div>
 
@@ -1864,6 +1909,8 @@ async function ensureNDALogHeader() {
 async function acceptNDA() {
   document.getElementById('nda-modal').style.display = 'none';
   sessionStorage.setItem('it_nda_accepted', '1');
+  // Show location claim modal before completing login
+  showLocationModal();
   // Ensure _NDA_LOG has header row (creates tab + header if brand new)
   ensureNDALogHeader().catch(() => {});
 
@@ -2113,6 +2160,8 @@ function requestSheetsToken() {
   }
 }
 function completeLogin() {
+  if (state._loginComplete) return; // prevent double-init from location modal flow
+  state._loginComplete = true;
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').classList.add('visible');
   document.getElementById('sidebar-user-name').textContent = state.user?.name || state.user?.email || '—';
@@ -2126,6 +2175,8 @@ function completeLogin() {
     // Show admin-only nav items
     const removalsNav = document.getElementById('nav-removals');
     if (removalsNav) removalsNav.style.display = 'block';
+    const accessNav = document.getElementById('nav-access');
+    if (accessNav) accessNav.style.display = 'block';
   }
   // Load signatures immediately so Settings always shows them
   sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SIGNATURES'!A1:D100").then(rows => {
@@ -2155,6 +2206,7 @@ function handleLogin() {
 function handleSignout() {
   state.user = null;
   state.accessToken = null;
+  state._loginComplete = false;
   localStorage.removeItem('it_token');
   localStorage.removeItem('it_user');
   try { google.accounts.oauth2.revoke(state.accessToken, () => {}); } catch(e){}
@@ -2494,6 +2546,7 @@ function switchView(view) {
     settings:    'Settings',
     attack:      'Sales Attack Plan',
     removals:    '🗑 Requests & Approvals',
+    access:      '🛡 Access Activity Log',
     all:         'All Accounts — All Reps',
   };
   document.getElementById('topbar-title').textContent = titles[view] || view;
@@ -2508,6 +2561,8 @@ function switchView(view) {
     renderSettingsView();
   } else if (view === 'removals') {
     renderRemovalsView();
+  } else if (view === 'access') {
+    renderAccessLog();
   } else if (viewRenderers[view]) {
     viewRenderers[view]();
     ensureCacheLoaded().then(() => {
@@ -3314,6 +3369,408 @@ function openAccountFromContact(accountName) {
 }
 
 
+// ══════════════════════════════════════════════════════════════════════
+//  ACCESS ACTIVITY LOG — Location Claim + IP Capture + Admin View
+// ══════════════════════════════════════════════════════════════════════
+
+// State for location modal
+let _selectedLocation = null;
+
+function showLocationModal() {
+  _selectedLocation = null;
+  const modal = document.getElementById('location-modal');
+  modal.style.display = 'flex';
+  const btn = document.getElementById('location-confirm-btn');
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  btn.style.cursor = 'not-allowed';
+  document.getElementById('location-other-input').style.display = 'none';
+  document.getElementById('location-custom').value = '';
+}
+
+function selectLocation(type) {
+  _selectedLocation = type;
+  // Highlight selected button
+  document.querySelectorAll('.loc-btn').forEach(b => {
+    b.style.background = 'var(--s2)';
+    b.style.borderColor = 'var(--border)';
+    b.style.color = 'var(--text)';
+  });
+  event.currentTarget.style.background = 'rgba(59,130,246,0.15)';
+  event.currentTarget.style.borderColor = 'var(--blue-b)';
+  event.currentTarget.style.color = 'var(--blue-b)';
+  // Show custom input if Other
+  const otherInput = document.getElementById('location-other-input');
+  if (type === 'Other') {
+    otherInput.style.display = 'block';
+    document.getElementById('location-custom').focus();
+  } else {
+    otherInput.style.display = 'none';
+  }
+  // Enable confirm button
+  const btn = document.getElementById('location-confirm-btn');
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  btn.style.cursor = 'pointer';
+}
+
+async function confirmLocation() {
+  if (!_selectedLocation) return;
+  const customText = document.getElementById('location-custom').value.trim();
+  const locationClaim = _selectedLocation === 'Other'
+    ? (customText || 'Other (unspecified)')
+    : _selectedLocation;
+
+  document.getElementById('location-modal').style.display = 'none';
+  // Log the access entry (non-blocking)
+  logAccessEntry(locationClaim).catch(e => console.warn('Access log failed:', e));
+  // Now complete the real login flow
+  loadAllAccounts();
+  showNDA_or_complete();
+}
+
+function showNDA_or_complete() {
+  // Continue the login — NDA already accepted, location claimed
+  completeLoginAfterLocation();
+}
+
+async function logAccessEntry(locationClaim) {
+  const now = new Date();
+  const timestamp = now.toLocaleString('en-US', {
+    month: '2-digit', day: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  });
+  const isoTime  = now.toISOString();
+  const email    = state.user?.email || 'unknown';
+  const name     = state.user?.name  || 'unknown';
+  const repId    = state.repId || (state.isAdmin ? 'FJohn' : 'unknown');
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
+  const ua       = navigator.userAgent.slice(0, 150);
+  const lang     = currentLang === 'es' ? 'Spanish' : 'English';
+
+  // Detect device type from UA
+  const isMobile  = /Mobi|Android|iPhone|iPad/i.test(ua);
+  const isMac     = /Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua);
+  const isWindows = /Windows/i.test(ua);
+  const deviceType = isMobile ? 'Mobile' : (isMac ? 'Mac' : isWindows ? 'Windows PC' : 'Desktop');
+
+  // Browser detection
+  const browserMatch = ua.match(/(Chrome|Firefox|Safari|Edge|OPR)[\/]([\d.]+)/);
+  const browser = browserMatch ? browserMatch[1] + ' ' + browserMatch[2].split('.')[0] : 'Unknown';
+
+  // IP lookup via free public API (non-blocking, no auth needed)
+  let ipAddress = 'unknown';
+  let ipCity    = 'unknown';
+  let ipCountry = 'unknown';
+  let ipOrg     = 'unknown';
+  let isSuspicious = false;
+  let suspicionReason = '';
+
+  try {
+    const ipRes = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(4000) });
+    if (ipRes.ok) {
+      const ipData = await ipRes.json();
+      ipAddress = ipData.ip        || 'unknown';
+      ipCity    = ipData.city      || 'unknown';
+      ipCountry = ipData.country_name || 'unknown';
+      ipOrg     = ipData.org       || 'unknown';
+
+      // Suspicion checks
+      const isVPN    = ipData.org && /(vpn|proxy|hosting|cloud|digital ocean|linode|vultr|aws|azure|google cloud)/i.test(ipData.org);
+      const isOddCountry = ipData.country_code && !['US', 'MX', 'CA'].includes(ipData.country_code);
+      if (isVPN) { isSuspicious = true; suspicionReason = 'VPN/Hosting IP detected: ' + ipData.org; }
+      else if (isOddCountry) { isSuspicious = true; suspicionReason = 'Unusual country: ' + ipData.country_name; }
+    }
+  } catch(e) { /* IP lookup failed — non-blocking */ }
+
+  // Cross-check: location claim vs. IP geo
+  let claimMismatch = false;
+  if (locationClaim === 'Office' && ipCity && !['Rancho Santa Margarita','Irvine','Mission Viejo','Lake Forest','Foothill Ranch'].includes(ipCity)) {
+    claimMismatch = true;
+    if (!isSuspicious) { isSuspicious = true; suspicionReason = 'Claims Office but IP is in ' + ipCity + ', ' + ipCountry; }
+  }
+
+  // Cache for badge count update
+  if (!window._accessLogCache) window._accessLogCache = [];
+  window._accessLogCache.unshift({
+    timestamp, isoTime, email, name, repId, locationClaim,
+    ipAddress, ipCity, ipCountry, ipOrg, deviceType, browser,
+    timezone, lang, isSuspicious, suspicionReason
+  });
+
+  // Update suspicious badge
+  const suspCount = window._accessLogCache.filter(r => r.isSuspicious).length;
+  const badge = document.getElementById('badge-access');
+  if (badge && suspCount > 0) {
+    badge.textContent = suspCount + ' ⚠';
+    badge.style.background = 'rgba(239,68,68,0.15)';
+    badge.style.color = 'var(--red)';
+  }
+
+  // Write to _ACCESS_LOG tab in History Sheet
+  // Header: Timestamp, ISO, Email, Name, RepID, Location Claim, IP, City, Country, Org, Device, Browser, Timezone, Language, Suspicious, Reason
+  const ensureHeader = async () => {
+    try {
+      const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!A1:P1");
+      if (!rows.length || rows[0][0] !== 'TIMESTAMP') {
+        await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!A1:P1", [[
+          'TIMESTAMP','ISO_TIME','EMAIL','NAME','REP_ID','LOCATION_CLAIM',
+          'IP_ADDRESS','CITY','COUNTRY','ORG','DEVICE','BROWSER',
+          'TIMEZONE','LANGUAGE','SUSPICIOUS','SUSPICION_REASON'
+        ]]);
+      }
+    } catch(e) { /* create tab first */
+      try {
+        await fetch('https://sheets.googleapis.com/v4/spreadsheets/' + CONFIG.HISTORY_SPREADSHEET_ID + ':batchUpdate', {
+          method:'POST',
+          headers:{ Authorization:'Bearer ' + state.accessToken, 'Content-Type':'application/json' },
+          body: JSON.stringify({ requests:[{ addSheet:{ properties:{ title:'_ACCESS_LOG' } } }] })
+        });
+        await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!A1:P1", [[
+          'TIMESTAMP','ISO_TIME','EMAIL','NAME','REP_ID','LOCATION_CLAIM',
+          'IP_ADDRESS','CITY','COUNTRY','ORG','DEVICE','BROWSER',
+          'TIMEZONE','LANGUAGE','SUSPICIOUS','SUSPICION_REASON'
+        ]]);
+      } catch(e2) { /* give up silently */ }
+    }
+  };
+
+  await ensureHeader();
+  await sheetsAppend("'_ACCESS_LOG'!A1", [[
+    timestamp, isoTime, email, name, repId, locationClaim,
+    ipAddress, ipCity, ipCountry, ipOrg, deviceType, browser,
+    timezone, lang,
+    isSuspicious ? 'YES' : 'NO',
+    suspicionReason || ''
+  ]], CONFIG.HISTORY_SPREADSHEET_ID);
+}
+
+// Called after location confirmed — equivalent to original completeLogin path
+function completeLoginAfterLocation() {
+  // NDA log was already written by acceptNDA()
+  // Access log is written by logAccessEntry()
+  // Now do the actual app init
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+  document.getElementById('sidebar-user-name').textContent = state.user?.name || state.user?.email || '—';
+  document.getElementById('sidebar-user-role').textContent =
+    state.isAdmin ? 'ADMIN — ALL REPS' :
+    state.repId ? 'REP — ' + state.repId : 'READ ONLY';
+  if (state.isAdmin) {
+    document.getElementById('filter-all').style.display = 'inline-block';
+    document.getElementById('view-as-section').style.display = 'block';
+    const removalsNav = document.getElementById('nav-removals');
+    if (removalsNav) removalsNav.style.display = 'block';
+    const accessNav = document.getElementById('nav-access');
+    if (accessNav) accessNav.style.display = 'block';
+  }
+  // Trigger the rest of completeLogin() which loads signatures, cache, etc.
+  completeLogin();
+}
+
+// ── ACCESS LOG ADMIN PAGE ───────────────────────────────────────────────
+async function renderAccessLog() {
+  if (!state.isAdmin || state.viewAsRep) {
+    document.getElementById('main-content').innerHTML = '<div style="padding:40px;color:var(--text-3)">Admin only.</div>';
+    return;
+  }
+  const el = document.getElementById('main-content');
+  el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div style="font-family:var(--mono);letter-spacing:0.15em">LOADING ACCESS LOG...</div></div>';
+
+  let rows = [];
+  try {
+    const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!A1:P2000");
+    if (raw && raw.length > 1) {
+      const hdrs = raw[0];
+      const iTs=hdrs.indexOf('TIMESTAMP'), iEmail=hdrs.indexOf('EMAIL'),
+            iName=hdrs.indexOf('NAME'), iRep=hdrs.indexOf('REP_ID'),
+            iLoc=hdrs.indexOf('LOCATION_CLAIM'), iIp=hdrs.indexOf('IP_ADDRESS'),
+            iCity=hdrs.indexOf('CITY'), iCountry=hdrs.indexOf('COUNTRY'),
+            iOrg=hdrs.indexOf('ORG'), iDev=hdrs.indexOf('DEVICE'),
+            iBrow=hdrs.indexOf('BROWSER'), iTz=hdrs.indexOf('TIMEZONE'),
+            iSusp=hdrs.indexOf('SUSPICIOUS'), iReason=hdrs.indexOf('SUSPICION_REASON');
+      rows = raw.slice(1).reverse().map(r => ({
+        timestamp:  r[iTs]   ||'',
+        email:      r[iEmail]||'',
+        name:       r[iName] ||'',
+        rep:        r[iRep]  ||'',
+        location:   r[iLoc]  ||'',
+        ip:         r[iIp]   ||'',
+        city:       r[iCity] ||'',
+        country:    r[iCountry]||'',
+        org:        r[iOrg]  ||'',
+        device:     r[iDev]  ||'',
+        browser:    r[iBrow] ||'',
+        timezone:   r[iTz]   ||'',
+        suspicious: (r[iSusp]||'').toUpperCase() === 'YES',
+        reason:     r[iReason]||'',
+      }));
+    }
+  } catch(e) {
+    el.innerHTML = '<div style="padding:40px;color:var(--red)">Error loading access log: ' + escHtml(e.message) + '</div>';
+    return;
+  }
+
+  // Also merge any in-memory entries from this session not yet in Sheet
+  if (window._accessLogCache) {
+    window._accessLogCache.forEach(c => {
+      if (!rows.find(r => r.isoTime === c.isoTime)) {
+        rows.unshift({ ...c, suspicious: c.isSuspicious });
+      }
+    });
+  }
+
+  const total    = rows.length;
+  const suspicious = rows.filter(r => r.suspicious).length;
+  const today    = rows.filter(r => r.timestamp && r.timestamp.startsWith(new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'}))).length;
+  const uniqueIPs = new Set(rows.map(r => r.ip).filter(Boolean)).size;
+  const uniqueUsers = new Set(rows.map(r => r.email).filter(Boolean)).size;
+
+  // Location icon helper
+  const locIcon = l => l==='Office'?'🏢':l==='Home'?'🏠':l==='Travel'?'✈':'📍';
+
+  el.innerHTML = `
+  <div style="flex:1;overflow-y:auto;padding:24px">
+
+    <!-- KPI row -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px">
+      <div class="stat-card">
+        <div class="stat-label">Total Logins</div>
+        <div class="stat-value blue">${total}</div>
+        <div class="stat-sub">all time</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Today</div>
+        <div class="stat-value">${today}</div>
+        <div class="stat-sub">sessions today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Unique Users</div>
+        <div class="stat-value">${uniqueUsers}</div>
+        <div class="stat-sub">distinct emails</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Unique IPs</div>
+        <div class="stat-value">${uniqueIPs}</div>
+        <div class="stat-sub">IP addresses</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Suspicious</div>
+        <div class="stat-value ${suspicious>0?'red':''}">${suspicious}</div>
+        <div class="stat-sub">flagged sessions</div>
+      </div>
+    </div>
+
+    ${suspicious > 0 ? `
+    <!-- Suspicious alerts -->
+    <div style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.35);border-left:4px solid var(--red);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--red);margin-bottom:8px">⚠ SUSPICIOUS ACTIVITY — ${suspicious} FLAG${suspicious!==1?'S':''}</div>
+      ${rows.filter(r=>r.suspicious).map(r=>`
+      <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;margin-bottom:6px;display:flex;gap:14px;align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;margin-bottom:2px">${escHtml(r.email)} <span style="font-family:var(--mono);font-size:10px;color:var(--text-3)">${escHtml(r.rep)}</span></div>
+          <div style="font-size:11px;color:var(--red);margin-bottom:2px">⚠ ${escHtml(r.reason)}</div>
+          <div style="font-size:11px;color:var(--text-3)">${escHtml(r.timestamp)} · ${locIcon(r.location)} ${escHtml(r.location)} · ${escHtml(r.ip)} · ${escHtml(r.city)}, ${escHtml(r.country)}</div>
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text-3);white-space:nowrap">${escHtml(r.device)}<br>${escHtml(r.browser)}</div>
+      </div>`).join('')}
+    </div>` : ''}
+
+    <!-- Filter row -->
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <button class="filter-btn active" onclick="filterAccessLog('all',this)">ALL (${total})</button>
+      <button class="filter-btn" onclick="filterAccessLog('suspicious',this)">⚠ SUSPICIOUS (${suspicious})</button>
+      <button class="filter-btn" onclick="filterAccessLog('office',this)">🏢 OFFICE</button>
+      <button class="filter-btn" onclick="filterAccessLog('home',this)">🏠 HOME</button>
+      <button class="filter-btn" onclick="filterAccessLog('travel',this)">✈ TRAVEL</button>
+      <button class="filter-btn" onclick="filterAccessLog('other',this)">📍 OTHER</button>
+      <button onclick="exportAccessLog()" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 12px;cursor:pointer;border-radius:var(--r)">⬇ EXPORT CSV</button>
+    </div>
+
+    <!-- Access log table -->
+    <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">
+      <table class="data-table" id="access-log-table" style="width:100%">
+        <thead><tr>
+          <th>Time</th>
+          <th>User</th>
+          <th>Rep</th>
+          <th>Location Claim</th>
+          <th>IP Address</th>
+          <th>City / Country</th>
+          <th>Device</th>
+          <th>Status</th>
+        </tr></thead>
+        <tbody id="access-log-body">
+          ${rows.map(r => `
+          <tr data-location="${escHtml(r.location.toLowerCase())}" data-suspicious="${r.suspicious}" style="${r.suspicious ? 'background:rgba(220,38,38,0.05)' : ''}">
+            <td class="mono" style="font-size:11px;white-space:nowrap;color:var(--text-3)">${escHtml(r.timestamp)}</td>
+            <td style="font-size:11px">
+              <div style="font-weight:500">${escHtml(r.name||r.email)}</div>
+              <div style="font-size:10px;color:var(--text-3);font-family:var(--mono)">${escHtml(r.email)}</div>
+            </td>
+            <td class="mono" style="font-size:11px">${escHtml(r.rep)}</td>
+            <td style="font-size:12px">${locIcon(r.location)} ${escHtml(r.location)}</td>
+            <td class="mono" style="font-size:11px;color:var(--text-2)">${escHtml(r.ip)}</td>
+            <td style="font-size:11px">
+              <div>${escHtml(r.city)}</div>
+              <div style="font-size:10px;color:var(--text-3)">${escHtml(r.country)}</div>
+            </td>
+            <td style="font-size:10px;color:var(--text-3)">
+              <div>${escHtml(r.device)}</div>
+              <div>${escHtml(r.browser)}</div>
+            </td>
+            <td>
+              ${r.suspicious
+                ? `<div style="display:inline-block;background:rgba(220,38,38,0.12);color:var(--red);font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:10px;font-weight:700" title="${escHtml(r.reason)}">⚠ FLAGGED</div>
+                   <div style="font-size:10px;color:var(--red);margin-top:2px">${escHtml(r.reason.slice(0,50))}</div>`
+                : '<div style="display:inline-block;background:rgba(34,197,94,0.12);color:var(--green);font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:10px">✓ NORMAL</div>'
+              }
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      ${rows.length === 0 ? '<div style="padding:40px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">No access records yet — records appear after first login with location claim</div>' : ''}
+    </div>
+  </div>`;
+}
+
+function filterAccessLog(type, btn) {
+  document.querySelectorAll('[onclick*="filterAccessLog"]').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const rows = document.querySelectorAll('#access-log-body tr');
+  rows.forEach(row => {
+    const loc = row.dataset.location || '';
+    const susp = row.dataset.suspicious === 'true';
+    let show = true;
+    if (type === 'suspicious') show = susp;
+    else if (type === 'office')  show = loc === 'office';
+    else if (type === 'home')    show = loc === 'home';
+    else if (type === 'travel')  show = loc === 'travel' || loc === 'travel / field';
+    else if (type === 'other')   show = loc !== 'office' && loc !== 'home' && (loc.includes('travel') || loc === 'other' || (!['office','home'].includes(loc)));
+    row.style.display = show ? '' : 'none';
+  });
+}
+
+function exportAccessLog() {
+  const table = document.getElementById('access-log-table');
+  if (!table) { showToast('No data to export', 'error'); return; }
+  const rows = [];
+  table.querySelectorAll('tr').forEach(tr => {
+    const cells = Array.from(tr.querySelectorAll('th,td')).map(c => '"' + c.innerText.replace(/"/g,'""').replace(/\n/g,' ') + '"');
+    if (cells.length) rows.push(cells.join(','));
+  });
+  const csv = rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'intransit_access_log_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Access log exported ✓', 'success');
+}
+
 function exportNDALog() {
   // Build CSV from ndaRows cached during last renderRemovalsView call
   const rows = window._ndaRowsCache || [];
@@ -3766,8 +4223,63 @@ async function refreshDashboard() {
     return;
   }
 
-  // ── Diagnostic: check what's actually in the caches ──────────
+  // Ensure supplemental cache is loaded
+  await ensureCacheLoaded();
 
+  // ── Column detection: find the right column names in each cache ──
+  const gpHdrs       = state.gpCache.length > 0 ? Object.keys(state.gpCache[0]) : [];
+  const gpSalesRepCol  = gpHdrs.find(h => /SALES_REP/i.test(h)) || 'SALES_REP';
+  const gpDateCol      = gpHdrs.find(h => /INVOICE_DATE/i.test(h)) || 'INVOICE_DATE';
+  const gpInvTotalCol  = gpHdrs.find(h => /EXTENDED_PRICE|INVOICE_TOTAL/i.test(h)) || 'EXTENDED_PRICE';
+  const gpGPCol        = gpHdrs.find(h => /^GP$/i.test(h)) || 'GP';
+
+  const reqHdrs    = state.reqsCache.length > 0 ? Object.keys(state.reqsCache[0]) : [];
+  const reqDateCol = reqHdrs.find(h => /DATE_ENTERED|DATE/i.test(h)) || 'DATE_ENTERED';
+  const reqRepCol  = reqHdrs.find(h => /SELLER|SALES_REP/i.test(h)) || 'SELLER';
+
+  // ── Filter data by date range and rep ────────────────────────
+  const accs     = repFilter ? state.accounts.filter(a => a.rep === repFilter) : state.accounts;
+  const inactive = accs.filter(a => isInactive(a));
+  const declining = accs.filter(a => {
+    const s = (a.status || '').toLowerCase();
+    return s.includes('decline') || s.includes('stalled');
+  });
+  const due = accs.filter(a => {
+    if (!a.followUpDate) return false;
+    const d = parseDate(a.followUpDate);
+    return d && d <= new Date().toISOString().slice(0,10);
+  });
+
+  const gpFiltered = state.gpCache.filter(r => {
+    const d = normDate(r[gpDateCol] || r.INVOICE_DATE || '');
+    if (!d || d < from || d > to) return false;
+    if (repFilter) {
+      const rep = (r[gpSalesRepCol] || r.SALES_REP || '').trim();
+      return rep === repFilter;
+    }
+    return true;
+  });
+
+  const shipped = gpFiltered.reduce((s, r) => s + parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE || 0), 0);
+  const gp      = gpFiltered.reduce((s, r) => s + parseMoney(r[gpGPCol] || r.GP || 0), 0);
+  const gpPct   = shipped > 0 ? (gp / shipped * 100) : 0;
+
+  const ordersFiltered = (state.ordersHistoryCache.length > 0 ? state.ordersHistoryCache : state.ordersCache).filter(r => {
+    const d = (r.ORDER_DATE || '').slice(0,10);
+    if (!d || d < from || d > to) return false;
+    if (repFilter) return (r.SALES_REP || '').trim() === repFilter;
+    return true;
+  });
+  const booked     = ordersFiltered.reduce((s, r) => s + parseMoney(r.EXTENDED_PRICE || r.ORDER_TOTAL || 0), 0);
+  const bookedLabel = 'Orders Booked';
+
+  const reqsFiltered = state.reqsCache.filter(r => {
+    const raw = r[reqDateCol] || r.DATE || r.DATE_ENTERED || '';
+    const d = normDate(raw);
+    if (!d || d < from || d > to) return false;
+    if (repFilter) return (r[reqRepCol] || r.SALES_REP || r.SELLER || '').trim() === repFilter;
+    return true;
+  });
 
   // ── Render KPI cards ──────────────────────────────────────────
   const kpiEl = document.getElementById('dash-kpis');
@@ -3897,6 +4409,8 @@ function switchViewAs(rep) {
   // Hide admin-only nav when impersonating a rep, show when back to admin view
   const removalsNav = document.getElementById('nav-removals');
   if (removalsNav) removalsNav.style.display = rep ? 'none' : 'block';
+  const accessNavEl = document.getElementById('nav-access');
+  if (accessNavEl) accessNavEl.style.display = rep ? 'none' : 'block';
   state.selectedAccount = null;
   switchView(rep ? 'accounts' : 'accounts');
 }
@@ -7027,92 +7541,151 @@ INSTRUCTIONS:
 
 const HELP_GUIDES = {
   accounts: {
-    title: 'My Accounts',
+    title: 'My Accounts — How To Guide',
     sections: [
-      { icon: '📋', heading: 'What you see', text: 'A list of all accounts assigned to you, with status, last sale date, and lifetime revenue. Click any account to open its detail panel on the right.' },
-      { icon: '🔍', heading: 'Filtering & Sorting', text: 'Use ACTIVE / INACTIVE / DECLINING buttons to filter. Use the SORT bar above the list to sort by Name, Last Sale, Value, Inactive days, or Status. The search box filters by account name.' },
-      { icon: '📝', heading: 'Saving a Note', text: 'Click an account → Notes tab → type in the Add Note box → choose a Status and Follow-up Date → click SAVE & LOCK. Notes are permanent and saved to Google Sheets.' },
-      { icon: '✦', heading: 'AI Research', text: 'Click the ✦ Research tab on any account to ask the AI anything about the company — locations, what they make, competitors, recent news. The AI uses web search for current info.' },
-      { icon: '✉', heading: 'Sending Email', text: 'Click Outreach tab → optionally type context in the box → click Generate. Then use OPEN IN EMAIL to launch your mail client with the email pre-filled.' },
-      { icon: '🎨', heading: 'Status Colors', text: 'RED = High Value Lost or Severe Decline · ORANGE = At Risk or Moderate Decline · GRAY = Long Dormant · YELLOW = Monitor · GREEN = Active' },
+      { icon: '📋', heading: 'What you see', text: 'A list of every account assigned to you, showing account name, status badge, last sale date, and lifetime revenue. The number in the sidebar badge shows how many follow-ups are due today. Click any account row to open its full detail panel on the right side.' },
+      { icon: '🔵🟠⚫', heading: 'Status badge colors', text: 'GREEN = Active (purchased in last 6 months) · RED = High Value Lost ($100K+ lifetime, now inactive) or Severe Decline (on pace to drop 50%+) · ORANGE = Declining At Risk ($20K–$100K, inactive) or Moderate Decline (20–50% drop) · GRAY = Long Dormant (no purchase in 2+ years) · YELLOW = Monitor (smaller inactive account) · RED "Stalled" = active but no purchases yet this year.' },
+      { icon: '🔍', heading: 'Filtering accounts', text: 'Use the ALL / ACTIVE / INACTIVE / DECLINING buttons at the top to filter the list. ACTIVE shows only accounts that have purchased in the last 6 months. INACTIVE shows all accounts that have gone quiet. DECLINING shows accounts whose revenue is trending down. Filters stack with the search box.' },
+      { icon: '🔎', heading: 'Searching accounts', text: 'Type any part of an account name in the search bar at the top. The list filters instantly as you type. Clear the box to see all accounts again.' },
+      { icon: '↕', heading: 'Sorting the list', text: 'Click any column header to sort. Click again to reverse the sort direction. Sort by Account Name (A–Z), Last Sale (most recent first), Total Revenue (highest first), Days Inactive, or Status priority.' },
+      { icon: '📝', heading: 'Saving a note', text: 'Click an account → Notes tab → type your note in the box → set a Status (Working, Quoted, Dead, or Hold) → optionally set a Follow-up Date → click SAVE & LOCK. Notes are permanent and timestamped. Once saved, notes cannot be edited — this creates a reliable call history.' },
+      { icon: '📅', heading: 'Setting follow-up dates', text: 'In the Notes tab, set a Follow-up Date when saving a note. The date appears in the account list and in the Follow-ups Due sidebar view. Set a new date each time you contact an account to keep your pipeline moving. Leave blank to clear the follow-up.' },
+      { icon: '🔴', heading: 'Request actions on an account', text: 'At the bottom of the Notes tab, reps can: REQUEST REMOVAL (ask John to remove the account from future reports — requires a reason), REQUEST CREDIT HOLD (flag an account for collections review), or REQUEST TERRITORY TRANSFER (ask John to reassign this account to you from another rep). All requests go to John\'s Requests & Approvals page.' },
+      { icon: '👥', heading: 'Contacts tab', text: 'Shows all contacts at this account, split into Purchasing contacts and AP/Collections contacts. Each contact shows name, title, email, and phone. Hover over email or phone to reveal the full details (blurred by default for security). Click a contact name to jump to the full Contacts page for that person.' },
+      { icon: '✦', heading: 'AI Next Best Action', text: 'In the Contacts tab, click ANALYZE & RECOMMEND to get 3 specific AI-prioritized action suggestions based on the account\'s revenue trend, inactivity, open RFQs, and contact history. HIGH priority = act now. You can then ask follow-up questions in the chat box.' },
+      { icon: '📜', heading: 'History tab', text: 'Shows the last 2 years of invoices (with part numbers), recent RFQs (requests for quote), and recent quotes. Use this to see what parts a customer buys, identify gaps, and spot opportunities to re-engage on past part types.' },
+      { icon: '✉', heading: 'Outreach email tab', text: 'Generates a professional sales re-engagement email using AI. Select the TO contact from the dropdown. Optionally type any specific context (e.g. "Mention we just got new stock of Boeing surplus"). Click GENERATE. The AI writes a personalized email referencing the account\'s purchase history and status. Then click OPEN IN EMAIL to launch your mail client.' },
+      { icon: '💰', heading: 'Collections tab', text: 'If the account has an unpaid balance, the Collections tab shows the outstanding amount, payment terms, days past due, and all unpaid invoices with tracking links. Use this to check AR status without switching views.' },
+      { icon: '✦', heading: 'Research tab', text: 'Ask the AI anything about the company — what they make, their locations, competitors, industry, recent news, size. The AI uses live web search. After getting results, click USE IN OUTREACH EMAIL to write an email that references your research findings.' },
+      { icon: '📊', heading: 'Account tab', text: 'Shows a bar chart of this account\'s revenue year by year from 2020 to present. Use this to see at a glance whether the account is growing, shrinking, or stalled.' },
     ]
   },
-  followups: {
-    title: 'Follow-ups Due',
+  followup: {
+    title: 'Follow-ups Due — How To Guide',
     sections: [
-      { icon: '📅', heading: 'What this shows', text: 'All accounts where you set a follow-up date that is today or earlier. Use this as your daily call list.' },
-      { icon: '✅', heading: 'Clearing a follow-up', text: 'Click the account → Notes tab → save a new note with an updated follow-up date, or leave the date blank to clear it.' },
-      { icon: '💡', heading: 'Best practice', text: 'Every time you contact an account, log a note and set the next follow-up date. This keeps the list accurate and nothing falls through the cracks.' },
+      { icon: '📅', heading: 'What this shows', text: 'Every account where you set a follow-up date that is today or earlier. This is your daily action list — accounts you committed to contacting. The orange badge in the sidebar shows the count at a glance.' },
+      { icon: '📋', heading: 'How to use it', text: 'Work through this list each morning. Click an account to open its detail, review the history and last note, then make your call or send an email. After contacting, go to the Notes tab, log what happened, and set the next follow-up date.' },
+      { icon: '✅', heading: 'Clearing a follow-up', text: 'Open the account → Notes tab → save a new note with an updated future follow-up date. Or leave the follow-up date blank if no follow-up is needed. The account will leave this list on the next page load.' },
+      { icon: '💡', heading: 'Best practice', text: 'Never let this list grow past 10–15 accounts. If it gets long, prioritize HIGH VALUE LOST and DECLINING accounts first. Set follow-up dates at least 5–7 business days out so the list stays manageable.' },
+      { icon: '⚡', heading: 'Quick actions', text: 'From the Follow-ups Due list, you can click directly into any account\'s detail panel and use the Outreach tab to generate an email instantly — no need to navigate back to My Accounts first.' },
     ]
   },
   dashboard: {
-    title: 'Dashboard',
+    title: 'Dashboard — How To Guide',
     sections: [
-      { icon: '📊', heading: 'KPI Cards', text: 'Shows Total Shipped (invoiced revenue), Orders Booked (open orders placed), Gross Profit $, and GP% for the selected date range.' },
-      { icon: '📅', heading: 'Date Ranges', text: 'MTD = current month · YTD = Jan 1 to today · Q1–Q4 = calendar quarters · CUSTOM = pick any range using the date fields.' },
-      { icon: '🔍', heading: 'Data Verification Table', text: 'The table below the KPIs shows every invoice row in the date range. Compare this to your CRM Performance Dashboard to verify the numbers match.' },
-      { icon: '⚠', heading: 'COST ADJ rows', text: 'Orange rows marked COST ADJ are Deleted Inventory entries — internal cost adjustments with no shipped revenue. They reduce GP just like they do in CRM.' },
-      { icon: '👥', heading: 'Rep Table (Admin)', text: 'When viewing as All Reps, a performance table shows each rep\'s shipped revenue, GP, and RFQ count for the period.' },
+      { icon: '📊', heading: 'Overview', text: 'The Dashboard shows your sales performance metrics for any selected time period. All numbers pull directly from the CRM invoice data — the same source as the CRM Performance Dashboard, so they should match within rounding.' },
+      { icon: '📅', heading: 'Choosing a date range', text: 'Click MTD (month to date), YTD (January 1 to today), Q1–Q4 (calendar quarters), or CUSTOM to pick any date range using the date pickers. Your selection is remembered if you leave and come back to the Dashboard.' },
+      { icon: '💵', heading: 'Total Shipped', text: 'The sum of all invoice totals (INVOICE_TOTAL) in the date range. This matches the "Shipped" figure in the CRM Performance Dashboard. It includes all invoices — regular sales and cost adjustment rows.' },
+      { icon: '📦', heading: 'Orders Booked', text: 'The dollar value of open order lines placed (not yet invoiced) in the date range. This shows your pipeline — what has been ordered but not yet shipped.' },
+      { icon: '💰', heading: 'Gross Profit (GP)', text: 'Total GP dollars and GP% for the period. Pulled from INVCHEA.GP column which matches the CRM. A row marked COST ADJ (orange) is a Deleted Inventory entry — it reduces GP just like it does in the CRM. These are included because the CRM includes them too.' },
+      { icon: '📋', heading: 'RFQs', text: 'Count of Requests For Quote submitted in the date range. This measures quoting activity — how many customer requests your accounts generated.' },
+      { icon: '📈', heading: 'Accounts / Inactive / Declining', text: 'Counts from your account list, not the date range. Inactive = no purchase in 183+ days. Declining = account is on pace to drop 20%+ vs last year. Follow-ups Due = accounts where your set follow-up date has arrived.' },
+      { icon: '👥', heading: 'Rep Performance Table (Admin only)', text: 'When viewing all reps (no rep selected in View As Rep), a table shows every rep\'s Shipped, Booked, GP$, GP%, and RFQ count for the selected period. Click a rep name to filter the dashboard to that rep only.' },
+      { icon: '🔍', heading: 'Verifying numbers', text: 'If a number looks off, compare to the CRM\'s own Performance Dashboard. The most common cause of small differences is the date range — the CRM may use ship date vs. invoice date differently. The app always uses INVOICE_DATE.' },
     ]
   },
   collections: {
-    title: 'Collections',
+    title: 'Collections — How To Guide',
     sections: [
-      { icon: '💰', heading: 'What you see', text: 'All accounts with unpaid invoice balances. Sorted by balance size. RED = more than 30 days past due · ORANGE = past due but within 30 days.' },
-      { icon: '✉', heading: 'Sending a Collections Email', text: '1. Click an account · 2. Check/uncheck the invoices to include · 3. Verify the TO contact · 4. Choose GENTLE, FIRM, or FINAL — or type your own guidance and click CUSTOM · 5. Click OPEN IN EMAIL.' },
-      { icon: '📝', heading: 'Collections Notes', text: 'Use the note area to log call outcomes, payment promises, disputes. Set a Status (Contacted, Promised Payment, etc.) and promised date. Notes show in the contact page history too.' },
-      { icon: '🔒', heading: 'APP HOLD', text: 'Admin only. Places a visible hold badge on the account. Does not affect the CRM credit hold — this is an app-side flag to track internal holds.' },
+      { icon: '💰', heading: 'Overview', text: 'The Collections view shows all accounts with unpaid invoice balances — your accounts receivable. The top KPI cards show total AR outstanding, accounts on hold, high risk count, and watch count at a glance.' },
+      { icon: '🔴🟠', heading: 'Risk badges', text: 'RED = HIGH RISK: balance is more than 30 days past due · ORANGE = WATCH: past due but within 30 days · ON HOLD: account has been placed on hold by admin. Days past due is calculated from the invoice date plus the account\'s payment terms (NET30, NET60, etc.). COD/Wire/T&T accounts are treated as immediately due.' },
+      { icon: '🔵🟠', heading: 'Filtering accounts', text: 'Use the ALL / ON HOLD / HIGH RISK / WATCH filter buttons at the top to focus on the most urgent accounts. ON HOLD shows accounts blocked from new business. HIGH RISK shows the most overdue. WATCH shows accounts approaching overdue.' },
+      { icon: '📋', heading: 'Selecting invoices for email', text: 'Click an account to open its detail. You\'ll see all unpaid invoices with their amounts, ship dates, due dates, and tracking links. Check the invoices you want to include in your collections email. Use ALL to check all, NONE to clear. The total updates as you select.' },
+      { icon: '👤', heading: 'Setting recipients', text: 'When you select invoices, the TO and CC fields auto-populate with the account\'s AP/Collections contacts. The primary AP contact is pre-selected as TO. Other AP contacts and contacts marked CC are pre-checked. Uncheck anyone you don\'t want to include. If no contacts are found, a manual email input appears.' },
+      { icon: '✉', heading: 'Generating a collections email', text: 'After selecting invoices and verifying recipients, choose a tone: GENTLE (friendly reminder, assumes oversight), FIRM (clear overdue notice, 5-business-day payment deadline), or FINAL NOTICE (credit hold and collections escalation warning). Or type specific instructions and click CUSTOM. The AI writes an email listing every selected invoice with ship date, due date, tracking link, and amount.' },
+      { icon: '📝', heading: 'Collections notes', text: 'Use the COLLECTIONS NOTE section to log call outcomes and payment promises. Set a Status: Contacted, Promised Payment, Partial Paid, Disputed, Escalated, or Resolved. Set a Promised Date if the customer committed to paying by a specific date. Notes appear in the account\'s Contacts page history too.' },
+      { icon: '🔒', heading: 'APP HOLD (admin only)', text: 'John can toggle APP HOLD on any account. This adds a visible ON HOLD badge to the account across the entire app so reps know not to process new orders. This is separate from the CRM credit hold field — it\'s an app-side management tool.' },
+      { icon: '📨', heading: 'Sending the email', text: 'After generating, click COPY to copy the email to clipboard, or OPEN IN EMAIL to launch your mail client with the TO, CC, subject, and body pre-filled. Your signature and confidentiality disclaimer are automatically appended to every collections email.' },
+      { icon: '🔍', heading: 'Tracking links', text: 'Each invoice row shows the tracking number and carrier. Click the tracking link to open the carrier tracking page in a new tab — useful for confirming delivery when a customer disputes receipt. Tracking links also appear in the AI-generated email body.' },
     ]
   },
   contacts: {
-    title: 'Contacts',
+    title: 'Contacts — How To Guide',
     sections: [
-      { icon: '👤', heading: 'What you see', text: 'All contacts across your accounts. BUYER = purchasing contacts · AP = accounts payable / collections contacts. Click any contact to see their full detail.' },
-      { icon: '🔗', heading: 'Navigation', text: 'Click the account name under a contact to jump to that account. Click a contact name in the account Contacts tab to jump here.' },
-      { icon: '✉', heading: 'Emailing a Contact', text: 'Click a contact → scroll to AI Email section → type what you want (optional) → pick a type or click Generate → OPEN IN EMAIL launches your mail client.' },
-      { icon: '📝', heading: 'Contact Notes', text: 'Log calls, emails, and meetings per contact. These show in the note history alongside any collections notes for that account.' },
-      { icon: '✦', heading: 'AI Next Best Action', text: 'Click ANALYZE & RECOMMEND in the contact panel to get 3 specific AI-suggested next steps. Then ask follow-up questions in the chat box below.' },
+      { icon: '👤', heading: 'Overview', text: 'The Contacts page shows every contact across all your accounts in one place — 6,000+ contacts total. Split into Purchasing contacts (buyers, procurement) and AP contacts (accounts payable, billing, collections).' },
+      { icon: '🔢', heading: 'KPI cards', text: 'At the top: Total contacts · Contacts with email addresses · AP/Collections contacts flagged by title · Accounts with no contacts on record.' },
+      { icon: '🔍', heading: 'Filtering contacts', text: 'Use the filter buttons: ALL shows everyone · PURCHASING shows only buyer/procurement contacts · AP shows only accounts payable and collections contacts · INACTIVE shows contacts at accounts that have gone quiet · HAS EMAIL shows only contacts with a known email address.' },
+      { icon: '↕', heading: 'Sorting contacts', text: 'Sort by Account Name (alphabetical), Contact Name, Most Inactive (accounts that have been quiet longest, useful for re-engagement), or Account Value (highest revenue accounts first).' },
+      { icon: '🔗', heading: 'Navigation shortcuts', text: 'Click a contact card to open the detail panel on the right. In the detail panel, click the account name (in blue) to jump straight to that account\'s full detail in My Accounts. In the account detail Contacts tab, click a contact name to jump to this Contacts page filtered to that person.' },
+      { icon: '📝', heading: 'Logging contact activity', text: 'In the contact detail panel, use the LOG ACTIVITY section to record: CALL (phone call outcome), EMAIL (email sent), MEETING (in-person or virtual), or NOTE (general notes). Every entry is timestamped and saved permanently. This builds a contact-level interaction history separate from the account-level notes.' },
+      { icon: '✉', heading: 'Generating a contact email', text: 'In the contact detail panel, scroll to AI EMAIL section. Select type: RE-ENGAGEMENT (for inactive accounts), FOLLOW-UP (after a meeting or quote), or INTRO (new contact outreach). Optionally type specific context. Click Generate. Then OPEN IN EMAIL. Your signature is auto-appended.' },
+      { icon: '✦', heading: 'AI Next Best Action', text: 'Click ANALYZE & RECOMMEND to get 3 specific prioritized actions for this account, based on purchase history, inactivity, open RFQs, quotes, and past notes. HIGH priority items should be actioned today. You can ask follow-up questions in the chat box below the recommendations.' },
+      { icon: '📧', heading: 'Blurred contact info', text: 'Email addresses and phone numbers are blurred by default. Hover over them to reveal the full details. This protects sensitive contact info from casual screen-sharing or passers-by. Right-clicking and printing are also disabled throughout the app.' },
     ]
   },
   attack: {
-    title: 'Attack Plan',
+    title: 'Sales Attack Plan — How To Guide',
     sections: [
-      { icon: '⭐', heading: 'Three Zones', text: 'SOLID CORE (10 max) = your top accounts to protect and grow · ACTIVE PURSUE (10 max) = accounts you\'re actively working · OUTER RING (30 max) = accounts to keep warm.' },
-      { icon: '🖱', heading: 'Drag & Drop', text: 'Drag cards between zones. Drag from the POOL at the bottom to add accounts to your plan. Drag to the pool to remove them from active focus.' },
-      { icon: '💾', heading: 'Saving', text: 'Click SAVE PLAN to persist your arrangement to Google Sheets. Your plan survives app updates — it always loads your saved layout.' },
-      { icon: '⇄', heading: 'Transfer Requests', text: 'The right panel shows inactive accounts owned by other reps. Click one to request it from John. John sees all requests in the Removal Requests view.' },
-      { icon: '🔄', heading: 'Reset', text: 'Click RESET to clear your saved plan and rebuild it by revenue ranking. You\'ll be asked to confirm first.' },
+      { icon: '⚔', heading: 'What is the Attack Plan?', text: 'The Sales Attack Plan is your personal territory strategy board. Organize your accounts into three focused zones so you always know exactly where to spend your selling energy. Your plan is saved to Google Sheets and persists between sessions.' },
+      { icon: '⭐', heading: 'Solid Core (max 10)', text: 'Your top 10 accounts — the ones that generate the most revenue and must be protected. These are your best customers. Focus here to defend and grow the business. Gold border.' },
+      { icon: '◈', heading: 'Active Pursue (max 10)', text: 'The next 10 accounts you are actively working — chasing re-engagement, following up on quotes, or nurturing toward a purchase. Blue border.' },
+      { icon: '○', heading: 'Outer Ring (max 30)', text: 'Up to 30 accounts to keep warm — periodic check-ins, newsletter-style outreach, monitoring for signals. Green border.' },
+      { icon: '⬇', heading: 'Pool', text: 'All remaining accounts that don\'t yet have a zone assignment. Scroll through the pool at the bottom. Use the zone buttons on each card (★ ◈ ○) to assign accounts to a zone, or ↓ to return a card to the pool.' },
+      { icon: '🖱', heading: 'Moving cards between zones', text: 'Hover over any zone card to reveal the zone buttons: ★ Core · ◈ Pursue · ○ Ring · ↓ Pool. Click any button to move the card to that zone instantly. Columns enforce their maximum — you\'ll get a warning if a zone is full.' },
+      { icon: '💾', heading: 'Saving your plan', text: 'Your plan is NOT auto-saved. Click SAVE PLAN (bottom right) after making changes. The plan saves to Google Sheets and also to your browser as a backup. It loads automatically the next time you open the Attack Plan.' },
+      { icon: '🔄', heading: 'Resetting to default', text: 'Click RESET to clear your saved plan and rebuild it automatically sorted by lifetime revenue (highest first). You\'ll be asked to confirm — this cannot be undone.' },
+      { icon: '⇄', heading: 'Transfer Candidates panel', text: 'The right-side panel shows inactive accounts (6+ months with no purchase) that belong to OTHER reps. Click any account to open an action modal with 3 options: REQUEST TRANSFER (ask John to reassign it to you — add a note explaining why), REMOVE FROM MY LIST (hide it from your panel only — you can restore it via MY HIDDEN), or REQUEST REMOVE FROM ALL (ask John to permanently remove it from everyone\'s pool — requires a reason and John\'s approval).' },
+      { icon: '👁', heading: 'MY HIDDEN button', text: 'Shows all accounts you\'ve personally hidden from the transfer panel. Click MY HIDDEN to see your hidden list and optionally RESTORE any account back to the panel.' },
+      { icon: '🔗', heading: 'Clicking account names', text: 'Account names on zone cards and pool cards are clickable links. Click any name to jump directly to that account\'s full detail in My Accounts.' },
+      { icon: '✦', heading: 'AI Advisor', text: 'Click the AI ADVISOR button to open a chat panel that knows your entire plan. Ask it anything: "Which pool accounts should I move to Active Pursue?", "Is my Core zone at risk?", "What are my top 5 accounts by revenue?", "Which accounts are declining and need attention?" — it analyzes your full plan and answers.' },
+      { icon: '🔢', heading: 'Column counts', text: 'Each zone header shows current count / maximum (e.g. 8/10). A colored progress bar fills as you add accounts. When a zone is full, the bar turns green and the count glows — you cannot add more until you move one out.' },
     ]
   },
   research: {
-    title: '✦ Research',
+    title: '✦ Research — How To Guide',
     sections: [
-      { icon: '🔍', heading: 'What it does', text: 'Ask the AI anything about this account\'s company. It uses web search to find current information — locations, what they make, industry, news, competitors, company size.' },
-      { icon: '💡', heading: 'Suggested Questions', text: 'Click any suggested question to fill it in and send it automatically. Or type your own question in the box and press Enter or click ASK.' },
-      { icon: '✉', heading: 'Use in Email', text: 'After getting a research answer, click "USE IN OUTREACH EMAIL →" to send that context to the Outreach tab. The AI will write an email that references your research.' },
-      { icon: '🧠', heading: 'What the AI knows', text: 'The AI already knows this account\'s revenue history, top purchased parts, days inactive, contacts, and open RFQs. It combines that with web search results.' },
+      { icon: '🔍', heading: 'What Research does', text: 'The Research tab on any account uses live web search to answer questions about the company. The AI already knows this account\'s purchase history, contacts, revenue trend, and open RFQs — and combines that with current web results.' },
+      { icon: '💡', heading: 'Suggested questions', text: 'Click any suggested question button to fill it in and send automatically. Common suggestions: What does this company make? · Where are their facilities? · Who are their competitors? · Recent company news · How big is this company? · What industries do they serve?' },
+      { icon: '⌨', heading: 'Custom questions', text: 'Type any question in the input box and press Enter or click ASK. Examples: "Do they have a defense contract?" · "Are they a Boeing supplier?" · "What aerospace programs do they support?" · "Do they have a quality certification like AS9100?"' },
+      { icon: '✉', heading: 'Using research in outreach', text: 'After getting a research answer, click the "USE IN OUTREACH EMAIL →" button that appears below the answer. This sends the research context to the Outreach tab, where you can generate an email that specifically references what you learned.' },
+      { icon: '🧠', heading: 'What the AI already knows', text: 'Without any web search, the AI knows: total revenue by year, days since last purchase, top purchased part numbers, all contacts at the account, open RFQs and quotes, rep notes, and account status. Research adds current web information on top of this.' },
     ]
   },
   settings: {
-    title: 'Settings',
+    title: 'Settings — How To Guide',
     sections: [
-      { icon: '✍', heading: 'Email Signatures', text: 'Set your signature here — it auto-appends to every AI-generated email (outreach and collections). Admin can set signatures for any rep.' },
-      { icon: '🔑', heading: 'API Key', text: 'The Anthropic API key enables all AI features. It\'s stored only in your browser (never sent to any server). Get yours at console.anthropic.com. Cost is very low — roughly $0.01–$0.05 per email.' },
+      { icon: '✍', heading: 'Email signature editor', text: 'Set your professional signature that auto-appends to every AI-generated email — both outreach and collections. The editor supports rich text: choose font family, font size, bold, italic, underline, text color, and alignment. You can also insert hyperlinks (useful for LinkedIn profile or company website) and add a horizontal rule separator.' },
+      { icon: '🖼', heading: 'Adding your photo or logo', text: 'Click the 🖼 IMG button in the signature toolbar. Enter the URL of an image (must be a public URL). The image will appear in your signature. For best results, use a small PNG or JPG (200px wide maximum) hosted on a public server.' },
+      { icon: '👁', heading: 'Signature preview', text: 'The white WYSIWYG box shows exactly how your signature will look. What you see is what recipients will get. Make edits directly in the box.' },
+      { icon: '💾', heading: 'Saving your signature', text: 'Click SAVE SIGNATURE. The signature is saved to the _SIGNATURES tab in the Google Sheet — this means it persists across devices and browser sessions. All your AI-generated emails will automatically include this signature.' },
+      { icon: '👥', heading: 'Admin: editing rep signatures', text: 'Admins can select any rep from the REP dropdown at the top and edit their signature. Reps can only edit their own. This is useful for setting up signatures for new reps or making company-wide updates.' },
+      { icon: '🔑', heading: 'Anthropic API key', text: 'The API key is required for all AI features: outreach emails, collections emails, AI research, Next Best Action, and the AI Advisor in Attack Plan. Enter your key from console.anthropic.com. The key is stored ONLY in your browser\'s localStorage — it is never sent to any server or saved to Google Sheets. You\'ll need to re-enter it if you clear your browser or use a different device.' },
+      { icon: '💵', heading: 'API cost', text: 'Each AI generation costs approximately $0.01–$0.05 depending on length. A typical month of heavy use (50–100 emails) costs $1–$5 total. You can monitor usage and load credits at console.anthropic.com.' },
+      { icon: '🌐', heading: 'Language toggle', text: 'The ES/EN button at the top of the sidebar switches the app between English and Spanish. All navigation labels, filter buttons, tab names, and UI text switch languages. Notes and account data remain as entered. Your language preference is saved in the browser.' },
     ]
   },
   removals: {
-    title: 'Removal Requests',
+    title: 'Requests & Approvals — How To Guide',
     sections: [
-      { icon: '🗑', heading: 'What this shows', text: 'Accounts where reps have typed a reason in the REMOVE_FLAG column requesting removal from future reports.' },
-      { icon: '✓', heading: 'Approving Removal', text: 'Click APPROVE REMOVAL to set JOHN_APPROVAL = YES. The account will be excluded from all future script runs. This cannot be undone from the app — you\'d need to edit the Google Sheet directly.' },
-      { icon: '✗', heading: 'Denying Removal', text: 'Click DENY / KEEP to clear the flag. The rep\'s request is dismissed and the account stays in reports.' },
-      { icon: '⇄', heading: 'Transfer Requests', text: 'Below the removals, all recent territory transfer requests from the Attack Plan are shown with timestamps and rep notes.' },
+      { icon: '🗑', heading: 'Overview', text: 'This admin-only page consolidates all pending requests from reps that require your action: account removals, credit hold requests, territory transfer requests, global pool removals, and the NDA acceptance log.' },
+      { icon: '🗑', heading: 'Removal Requests', text: 'Accounts where reps have filled in the REMOVE_FLAG column with a reason. Click APPROVE REMOVAL to permanently exclude the account from all future script runs (sets JOHN_APPROVAL = YES in the Sheet). Click DENY / KEEP to dismiss the request and leave the account in reports. Approval cannot be undone from the app.' },
+      { icon: '🔒', heading: 'Credit Hold Requests', text: 'Reps can request a credit hold from the Notes tab on any account. These appear here with the rep\'s stated reason. To action: go to the CRM (Complete Contact) and set the credit hold there. The app\'s APP HOLD toggle in Collections is separate from the CRM hold.' },
+      { icon: '⇄', heading: 'Territory Transfer Requests', text: 'Reps can request to take over inactive accounts from other territories. Each request shows the account name, requesting rep, and their note. To action: reassign the account in the CRM, then re-run sales_report.py to update the app data.' },
+      { icon: '🚫', heading: 'Global Pool Removal Requests', text: 'Reps can request that an inactive account be removed from EVERYONE\'s transfer panel (not just their own). These appear here with the rep\'s reason. Click APPROVE — REMOVE FROM ALL POOLS to permanently hide the account from all reps\' transfer panels. This writes the account to the _POOL_REMOVED tab in the History Sheet.' },
+      { icon: '🗄', heading: 'All Globally Removed Accounts', text: 'A full list of every account you\'ve approved to remove from all pools. Click RESTORE TO ALL POOLS on any entry to reverse the decision — the account will reappear in all reps\' transfer panels on the next Attack Plan load.' },
+      { icon: '🔒', heading: 'NDA Acceptance Log', text: 'A timestamped record of every login — who accepted or declined the confidentiality agreement, when, from what device, and from what timezone. Click ⬇ EXPORT CSV to download the full log as a spreadsheet.' },
+      { icon: '🔴', heading: 'Badge count', text: 'The red badge on the Requests nav item shows the number of pending removal requests waiting for your decision. It clears when you approve or deny each one.' },
+    ]
+  },
+  access: {
+    title: 'Access Activity Log — How To Guide',
+    sections: [
+      { icon: '🛡', heading: 'What this page shows', text: 'Every login to the app, with timestamp, email, IP address, geographic location (from IP), device type, browser, and the location the user claimed when logging in. This is your security audit trail.' },
+      { icon: '📍', heading: 'Location claims', text: 'Every user must claim their location when logging in: Office, Home, Travel/Field, or Other (custom text). This is compared against the IP geolocation to flag mismatches.' },
+      { icon: '⚠', heading: 'Suspicious activity flags', text: 'The app automatically flags: VPN or hosting/cloud IP addresses (possible proxy use), logins from unexpected countries (non US/MX/CA), and Office claims where the IP geolocates to a different city than expected.' },
+      { icon: '🔴', heading: 'Flagged sessions alert box', text: 'When suspicious logins are detected, a red alert box at the top shows each one with the specific reason. The badge on the Access Log nav item shows the suspicious count.' },
+      { icon: '🔍', heading: 'Filtering the log', text: 'Use the filter buttons to view: ALL (every login), SUSPICIOUS only, OFFICE only, HOME only, TRAVEL only, or OTHER. Filter by location claim to spot patterns.' },
+      { icon: '⬇', heading: 'Exporting the log', text: 'Click EXPORT CSV to download the full access log as a spreadsheet. Includes all columns: timestamp, email, IP, city, country, org, device, browser, timezone, and suspicious flag.' },
+      { icon: '🌐', heading: 'IP geolocation accuracy', text: 'IP geolocation is approximate — it identifies the ISP city, not the user\'s exact location. Home users may show their ISP\'s routing city. VPN users will show the VPN server\'s location. Use this as a signal, not a precise location.' },
+      { icon: '📊', heading: 'KPI cards', text: 'Total Logins (all time), Today\'s sessions, Unique Users, Unique IPs seen, and Suspicious session count. These update each time you load the page.' },
     ]
   },
   all: {
-    title: 'All Accounts',
+    title: 'All Accounts — How To Guide',
     sections: [
-      { icon: '📋', heading: 'What you see', text: 'All 811 accounts across all reps. Same as My Accounts but unfiltered. Admin view only.' },
+      { icon: '📋', heading: 'What you see', text: 'Every account across all reps — 811 accounts total. Same list and detail panel as My Accounts but unfiltered. Admin view only.' },
+      { icon: '🔍', heading: 'Filtering by rep', text: 'Use the search bar to type a rep name (e.g. CKaren) — the list will filter to that rep\'s accounts. Or use the View As Rep dropdown in the sidebar to switch to a specific rep\'s view.' },
+      { icon: '📊', heading: 'Use case', text: 'Use All Accounts to spot high-value dormant accounts that may have slipped through the cracks across the entire team. Sort by Total Revenue to find the largest accounts and verify they are assigned to the right rep.' },
     ]
   },
 };
@@ -7130,16 +7703,25 @@ function showHelp() {
 
   // Render guide content
   const guideEl = document.getElementById('help-guide-content');
-  guideEl.innerHTML = guide.sections.map(s => `
-    <div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-        <span style="font-size:16px">${s.icon}</span>
-        <span style="font-weight:600;font-size:13px">${escHtml(s.heading)}</span>
+  guideEl.innerHTML = `
+    <div style="margin-bottom:14px;padding:8px 12px;background:var(--s2);border-left:3px solid var(--blue-b);border-radius:0 var(--r) var(--r) 0;font-size:11px;color:var(--text-3)">
+      ${guide.sections.length} topics covered · Use ✦ ASK AI for questions not covered here
+    </div>` +
+  guide.sections.map((s, i) => `
+    <div style="margin-bottom:0;padding:12px 14px;border-bottom:1px solid var(--border);transition:background 0.1s" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex-shrink:0;width:24px;height:24px;background:var(--s2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;margin-top:1px">${s.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:12px;color:var(--text-1);margin-bottom:4px;display:flex;align-items:center;gap:6px">
+            <span style="font-size:9px;font-family:var(--mono);background:var(--s3);padding:1px 5px;border-radius:3px;color:var(--text-3)">${String(i+1).padStart(2,'0')}</span>
+            ${escHtml(s.heading)}
+          </div>
+          <div style="font-size:12px;color:var(--text-2);line-height:1.75">${escHtml(s.text)}</div>
+        </div>
       </div>
-      <div style="font-size:12px;color:var(--text-2);line-height:1.7;padding-left:24px">${escHtml(s.text)}</div>
     </div>`).join('') + `
-    <div style="padding:10px 12px;background:var(--s2);border-radius:var(--r);border:1px solid var(--border);font-size:11px;color:var(--text-3);text-align:center">
-      Switch to the ✦ ASK AI tab to ask anything else about this screen.
+    <div style="padding:12px 14px;background:var(--s2);border-radius:0 0 var(--r2) var(--r2);font-size:11px;color:var(--text-3);text-align:center;border-top:1px solid var(--border)">
+      💡 Switch to the <strong>✦ ASK AI</strong> tab to ask anything not covered above.
     </div>`;
 
   // Reset to guide tab

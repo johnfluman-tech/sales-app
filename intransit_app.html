@@ -43,6 +43,165 @@ body {
   line-height: 1.5;
 }
 
+/* ── CONFIDENTIALITY MODAL ─────────────────────────────────── */
+#conf-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(0,0,0,0.88);
+  backdrop-filter: blur(6px);
+  align-items: center;
+  justify-content: center;
+}
+#conf-modal.active { display: flex; }
+#conf-modal .cm-box {
+  background: #0d1b2a;
+  border: 1px solid #1e3a5f;
+  border-top: 3px solid #c0392b;
+  width: min(660px, 94vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.8);
+}
+#conf-modal .cm-header {
+  background: #0a1e33;
+  border-bottom: 1px solid #1e3a5f;
+  padding: 22px 28px 18px;
+  flex-shrink: 0;
+}
+#conf-modal .cm-header .cm-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: #c0392b;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+#conf-modal .cm-header h2 {
+  color: #e8f0fe;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 5px;
+}
+#conf-modal .cm-header .cm-sub {
+  font-size: 12px;
+  color: #7a9bbf;
+  line-height: 1.5;
+}
+#conf-modal .cm-body {
+  padding: 22px 28px;
+  overflow-y: auto;
+  flex: 1;
+  color: #b8cfe8;
+  font-size: 12.5px;
+  line-height: 1.75;
+}
+#conf-modal .cm-body h3 {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: #5b9bd5;
+  text-transform: uppercase;
+  margin: 18px 0 7px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #1e3a5f;
+}
+#conf-modal .cm-body h3:first-child { margin-top: 0; }
+#conf-modal .cm-body p { margin: 0 0 8px; }
+#conf-modal .cm-body ul { margin: 0 0 8px 18px; padding: 0; }
+#conf-modal .cm-body li { margin-bottom: 4px; }
+#conf-modal .cm-warn {
+  background: rgba(192,57,43,0.12);
+  border-left: 3px solid #c0392b;
+  padding: 10px 14px;
+  border-radius: 0 3px 3px 0;
+  color: #e8a090;
+  font-size: 12px;
+  margin: 12px 0;
+  line-height: 1.6;
+}
+#conf-modal .cm-info {
+  background: rgba(26,111,181,0.12);
+  border-left: 3px solid #1a6fb5;
+  padding: 10px 14px;
+  border-radius: 0 3px 3px 0;
+  color: #90c0e8;
+  font-size: 12px;
+  margin: 12px 0;
+  line-height: 1.6;
+}
+#conf-modal .cm-footer {
+  padding: 18px 28px 22px;
+  border-top: 1px solid #1e3a5f;
+  flex-shrink: 0;
+  background: #0a1e33;
+}
+#conf-modal .cm-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+#conf-modal .cm-check-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  margin-top: 3px;
+  accent-color: #1a6fb5;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+#conf-modal .cm-check-label {
+  font-size: 12.5px;
+  color: #8ab0d4;
+  line-height: 1.55;
+}
+#conf-modal .cm-check-label strong { color: #e8f0fe; }
+#conf-modal .cm-btn-row {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
+}
+#conf-modal .cm-btn-decline {
+  padding: 9px 20px;
+  background: transparent;
+  border: 1px solid #2c3e50;
+  color: #546478;
+  font-family: var(--font-main);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: 2px;
+}
+#conf-modal .cm-btn-decline:hover { border-color: #c0392b; color: #e8a090; }
+#conf-modal .cm-btn-accept {
+  padding: 9px 28px;
+  background: #1a6fb5;
+  border: none;
+  color: #fff;
+  font-family: var(--font-main);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-radius: 2px;
+  opacity: 0.35;
+  pointer-events: none;
+  letter-spacing: 0.02em;
+}
+#conf-modal .cm-btn-accept.ready { opacity: 1; pointer-events: auto; }
+#conf-modal .cm-btn-accept.ready:hover { background: #2589d8; }
+#conf-modal .cm-session-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #2c3e50;
+  text-align: right;
+  margin-top: 10px;
+}
+
 /* ── LOGIN ─────────────────────────────────────────────────── */
 #login-screen {
   display: flex;
@@ -1084,6 +1243,65 @@ td {
 </div>
 
 <!-- LOGIN -->
+<!-- ── CONFIDENTIALITY AGREEMENT MODAL ──────────────────────── -->
+<div id="conf-modal">
+  <div class="cm-box">
+    <div class="cm-header">
+      <div class="cm-eyebrow">⚠ Strictly Confidential — Intransit Technologies</div>
+      <h2>Confidentiality &amp; Acceptable Use Agreement</h2>
+      <div class="cm-sub">You must accept these terms at the start of every session before accessing the Sales Intelligence App.</div>
+    </div>
+    <div class="cm-body">
+
+      <h3>1. Confidential Information</h3>
+      <p>This application contains proprietary and strictly confidential business information belonging exclusively to <strong style="color:#e8f0fe">Intransit Technologies Corp.</strong>, including but not limited to: customer account data, purchase history, revenue figures, gross profit data, contact information, collections records, and internal sales intelligence.</p>
+      <div class="cm-warn">⚠ This information constitutes a trade secret and commercial asset of Intransit Technologies. Unauthorized disclosure may cause significant financial and legal harm to the company and its customers.</div>
+
+      <h3>2. Permitted Use</h3>
+      <p>Access is granted solely for legitimate business purposes in the course of your authorized employment or engagement with Intransit Technologies. Permitted uses include reviewing your assigned accounts, generating AI-assisted sales or collections emails for Intransit business, and adding notes and status updates to your accounts.</p>
+
+      <h3>3. Prohibited Actions</h3>
+      <p>You expressly agree that you will <strong style="color:#e8f0fe">NOT</strong>:</p>
+      <ul>
+        <li>Copy, export, screenshot, print, or transmit any data to any unauthorized party</li>
+        <li>Share login credentials or allow any other person to access this app using your account</li>
+        <li>Use any data from this app for personal gain or for the benefit of any competitor or third party</li>
+        <li>Attempt to access accounts, data, or views beyond those assigned to you</li>
+        <li>Retain or reproduce any data from this app after your employment or engagement ends</li>
+        <li>Reverse-engineer, scrape, or systematically extract data from this application</li>
+      </ul>
+      <div class="cm-warn">⚠ Violations may result in immediate termination of access, disciplinary action, and/or legal proceedings under applicable trade secret, confidentiality, and computer fraud laws.</div>
+
+      <h3>4. Monitoring &amp; Audit</h3>
+      <p>All activity within this application is logged, including accounts viewed, notes saved, emails generated, and session duration. Intransit Technologies reserves the right to review these logs at any time. Bulk viewing of accounts beyond your assignment will trigger an automatic alert to the system administrator.</p>
+      <div class="cm-info">📋 By accepting, you acknowledge that your use of this application is subject to audit by Intransit Technologies management at any time.</div>
+
+      <h3>5. Data Ownership</h3>
+      <p>All customer data, account information, and business intelligence accessible through this application is the exclusive property of <strong style="color:#e8f0fe">Intransit Technologies Corp.</strong> No right, title, or interest in any such data is transferred to you by virtue of your access.</p>
+
+      <h3>6. Governing Law</h3>
+      <p>These terms are governed by the laws of the State of California. Any dispute arising from use of this application shall be subject to the exclusive jurisdiction of the courts of Orange County, California.</p>
+
+      <h3>7. Binding Agreement</h3>
+      <p>Your acceptance constitutes a legally binding agreement between you and Intransit Technologies Corp., enforceable to the fullest extent permitted by law. If you do not agree, click <strong style="color:#e8f0fe">Decline &amp; Sign Out</strong> and discontinue use immediately.</p>
+
+    </div>
+    <div class="cm-footer">
+      <label class="cm-check-row">
+        <input type="checkbox" id="conf-checkbox" onchange="toggleConfAccept(this)">
+        <span class="cm-check-label">
+          I have read and understood the above terms in full. I agree to keep all information accessed through this application <strong>strictly confidential</strong> and to use it solely for authorized Intransit Technologies business purposes. <strong>I understand that violations may result in termination and/or legal action.</strong>
+        </span>
+      </label>
+      <div class="cm-btn-row">
+        <button class="cm-btn-decline" onclick="confDecline()">Decline &amp; Sign Out</button>
+        <button class="cm-btn-accept" id="conf-accept-btn" onclick="confAccept()">I Agree — Enter App</button>
+      </div>
+      <div class="cm-session-note" id="conf-session-note"></div>
+    </div>
+  </div>
+</div>
+
 <div id="login-screen">
   <div class="login-box">
     <div class="login-logo">Intransit Technologies</div>
@@ -1753,11 +1971,49 @@ function completeLogin() {
     document.getElementById('filter-all').style.display = 'inline-block';
     document.getElementById('view-as-section').style.display = 'block';
   }
+  // Show confidentiality agreement before loading data
+  showConfModal();
+}
+
+function showConfModal() {
+  const modal = document.getElementById('conf-modal');
+  const note  = document.getElementById('conf-session-note');
+  const now   = new Date();
+  note.textContent = 'Session: ' + now.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', timeZoneName: 'short'
+  }) + ' — ' + (state.user?.email || '');
+  document.getElementById('conf-checkbox').checked = false;
+  document.getElementById('conf-accept-btn').classList.remove('ready');
+  modal.classList.add('active');
+}
+
+function toggleConfAccept(cb) {
+  document.getElementById('conf-accept-btn').classList.toggle('ready', cb.checked);
+}
+
+function confAccept() {
+  document.getElementById('conf-modal').classList.remove('active');
+  // Log acceptance
+  try {
+    const email = state.user?.email || 'unknown';
+    appendToLog([new Date().toISOString(), 'CONFIDENTIALITY_AGREED', email, '', '', '']);
+  } catch(e) {}
+  // Now load app data
   loadAllAccounts().then(() => {
     renderAccountsView();
     updateBadges();
     initSecurity();
   });
+  // Set copyright year
+  const yr = document.getElementById('about-year');
+  if (yr) yr.textContent = new Date().getFullYear();
+}
+
+function confDecline() {
+  document.getElementById('conf-modal').classList.remove('active');
+  handleSignout();
+  setTimeout(() => alert('You must accept the Confidentiality Agreement to use this application.'), 100);
 }
 
 function handleLogin() {
@@ -2989,11 +3245,15 @@ www.intransittech.com"
 
       <!-- App Info -->
       <div style="background:var(--navy-light);border:1px solid var(--border);padding:20px">
-        <div style="font-size:15px;font-weight:600;margin-bottom:4px">About</div>
-        <div style="font-size:12px;color:var(--text-muted);line-height:1.8">
-          <div>Intransit Sales Intelligence App</div>
-          <div>Data source: CCCRM on INTRANSIT-RDS02</div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:12px">About</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Intransit Sales Intelligence App</div>
+        <div style="background:rgba(192,57,43,0.10);border-left:3px solid #c0392b;border-radius:0 3px 3px 0;padding:12px 14px;font-size:12px;color:#e8a090;line-height:1.7">
+          <strong style="color:#e05040;display:block;margin-bottom:5px;font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em">⚠ STRICTLY CONFIDENTIAL</strong>
+          This application and all data accessible within it are the exclusive proprietary property of <strong style="color:#e8f0fe">Intransit Technologies Corp.</strong>
+          Access is granted solely for authorized business use. Unauthorized disclosure, reproduction, or distribution of any information accessed through this application is strictly prohibited and may result in immediate termination, disciplinary action, and/or legal proceedings.<br><br>
+          By using this application you confirm your acceptance of the <strong style="color:#e8f0fe">Intransit Technologies Confidentiality &amp; Acceptable Use Agreement</strong> acknowledged at login. All sessions are logged and subject to audit.
         </div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:12px;text-align:right;font-family:var(--font-mono)">&copy; <span id="about-year"></span> Intransit Technologies Corp. All rights reserved.</div>
       </div>
 
     </div>`;

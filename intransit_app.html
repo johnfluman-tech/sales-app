@@ -788,7 +788,15 @@ body::before {
         </div>
       </div>
       <div class="nav-section-label">System</div>
-      <div class="nav-item" id="nav-settings" data-view="settings" id="nav-settings" onclick="switchView('settings')">
+      <!-- Admin-only: Removal/Hold/Transfer Requests -->
+      <div class="nav-item" id="nav-removals" data-view="removals" onclick="switchView('removals')"
+           style="display:none;border-left:2px solid var(--red)">
+        <div class="nav-item-inner">
+          <span class="nav-icon">🗑</span> Requests
+          <span class="nav-badge red" id="badge-removals"></span>
+        </div>
+      </div>
+      <div class="nav-item" id="nav-settings" data-view="settings" onclick="switchView('settings')">
         <div class="nav-item-inner">
           <span class="nav-icon">◧</span> Settings
         </div>
@@ -1793,7 +1801,7 @@ function showNDA() {
 
 async function ensureNDALogHeader() {
   try {
-    const existing = await sheetsGet("'_NDA_LOG'!A1:L1");
+    const existing = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_NDA_LOG'!A1:L1");
     // If first row already has our header, skip
     if (existing.length > 0 && (existing[0][0]||'').toUpperCase() === 'TIMESTAMP') return;
     // Write header row
@@ -1801,7 +1809,7 @@ async function ensureNDALogHeader() {
       'TIMESTAMP','ISO_UTC','EMAIL','FULL_NAME','REP_ID',
       'LANGUAGE','VERSION','ACTION','TIMEZONE','USER_AGENT',
       'NDA_EN_SUMMARY','NDA_ES_SUMMARY'
-    ]]);
+    ]], CONFIG.HISTORY_SPREADSHEET_ID);
   } catch(e) {
     // Tab may not exist yet — first real acceptance will create it
     console.log('NDA log header setup:', e.message);
@@ -1853,7 +1861,7 @@ async function acceptNDA() {
     await sheetsAppend("'_NDA_LOG'!A1", [
       // Header row is auto-created by Sheets on first append if sheet is new
       row
-    ]);
+    ], CONFIG.HISTORY_SPREADSHEET_ID);
 
     console.log('NDA acceptance logged ✓', userEmail, timestamp);
   } catch(e) {
@@ -1874,7 +1882,7 @@ async function declineNDA() {
     const lang     = currentLang === 'es' ? 'Spanish' : 'English';
     const ua       = navigator.userAgent.slice(0, 120);
     const tz       = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
-    await sheetsAppend("'_NDA_LOG'!A1", [[ts, iso, email, name, repId, lang, '2026-v1', 'DECLINED', tz, ua, '', '']]);
+    await sheetsAppend("'_NDA_LOG'!A1", [[ts, iso, email, name, repId, lang, '2026-v1', 'DECLINED', tz, ua, '', '']], CONFIG.HISTORY_SPREADSHEET_ID);
   } catch(e) { console.warn('NDA decline log failed:', e.message); }
 
   handleSignout();
@@ -2067,9 +2075,12 @@ function completeLogin() {
     // nav-all removed
     document.getElementById('filter-all').style.display = 'inline-block';
     document.getElementById('view-as-section').style.display = 'block';
+    // Show admin-only nav items
+    const removalsNav = document.getElementById('nav-removals');
+    if (removalsNav) removalsNav.style.display = 'block';
   }
   // Load signatures immediately so Settings always shows them
-  sheetsGet("'_SIGNATURES'!A1:D100").then(rows => {
+  sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SIGNATURES'!A1:D100").then(rows => {
     if (rows && rows.length > 1) {
       const hdrs = rows[0];
       const iRep = hdrs.indexOf('REP');
@@ -2148,6 +2159,34 @@ async function sheetsGetFrom(spreadsheetId, range) {
   }
   const data = await res.json();
   return data.values || [];
+}
+
+async function sheetsUpdateIn(spreadsheetId, range, values) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+  let token = state.accessToken;
+  let res = await fetch(url, {
+    method: 'PUT',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values })
+  });
+  if (res.status === 401 || res.status === 403) {
+    token = await new Promise(resolve => {
+      google.accounts.oauth2.initTokenClient({
+        client_id: CONFIG.CLIENT_ID, scope: CONFIG.SCOPES, prompt: '',
+        callback: r => { if(r.access_token){state.accessToken=r.access_token;localStorage.setItem('it_token',r.access_token);localStorage.setItem('it_token_time',Date.now());} resolve(r.access_token||token); }
+      }).requestAccessToken();
+    });
+    res = await fetch(url, {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values })
+    });
+  }
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Sheets update error ' + res.status + ': ' + err.slice(0, 200));
+  }
+  return res.json();
 }
 
 async function sheetsUpdate(range, values, spreadsheetId) {
@@ -3184,7 +3223,7 @@ async function renderRemovalsView() {
   // Load NDA log
   let ndaRows = [];
   try {
-    const raw = await sheetsGet("'_NDA_LOG'!A1:L2000");
+    const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_NDA_LOG'!A1:L2000");
     ndaRows = raw.filter(r => r[7] === 'ACCEPTED' || r[7] === 'DECLINED').slice().reverse();
   } catch(e) {}
 
@@ -3326,7 +3365,7 @@ async function renderRemovalsView() {
 
 function exportNDALog() {
   // Export _NDA_LOG as CSV download
-  sheetsGet("'_NDA_LOG'!A1:L2000").then(rows => {
+  sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_NDA_LOG'!A1:L2000").then(rows => {
     if (!rows.length) { showToast('No NDA log data', 'error'); return; }
     const headers = ['TIMESTAMP','ISO_UTC','EMAIL','FULL_NAME','REP_ID','LANGUAGE','VERSION','ACTION','TIMEZONE','USER_AGENT','NDA_EN_SUMMARY','NDA_ES_SUMMARY'];
     const csvRows = [headers, ...rows].map(r =>
@@ -4225,7 +4264,7 @@ async function saveSignature() {
     let rows = [['REP','SIGNATURE_TEXT','LAST_UPDATED']];
     let tabExists = false;
     try {
-      const existing = await sheetsGet("'_SIGNATURES'!A1:C200");
+      const existing = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SIGNATURES'!A1:C200");
       tabExists = true;
       addLog('_SIGNATURES tab found (' + existing.length + ' rows)');
       if (existing.length > 0) {
@@ -4254,7 +4293,7 @@ async function saveSignature() {
     let saved = false;
     if (tabExists) {
       try {
-        await sheetsUpdate("'_SIGNATURES'!A1:C" + padded.length, padded);
+        await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_SIGNATURES'!A1:C" + padded.length, padded);
         saved = true;
         addLog('Saved via sheetsUpdate ✓');
       } catch(e2) {
@@ -4266,7 +4305,7 @@ async function saveSignature() {
       // Create the tab via batchUpdate, then write
       try {
         addLog('Creating _SIGNATURES tab...');
-        const createUrl = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SPREADSHEET_ID}:batchUpdate`;
+        const createUrl = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.HISTORY_SPREADSHEET_ID}:batchUpdate`;
         const createRes = await fetch(createUrl, {
           method: 'POST',
           headers: { Authorization: 'Bearer ' + state.accessToken, 'Content-Type': 'application/json' },
@@ -4280,7 +4319,7 @@ async function saveSignature() {
           addLog('Tab created ✓');
         }
         // Now write
-        await sheetsUpdate("'_SIGNATURES'!A1:C" + padded.length, padded);
+        await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_SIGNATURES'!A1:C" + padded.length, padded);
         saved = true;
         addLog('Saved via create+update ✓');
       } catch(e3) {
@@ -5667,7 +5706,7 @@ async function saveAttackPlan(rep, cards) {
     let rows = [header];
     let tabExists = false;
     try {
-      const ex = await sheetsGet("'_ATTACK_PLAN'!A1:F2000");
+      const ex = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A1:F2000");
       if (ex && ex.length > 0) { rows = ex; tabExists = true; }
     } catch(e) { tabExists = false; }
 
@@ -5681,20 +5720,20 @@ async function saveAttackPlan(rep, cards) {
     let saved = false;
     if (tabExists) {
       try {
-        await sheetsUpdate("'_ATTACK_PLAN'!A1:F" + filtered.length, filtered);
+        await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A1:F" + filtered.length, filtered);
         saved = true;
       } catch(e) { console.warn('Attack plan update failed:', e.message); }
     }
     if (!saved) {
       // Create tab first
       try {
-        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SPREADSHEET_ID}:batchUpdate`, {
+        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.HISTORY_SPREADSHEET_ID}:batchUpdate`, {
           method: 'POST',
           headers: { Authorization: 'Bearer '+state.accessToken, 'Content-Type': 'application/json' },
           body: JSON.stringify({ requests:[{ addSheet:{ properties:{ title:'_ATTACK_PLAN' } } }] })
         });
       } catch(e) { /* tab may already exist */ }
-      await sheetsUpdate("'_ATTACK_PLAN'!A1:F" + filtered.length, filtered);
+      await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A1:F" + filtered.length, filtered);
     }
 
     // Save to localStorage as backup so it persists even if Sheets fails
@@ -5762,239 +5801,299 @@ async function showTransferRequests() {
 
 async function renderAttackPlan() {
   const el = document.getElementById('main-content');
-  el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div class="loading-spinner">LOADING ATTACK PLAN</div></div>';
-  const repFilter = state.isAdmin ? (state.viewAsRep||'FJohn') : state.repId;
-  if (!repFilter) { el.innerHTML='<div style="padding:40px;color:var(--text-3)">Select a rep first.</div>'; return; }
+  el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font-family:var(--mono);color:var(--text-3);letter-spacing:0.15em">LOADING ATTACK PLAN...</div></div>';
+
+  const repFilter = state.isAdmin ? (state.viewAsRep || 'FJohn') : state.repId;
+  if (!repFilter) { el.innerHTML = '<div style="padding:40px;color:var(--text-3)">Select a rep first.</div>'; return; }
+
+  // ── STATE: plan is a simple object {accountName: zone} ──────────────────
+  // This is the source of truth. All moves update this object then re-render.
+  if (!window.apkState) window.apkState = {};
+  window.apkRep = repFilter;
 
   const allPlans = await loadAttackPlan(repFilter);
-  const saved = allPlans[repFilter]||[];
-  const repAccs = state.accounts.filter(a=>a.rep===repFilter).sort((a,b)=>(b.total||0)-(a.total||0));
-  const otherAccs = state.accounts.filter(a=>a.rep!==repFilter&&isInactive(a)).sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,40);
+  const saved = allPlans[repFilter] || [];
 
-  const cols = {solid:[],center:[],ring:[],pool:[]};
-  if (saved.length>0) {
-    const byZone={solid:[],center:[],ring:[],pool:[]};
-    saved.forEach(c=>{const z=(c.zone||'pool').toLowerCase();if(byZone[z])byZone[z].push({...c,order:c.order??99});});
-    Object.keys(byZone).forEach(z=>{byZone[z].sort((a,b)=>a.order-b.order);cols[z]=byZone[z].map(c=>c.name);});
-    const known=new Set(saved.map(c=>c.name));
-    repAccs.forEach(a=>{if(!known.has(a.name))cols.pool.push(a.name);});
+  // Build initial state from saved plan
+  const repAccs = state.accounts.filter(a => a.rep === repFilter).sort((a, b) => (b.total || 0) - (a.total || 0));
+  const otherAccs = state.accounts.filter(a => a.rep !== repFilter && isInactive(a)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
+
+  const planState = {}; // accountName → zone key
+  if (saved.length > 0) {
+    saved.forEach(c => { planState[c.name] = (c.zone || 'pool').toLowerCase(); });
+    repAccs.forEach(a => { if (!planState[a.name]) planState[a.name] = 'pool'; });
   } else {
-    repAccs.forEach((a,i)=>{if(i<10)cols.solid.push(a.name);else if(i<20)cols.center.push(a.name);else if(i<50)cols.ring.push(a.name);else cols.pool.push(a.name);});
+    repAccs.forEach((a, i) => {
+      if (i < 10) planState[a.name] = 'solid';
+      else if (i < 20) planState[a.name] = 'center';
+      else if (i < 50) planState[a.name] = 'ring';
+      else planState[a.name] = 'pool';
+    });
   }
-
-  const colDefs=[
-    {key:'solid', label:'★ Solid Core',   max:10,color:'var(--gold)',  desc:'Top 10 — protect & grow'},
-    {key:'center',label:'◈ Active Pursue', max:10,color:'var(--blue-b)',desc:'Next 10 — actively working'},
-    {key:'ring',  label:'○ Outer Ring',    max:30,color:'var(--green)', desc:'Up to 30 — keep warm'},
-  ];
-
-  function cardHtml(name, col) {
-    const acc=state.accounts.find(a=>a.name===name);
-    const st=(acc?.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim();
-    const yrs=acc?.years?Object.keys(acc.years).filter(y=>acc.years[y]>0).sort():[];
-    const range=yrs.length>=2?yrs[0]+'–'+yrs[yrs.length-1]:yrs.length===1?yrs[0]:'';
-    // Zone buttons — show options that are NOT the current zone
-    const zones = [{key:'solid',label:'★',title:'Solid Core'},{key:'center',label:'◈',title:'Active Pursue'},{key:'ring',label:'○',title:'Outer Ring'},{key:'pool',label:'↓',title:'Pool'}];
-    const zoneBtns = zones.filter(z=>z.key!==col).map(z=>
-      `<button onclick="apkMoveCard('${escHtml(name)}','${col}','${z.key}')" title="Move to ${z.title}"
-        style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-size:9px;padding:1px 5px;cursor:pointer;border-radius:2px;line-height:1.2;transition:all 0.12s"
-        onmouseover="this.style.borderColor='var(--blue-b)';this.style.color='var(--blue-b)'"
-        onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-3)'">${z.label}</button>`
-    ).join('');
-    return `<div class="apk-card" data-name="${escHtml(name)}" data-col="${col}" draggable="true">
-      <div style="display:flex;align-items:flex-start;gap:4px">
-        <div class="apk-card-drag-handle" style="flex-shrink:0">⠿</div>
-        <div style="flex:1;min-width:0">
-          <div class="apk-card-name" title="${escHtml(name)}">${escHtml(name)}</div>
-          <div class="apk-card-rev">$${formatNum(acc?.total||0)}${range?` <span style="font-size:9px;color:var(--text-3)">${range}</span>`:''}</div>
-          ${st?`<div class="apk-card-status">${escHtml(st)}</div>`:''}
-        </div>
-      </div>
-      <div style="display:flex;gap:3px;margin-top:5px;justify-content:flex-end">${zoneBtns}</div>
-    </div>`;
-  }
-
-  el.innerHTML=`<div class="apk-board">
-    <div class="apk-header">
-      ${colDefs.map(c=>{
-        const count=cols[c.key].length,pct=Math.min(100,Math.round(count/c.max*100));
-        return `<div class="apk-col-header">
-          <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase">
-            <span style="color:${c.color}">${c.label}</span>
-            <span style="font-size:10px;color:${count>=c.max?'var(--green)':'var(--text-3)'}">${count}/${c.max}</span>
-          </div>
-          <div style="font-size:11px;color:var(--text-3);font-family:var(--font);font-weight:400;text-transform:none;letter-spacing:0;margin-top:2px">${c.desc}</div>
-          <div class="apk-progress"><div class="apk-progress-fill" style="width:${pct}%;background:${c.color}"></div></div>
-        </div>`;
-      }).join('')}
-      <div class="apk-col-header" style="width:210px;min-width:210px;flex:none;border-right:none;border-left:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase">
-          <span style="color:var(--orange)">⇄ Transfer</span>
-          ${state.isAdmin?`<button onclick="showTransferRequests()" style="font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">REQUESTS</button>`:''}
-        </div>
-        <div style="font-size:11px;color:var(--text-3);font-family:var(--font);font-weight:400;text-transform:none;letter-spacing:0;margin-top:2px">
-          ${state.isAdmin?'Inactive accounts from other reps':'Click to request from John'}
-        </div>
-        <div class="apk-progress"><div class="apk-progress-fill" style="width:100%;background:var(--orange);opacity:0.25"></div></div>
-      </div>
-    </div>
-    <div style="display:flex;flex:1;min-height:0;overflow:hidden">
-      <div style="display:flex;flex:1;min-height:0;overflow:hidden">
-        ${colDefs.map(c=>`
-          <div class="apk-col" id="apk-col-${c.key}" data-col="${c.key}"
-            ondragover="apkDragOver(event)" ondragleave="apkDragLeave(event)" ondrop="apkDrop(event,'${c.key}')">
-            ${cols[c.key].map(n=>cardHtml(n,c.key)).join('')}
-            ${!cols[c.key].length?`<div style="border:1px dashed var(--border);border-radius:var(--r2);padding:18px;text-align:center;color:var(--text-3);font-size:11px;font-family:var(--mono)">DROP HERE</div>`:''}
-          </div>`).join('')}
-      </div>
-      <div class="apk-transfer-panel">
-        <div style="overflow-y:auto;flex:1;padding:8px">
-          ${otherAccs.map(acc=>`
-            <div class="apk-card" style="cursor:pointer;border-left-color:var(--orange);background:rgba(249,115,22,0.05);margin-bottom:5px"
-              onclick="requestTransfer('${escHtml(acc.name)}','${escHtml(repFilter)}')">
-              <div class="apk-card-name" title="${escHtml(acc.name)}">${escHtml(acc.name)}</div>
-              <div class="apk-card-rev">$${formatNum(acc.total||0)}</div>
-              <div class="apk-card-status">${escHtml(acc.rep)}</div>
-            </div>`).join('')}
-          ${!otherAccs.length?'<div style="font-size:11px;color:var(--text-3);padding:12px;text-align:center">No inactive accounts from other reps</div>':''}
-        </div>
-      </div>
-    </div>
-    <div class="apk-pool-strip">
-      <div class="apk-pool-header">
-        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3)">POOL — ${cols.pool.length} accounts</div>
-        <div style="font-size:11px;color:var(--text-3)">Drag up to add · drag down to remove</div>
-        <div style="margin-left:auto;display:flex;gap:7px">
-          <button onclick="apkResetDefault('${escHtml(repFilter)}')" class="btn btn-ghost btn-sm">RESET</button>
-          <button onclick="apkSave('${escHtml(repFilter)}')" class="btn btn-primary btn-sm">SAVE PLAN</button>
-        </div>
-      </div>
-      <div id="apk-pool" class="apk-pool-cards" ondragover="apkDragOver(event)" ondragleave="apkDragLeave(event)" ondrop="apkDrop(event,'pool')">
-        ${cols.pool.map(n=>cardHtml(n,'pool')).join('')}
-        ${!cols.pool.length?'<div style="color:var(--text-3);font-size:11px;padding:12px;font-family:var(--mono)">All accounts assigned to zones</div>':''}
-      </div>
-    </div>
-  </div>`;
-  apkBindCards();
+  window.apkState = planState;
+  apkRender(repAccs, otherAccs, repFilter);
 }
 
-function apkMoveCard(name, fromCol, toCol) {
-  const limits = {solid:10, center:10, ring:30, pool:9999};
-  const targetEl = toCol==='pool' ? document.getElementById('apk-pool') : document.getElementById('apk-col-'+toCol);
-  const sourceEl = fromCol==='pool' ? document.getElementById('apk-pool') : document.getElementById('apk-col-'+fromCol);
-  if (!targetEl || !sourceEl) return;
-  // Check limit
-  if (toCol !== 'pool' && targetEl.querySelectorAll('.apk-card').length >= limits[toCol]) {
-    showToast(toCol.charAt(0).toUpperCase()+toCol.slice(1)+' is full ('+limits[toCol]+' max)', 'error');
-    return;
-  }
-  // Find and move the card
-  const card = sourceEl.querySelector('.apk-card[data-name="'+CSS.escape(name)+'"]') ||
-               document.querySelector('.apk-card[data-name="'+CSS.escape(name)+'"]');
-  if (!card) return;
-  card.dataset.col = toCol;
-  if (toCol === 'pool') card.style.cssText = 'flex-shrink:0;width:155px';
-  else card.style.cssText = '';
-  // Remove empty placeholder if present
-  const ph = targetEl.querySelector('div:not(.apk-card)');
-  if (ph && ph.textContent.includes('DROP HERE')) ph.remove();
-  targetEl.appendChild(card);
-  // Re-bind drag events
-  card.addEventListener('dragstart', apkDragStart);
-  card.addEventListener('dragend', apkDragEnd);
-  apkUpdateHeaders();
-  // Re-render zone buttons on this card
-  const acc = state.accounts.find(a=>a.name===name);
-  const st = (acc?.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim();
-  const yrs = acc?.years?Object.keys(acc.years).filter(y=>acc.years[y]>0).sort():[];
-  const range = yrs.length>=2?yrs[0]+'–'+yrs[yrs.length-1]:yrs.length===1?yrs[0]:'';
-  const zones = [{key:'solid',label:'★',title:'Solid Core'},{key:'center',label:'◈',title:'Active Pursue'},{key:'ring',label:'○',title:'Outer Ring'},{key:'pool',label:'↓',title:'Pool'}];
-  const zoneBtns = zones.filter(z=>z.key!==toCol).map(z=>
-    `<button onclick="apkMoveCard('${name.replace(/'/g,"\\'")}','${toCol}','${z.key}')" title="Move to ${z.title}"
-      style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-size:9px;padding:1px 5px;cursor:pointer;border-radius:2px;line-height:1.2;transition:all 0.12s"
-      onmouseover="this.style.borderColor='var(--blue-b)';this.style.color='var(--blue-b)'"
-      onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-3)'">${z.label}</button>`
-  ).join('');
-  const btnRow = card.querySelector('div[style*="justify-content:flex-end"]');
-  if (btnRow) btnRow.innerHTML = zoneBtns;
-  showToast(name.slice(0,20) + ' → ' + toCol, 'success');
-}
-
-
-let apkDragging = null;
-function apkBindCards() {
-  document.querySelectorAll('.apk-card[draggable]').forEach(card => {
-    card.addEventListener('dragstart', apkDragStart);
-    card.addEventListener('dragend',   apkDragEnd);
+function apkGetCols() {
+  const cols = { solid: [], center: [], ring: [], pool: [] };
+  const repAccs = state.accounts.filter(a => a.rep === window.apkRep).sort((a, b) => (b.total || 0) - (a.total || 0));
+  repAccs.forEach(a => {
+    const z = window.apkState[a.name] || 'pool';
+    if (cols[z]) cols[z].push(a.name);
+    else cols.pool.push(a.name);
   });
+  return cols;
 }
-function apkDragStart(e) { apkDragging=e.currentTarget; apkDragging.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',apkDragging.dataset.name); }
-function apkDragEnd() { if(apkDragging)apkDragging.classList.remove('dragging'); document.querySelectorAll('.apk-col,#apk-pool').forEach(c=>c.classList.remove('drag-over')); apkDragging=null; }
-function apkDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect='move'; e.currentTarget.classList.add('drag-over'); }
-function apkDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
-function apkDrop(e, targetCol) {
-  e.preventDefault(); e.currentTarget.classList.remove('drag-over');
-  if(!apkDragging) return;
-  const name=apkDragging.dataset.name, fromCol=apkDragging.dataset.col;
-  if(fromCol===targetCol) return;
-  apkDragging.remove();
-  const limits={solid:10,center:10,ring:30,pool:9999};
-  const target=targetCol==='pool'?document.getElementById('apk-pool'):document.getElementById('apk-col-'+targetCol);
-  if(!target) return;
-  const currentCount=target.querySelectorAll('.apk-card').length;
-  if(targetCol!=='pool'&&currentCount>=limits[targetCol]) {
-    showToast(targetCol.toUpperCase()+' is full ('+limits[targetCol]+' max)','error');
-    const src=fromCol==='pool'?document.getElementById('apk-pool'):document.getElementById('apk-col-'+fromCol);
-    if(src) src.appendChild(apkDragging);
+
+function apkMove(name, toZone) {
+  const limits = { solid: 10, center: 10, ring: 30, pool: 9999 };
+  const cols = apkGetCols();
+  if (toZone !== 'pool' && (cols[toZone] || []).length >= limits[toZone]) {
+    const labels = { solid: 'Solid Core', center: 'Active Pursue', ring: 'Outer Ring' };
+    showToast(labels[toZone] + ' is full (' + limits[toZone] + ' max) — remove one first', 'error');
     return;
   }
-  const acc=state.accounts.find(a=>a.name===name);
-  const st=(acc?.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim();
-  const yrs=acc?.years?Object.keys(acc.years).filter(y=>acc.years[y]>0).sort():[];
-  const range=yrs.length>=2?yrs[0]+'–'+yrs[yrs.length-1]:yrs.length===1?yrs[0]:'';
-  const newCard=document.createElement('div');
-  newCard.className='apk-card'; newCard.dataset.name=name; newCard.dataset.col=targetCol; newCard.draggable=true;
-  if(targetCol==='pool') newCard.style.cssText='flex-shrink:0;width:155px';
-  newCard.innerHTML=`<div class="apk-card-drag-handle">⠿</div>
-    <div class="apk-card-name" title="${escHtml(name)}">${escHtml(name)}</div>
-    <div class="apk-card-rev">$${formatNum(acc?.total||0)}${range?` <span style="font-size:9px;color:var(--text-3)">${range}</span>`:''}</div>
-    ${st?`<div class="apk-card-status">${escHtml(st)}</div>`:''}`;
-  newCard.addEventListener('dragstart',apkDragStart);
-  newCard.addEventListener('dragend',apkDragEnd);
-  const ph=target.querySelector('div:not(.apk-card)'); if(ph) ph.remove();
-  target.appendChild(newCard);
-  apkUpdateHeaders();
+  window.apkState[name] = toZone;
+  // Re-render just the columns (not the whole board)
+  const repAccs = state.accounts.filter(a => a.rep === window.apkRep).sort((a, b) => (b.total || 0) - (a.total || 0));
+  const otherAccs = state.accounts.filter(a => a.rep !== window.apkRep && isInactive(a)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
+  apkRenderColumns(repAccs);
+  apkRenderPool(repAccs);
+  apkRenderHeaders();
+  showToast(name.slice(0, 22) + ' → ' + toZone, 'success');
+  apkLogDiag('Moved: ' + name + ' → ' + toZone);
 }
-function apkUpdateHeaders() {
-  [['solid',10,'var(--gold)'],['center',10,'var(--blue-b)'],['ring',30,'var(--green)']].forEach(([key,max,color])=>{
-    const col=document.getElementById('apk-col-'+key); if(!col) return;
-    const count=col.querySelectorAll('.apk-card').length;
-    const hdrs=document.querySelectorAll('.apk-col-header');
-    const idx=['solid','center','ring'].indexOf(key);
-    if(hdrs[idx]) {
-      const countEl=hdrs[idx].querySelector('span:last-child');
-      const fill=hdrs[idx].querySelector('.apk-progress-fill');
-      if(countEl){countEl.textContent=count+'/'+max;countEl.style.color=count>=max?'var(--green)':'var(--text-3)';}
-      if(fill) fill.style.width=Math.min(100,Math.round(count/max*100))+'%';
+
+function apkRender(repAccs, otherAccs, rep) {
+  const el = document.getElementById('main-content');
+  el.innerHTML = `
+    <div id="apk-board" style="display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--s0)">
+
+      <!-- Diagnostic bar -->
+      <div id="apk-diag-bar" style="display:none;background:var(--s2);border-bottom:1px solid var(--border);padding:6px 14px;font-family:var(--mono);font-size:10px;color:var(--green);display:flex;gap:16px;flex-wrap:wrap;align-items:center;flex-shrink:0">
+        <span id="apk-diag-text">—</span>
+        <button onclick="document.getElementById('apk-diag-bar').style.display='none'"
+          style="margin-left:auto;background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:11px">✕ DISMISS</button>
+      </div>
+
+      <!-- Column headers -->
+      <div style="display:flex;padding:10px 14px 0;gap:10px;flex-shrink:0;background:var(--s1);border-bottom:1px solid var(--border)" id="apk-headers">
+        ${['solid','center','ring'].map((key, i) => {
+          const defs = {
+            solid:  { label: '★ Solid Core',   max: 10, color: 'var(--gold)',   desc: 'Top 10 — protect & grow' },
+            center: { label: '◈ Active Pursue', max: 10, color: 'var(--blue-b)', desc: 'Next 10 — actively working' },
+            ring:   { label: '○ Outer Ring',    max: 30, color: 'var(--green)',  desc: 'Up to 30 — keep warm' },
+          };
+          const d = defs[key];
+          const count = Object.values(window.apkState).filter(z => z === key).length;
+          const pct = Math.min(100, Math.round(count / d.max * 100));
+          return `<div style="flex:1;padding-bottom:10px" id="apk-hdr-${key}">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${d.color};letter-spacing:0.08em">${d.label}</span>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--text-3)" id="apk-count-${key}">${count}/${d.max}</span>
+            </div>
+            <div style="font-size:11px;color:var(--text-3);margin:2px 0 5px">${d.desc}</div>
+            <div style="height:3px;background:var(--s2);border-radius:2px"><div id="apk-bar-${key}" style="height:3px;background:${d.color};border-radius:2px;width:${pct}%;transition:width 0.3s"></div></div>
+          </div>`;
+        }).join('<div style="width:1px;background:var(--border);margin-bottom:10px"></div>')}
+        <div style="width:190px;flex-shrink:0;padding-bottom:10px;border-left:1px solid var(--border);padding-left:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--orange);letter-spacing:0.08em">⇄ TRANSFER</span>
+            ${state.isAdmin ? `<button onclick="switchView('removals')" style="font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r)">REQUESTS</button>` : ''}
+          </div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px">${state.isAdmin ? 'Other reps\' inactive accounts' : 'Click to request'}</div>
+        </div>
+      </div>
+
+      <!-- Main columns area -->
+      <div style="display:flex;flex:1;overflow:hidden;min-height:0">
+
+        <!-- 3 zone columns -->
+        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;overflow-y:auto;min-height:0" id="apk-cols-wrap">
+          ${['solid','center','ring'].map(key => `
+            <div id="apk-col-${key}" style="border-right:1px solid var(--border);overflow-y:auto;padding:8px">
+              <!-- cards injected by apkRenderColumns -->
+            </div>`).join('')}
+        </div>
+
+        <!-- Transfer panel -->
+        <div style="width:190px;flex-shrink:0;border-left:1px solid var(--border);overflow-y:auto;background:var(--s1)" id="apk-transfer">
+          ${otherAccs.length ? otherAccs.map(acc => `
+            <div onclick="apkRequestTransfer('${escHtml(acc.name)}')"
+              style="padding:9px 11px;border-bottom:1px solid var(--border);cursor:pointer;border-left:3px solid var(--orange)"
+              onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+              <div style="font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(acc.name)}">${escHtml(acc.name)}</div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--orange)">$${formatNum(acc.total || 0)}</div>
+              <div style="font-size:9px;color:var(--text-3)">${escHtml(acc.rep)}</div>
+            </div>`).join('') : '<div style="font-size:11px;color:var(--text-3);padding:14px;text-align:center">No inactive accounts from other reps</div>'}
+        </div>
+      </div>
+
+      <!-- Pool strip -->
+      <div style="flex-shrink:0;border-top:2px solid var(--border);background:var(--s1)" id="apk-pool-wrap">
+        <div style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid var(--border);gap:10px">
+          <span style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3)" id="apk-pool-count">POOL</span>
+          <span style="font-size:11px;color:var(--text-3)">Click zone buttons on a card to assign it · ↑ star to add, ↓ to return to pool</span>
+          <div style="margin-left:auto;display:flex;gap:7px;align-items:center">
+            <button id="apk-diag-btn" onclick="apkToggleDiag()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r)">DIAG</button>
+            <button onclick="apkConfirmReset()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">RESET</button>
+            <button onclick="apkSaveNow()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:5px 14px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;font-weight:700" id="apk-save-btn">SAVE PLAN</button>
+          </div>
+        </div>
+        <div id="apk-pool" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;min-height:70px;max-height:180px;overflow-y:auto">
+          <!-- pool cards injected by apkRenderPool -->
+        </div>
+      </div>
+    </div>`;
+
+  apkRenderColumns(repAccs);
+  apkRenderPool(repAccs);
+  apkLogDiag('Loaded plan for ' + rep + ' · ' + Object.keys(window.apkState).length + ' accounts · saved: ' + (Object.values(window.apkState).filter(z => z !== 'pool').length) + ' in zones');
+}
+
+function apkCardHtml(name, zone) {
+  const acc = state.accounts.find(a => a.name === name);
+  const st = (acc?.status || '').replace(/[🔴🟠⚫🟡]/g, '').trim();
+  const yrs = acc?.years ? Object.keys(acc.years).filter(y => acc.years[y] > 0).sort() : [];
+  const range = yrs.length >= 2 ? yrs[0] + '–' + yrs[yrs.length - 1] : yrs[0] || '';
+  const zoneColors = { solid: 'var(--gold)', center: 'var(--blue-b)', ring: 'var(--green)', pool: 'var(--border)' };
+  const allZones = [
+    { key: 'solid',  icon: '★', label: 'Core' },
+    { key: 'center', icon: '◈', label: 'Pursue' },
+    { key: 'ring',   icon: '○', label: 'Ring' },
+    { key: 'pool',   icon: '↓', label: 'Pool' },
+  ];
+  const safeName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const btnHtml = allZones.filter(z => z.key !== zone).map(z =>
+    `<button onclick="apkMove('${safeName}','${z.key}')" title="→ ${z.label}"
+      style="padding:2px 6px;font-size:9px;font-family:var(--mono);background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:2px;transition:all 0.12s"
+      onmouseover="this.style.background='var(--blue-b)';this.style.borderColor='var(--blue-b)';this.style.color='#fff'"
+      onmouseout="this.style.background='';this.style.borderColor='var(--border)';this.style.color='var(--text-3)'"
+      >${z.icon} ${z.label}</button>`
+  ).join('');
+
+  const isPool = zone === 'pool';
+  return `<div style="background:var(--s1);border:1px solid var(--border);border-left:3px solid ${zoneColors[zone]};border-radius:var(--r2);padding:8px 10px;${isPool ? 'width:160px;flex-shrink:0' : 'margin-bottom:6px'}">
+    <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px" title="${escHtml(name)}">${escHtml(name)}</div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text-2);margin-bottom:2px">$${formatNum(acc?.total || 0)}${range ? ' <span style="color:var(--text-3)">' + range + '</span>' : ''}</div>
+    ${st ? `<div style="font-size:9px;color:var(--text-3);margin-bottom:4px">${escHtml(st)}</div>` : ''}
+    <div style="display:flex;gap:3px;flex-wrap:wrap">${btnHtml}</div>
+  </div>`;
+}
+
+function apkRenderColumns(repAccs) {
+  const cols = apkGetCols();
+  ['solid', 'center', 'ring'].forEach(key => {
+    const el = document.getElementById('apk-col-' + key);
+    if (!el) return;
+    if (cols[key].length === 0) {
+      el.innerHTML = `<div style="border:2px dashed var(--border);border-radius:var(--r2);padding:20px;text-align:center;color:var(--text-3);font-size:11px;font-family:var(--mono);margin:4px">EMPTY — use zone buttons on cards below to assign</div>`;
+    } else {
+      el.innerHTML = cols[key].map(n => apkCardHtml(n, key)).join('');
     }
   });
-  const pool=document.getElementById('apk-pool');
-  if(pool){const lbl=document.querySelector('.apk-pool-header div:first-child');if(lbl)lbl.textContent='POOL — '+pool.querySelectorAll('.apk-card').length+' accounts';}
 }
-function apkSave(rep) {
-  const cards=[];
-  ['solid','center','ring'].forEach(col=>document.querySelectorAll(`#apk-col-${col} .apk-card`).forEach((el,i)=>cards.push({name:el.dataset.name,zone:col.toUpperCase(),order:i})));
-  document.querySelectorAll('#apk-pool .apk-card').forEach((el,i)=>cards.push({name:el.dataset.name,zone:'POOL',order:i}));
-  saveAttackPlan(rep,cards);
+
+function apkRenderPool(repAccs) {
+  const cols = apkGetCols();
+  const poolEl = document.getElementById('apk-pool');
+  if (!poolEl) return;
+  const countEl = document.getElementById('apk-pool-count');
+  if (countEl) countEl.textContent = 'POOL — ' + cols.pool.length + ' accounts';
+  poolEl.innerHTML = cols.pool.length
+    ? cols.pool.map(n => apkCardHtml(n, 'pool')).join('')
+    : '<div style="color:var(--text-3);font-size:11px;font-family:var(--mono);padding:12px">All accounts assigned to zones ✓</div>';
 }
-async function apkResetDefault(rep) {
-  if(!confirm('Reset to default layout? This clears your current arrangement.')) return;
-  try {
-    const rows=await sheetsGet("'_ATTACK_PLAN'!A1:F2000");
-    if(rows&&rows.length>1){const f=rows.filter((r,i)=>i===0||(r[0]||'').trim()!==rep);await sheetsUpdate("'_ATTACK_PLAN'!A1:F"+f.length,f);}
-  } catch(e){}
-  renderAttackPlan();
+
+function apkRenderHeaders() {
+  const defs = {
+    solid:  { max: 10, color: 'var(--gold)' },
+    center: { max: 10, color: 'var(--blue-b)' },
+    ring:   { max: 30, color: 'var(--green)' },
+  };
+  Object.entries(defs).forEach(([key, d]) => {
+    const count = Object.values(window.apkState).filter(z => z === key).length;
+    const countEl = document.getElementById('apk-count-' + key);
+    const barEl   = document.getElementById('apk-bar-' + key);
+    if (countEl) { countEl.textContent = count + '/' + d.max; countEl.style.color = count >= d.max ? 'var(--green)' : 'var(--text-3)'; }
+    if (barEl)   barEl.style.width = Math.min(100, Math.round(count / d.max * 100)) + '%';
+  });
 }
+
+// ── Diagnostic ──────────────────────────────────────────
+const apkDiagLog = [];
+function apkLogDiag(msg) {
+  const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  apkDiagLog.unshift('[' + ts + '] ' + msg);
+  if (apkDiagLog.length > 20) apkDiagLog.pop();
+  const el = document.getElementById('apk-diag-text');
+  if (el) el.innerHTML = apkDiagLog.slice(0, 5).map(l => escHtml(l)).join(' &nbsp;|&nbsp; ');
+}
+function apkToggleDiag() {
+  const bar = document.getElementById('apk-diag-bar');
+  if (!bar) return;
+  const vis = bar.style.display !== 'none' && bar.style.display !== '';
+  bar.style.display = vis ? 'none' : 'flex';
+  if (!vis) {
+    const el = document.getElementById('apk-diag-text');
+    if (el) el.innerHTML = apkDiagLog.map(l => escHtml(l)).join('<br>');
+  }
+}
+
+// ── Save / Reset ─────────────────────────────────────────
+function apkSaveNow() {
+  const rep = window.apkRep;
+  if (!rep) { showToast('No rep selected', 'error'); return; }
+  const cards = Object.entries(window.apkState).map(([name, zone], i) => ({ name, zone: zone.toUpperCase(), order: i }));
+  apkLogDiag('Saving ' + cards.length + ' accounts for ' + rep);
+  saveAttackPlan(rep, cards);
+}
+
+function apkConfirmReset() {
+  if (!confirm('Reset to default layout based on revenue ranking? This clears your saved arrangement.')) return;
+  const rep = window.apkRep;
+  const repAccs = state.accounts.filter(a => a.rep === rep).sort((a, b) => (b.total || 0) - (a.total || 0));
+  window.apkState = {};
+  repAccs.forEach((a, i) => {
+    if (i < 10) window.apkState[a.name] = 'solid';
+    else if (i < 20) window.apkState[a.name] = 'center';
+    else if (i < 50) window.apkState[a.name] = 'ring';
+    else window.apkState[a.name] = 'pool';
+  });
+  // Clear saved plan in Sheet
+  sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A1:F2000").then(rows => {
+    if (rows && rows.length > 1) {
+      const f = rows.filter((r, i) => i === 0 || (r[0] || '').trim() !== rep);
+      sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A1:F" + f.length, f).catch(() => {});
+    }
+  }).catch(() => {});
+  localStorage.removeItem('it_attackplan_' + rep);
+  const repAccsNew = state.accounts.filter(a => a.rep === rep).sort((a, b) => (b.total || 0) - (a.total || 0));
+  const otherAccs = state.accounts.filter(a => a.rep !== rep && isInactive(a)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
+  apkRenderColumns(repAccsNew);
+  apkRenderPool(repAccsNew);
+  apkRenderHeaders();
+  apkLogDiag('Reset to default for ' + rep);
+  showToast('Plan reset to default layout ✓', 'success');
+}
+
+function apkRequestTransfer(name) {
+  const reason = prompt('Request "' + name + '" be transferred to your territory?\n\nNote for John (optional):');
+  if (reason === null) return;
+  sheetsAppend("'_LOG'!A1", [[
+    new Date().toISOString(), state.user?.email || window.apkRep, 'TRANSFER_REQUEST',
+    'Rep ' + (window.apkRep || '') + ' requests: ' + name + '. Note: ' + (reason || 'none')
+  ]]).then(() => showToast('Transfer request sent ✓', 'success'))
+    .catch(e => showToast('Error: ' + e.message, 'error'));
+}
+
+// Legacy aliases kept for backward compat
+function apkSave(rep) { apkSaveNow(); }
+async function apkResetDefault(rep) { apkConfirmReset(); }
+function apkMoveCard(name, fromZone, toZone) { apkMove(name, toZone); }
+function requestTransfer(name, rep) { apkRequestTransfer(name); }
+
+
 
 // ══════════════════════════════════════════════════════════
 //  HELP SYSTEM

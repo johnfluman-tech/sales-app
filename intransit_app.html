@@ -2035,6 +2035,8 @@ let state = {
   signaturesCache: {},          // keyed by rep ID — email signatures
   notesByAccount: {},  // keyed by account name
   hiddenTransferAccounts: {},  // keyed by repId → Set of account names hidden from transfer panel
+  globallyRemovedFromPool: new Set(), // accounts removed from ALL users' pools (admin-approved)
+  myHiddenPool: {},           // keyed by repId → Set of account names hidden from own pool only
   loading: false,
   accessToken: null,
   _cacheLoadingPromise: null,
@@ -3305,16 +3307,18 @@ async function renderRemovalsView() {
   }
 
   // ── 2. LOG-BASED REQUESTS (hold, transfer) ───────────────────────────────
-  let holdReqs = [], transferReqs = [], hideReqs = [], logError = '';
+  let holdReqs = [], transferReqs = [], hideReqs = [], globalRemoveReqs = [], logError = '';
   try {
     const logRows = await sheetsGet("'_LOG'!A1:E2000");
     dLog('_LOG rows loaded: ' + logRows.length);
     holdReqs     = logRows.filter((r,i) => i>0 && (r[2]||'')==='HOLD_REQUEST').slice().reverse().slice(0,30);
     transferReqs = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_REQUEST').slice().reverse().slice(0,30);
-    hideReqs     = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_HIDE_REQUEST').slice().reverse().slice(0,50);
+    hideReqs        = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_HIDE_REQUEST').slice().reverse().slice(0,50);
+    globalRemoveReqs = logRows.filter((r,i) => i>0 && (r[2]||'')==='POOL_GLOBAL_REMOVE_REQUEST').slice().reverse().slice(0,50);
     dLog('Hold requests in log: ' + holdReqs.length);
     dLog('Transfer requests in log: ' + transferReqs.length);
     dLog('Hide requests in log: ' + hideReqs.length);
+    dLog('Global pool remove requests: ' + globalRemoveReqs.length);
   } catch(e) {
     logError = e.message;
     dLog('_LOG failed to load: ' + e.message, false);
@@ -3501,7 +3505,78 @@ async function renderRemovalsView() {
         </div>`}
       </div>
 
-      <!-- ⑤ NDA LOG ─────────────────────────────────────────────────── -->
+      <!-- ⑤ GLOBAL POOL REMOVE REQUESTS ─────────────────────────────── -->
+      <div style="margin-bottom:28px" id="section-global-remove-reqs">
+        <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+          🚫 Global Pool Removal Requests
+          <span style="background:${globalRemoveReqs.length?'var(--red)':'var(--s2)'};color:${globalRemoveReqs.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${globalRemoveReqs.length}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Reps requesting an account be removed from everyone's inactive pool. Approve to permanently hide it for all users.</div>
+        ${globalRemoveReqs.length ? `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${globalRemoveReqs.map(r => {
+            const msg = r[3]||'';
+            const rep = (r[1]||'').replace('@intransittech.com','');
+            const accMatch = msg.match(/requests global pool removal: (.+?)\. Reason:/);
+            const reasonMatch = msg.match(/Reason: (.+)$/);
+            const accName = accMatch?.[1] || msg.slice(0,60);
+            const reason = reasonMatch?.[1] || '—';
+            const alreadyRemoved = state.globallyRemovedFromPool?.has(accName);
+            return \`<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--red);border-radius:var(--r2);padding:12px 16px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+                <div style="font-size:13px;font-weight:600">\${escHtml(accName)}</div>
+                <div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-left:12px;white-space:nowrap">\${fmt(r[0])}</div>
+              </div>
+              <div style="font-size:11px;color:var(--red);margin-bottom:4px">Requested by: \${escHtml(rep)}</div>
+              <div style="font-size:12px;color:var(--text-2);background:var(--s2);padding:6px 10px;border-radius:var(--r);margin-bottom:8px">Reason: \${escHtml(reason)}</div>
+              \${alreadyRemoved ?
+                '<div style="font-size:11px;color:var(--green);font-family:var(--mono)">✓ Already globally removed</div>' :
+                \`<button onclick="apkApproveGlobalRemove('\${escHtml(accName)}', '\${escHtml(reason)}', '\${escHtml(rep)}')"
+                  style="padding:6px 16px;background:rgba(220,38,38,0.15);border:1px solid var(--red);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700">
+                  🚫 APPROVE — REMOVE FROM ALL POOLS
+                </button>\`
+              }
+            </div>\`;
+          }).join('')}
+        </div>` : `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)">
+          <div style="font-size:22px;margin-bottom:8px">✓</div>
+          <div style="font-family:var(--mono);font-size:11px">No global removal requests</div>
+        </div>`}
+      </div>
+
+      <!-- ⑥ ALL GLOBALLY REMOVED ACCOUNTS ─────────────────────────────── -->
+      <div style="margin-bottom:28px" id="section-global-removed">
+        <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+          🗄 All Globally Removed Accounts
+          <span style="background:${state.globallyRemovedFromPool?.size?'var(--s2)':'var(--s2)'};color:var(--text-3);font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px" id="global-removed-count">${state.globallyRemovedFromPool?.size||0}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Accounts you've approved to remove from all users' inactive pools. You can restore any of them.</div>
+        <div id="global-removed-list">
+          ${state.globallyRemovedFromPool?.size ? `
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${Array.from(state.globallyRemovedFromPool).map(name => {
+              const acc = state.accounts.find(a => a.name === name);
+              return \`<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div style="font-size:13px;font-weight:500">\${escHtml(name)}</div>
+                  \${acc ? \`<div style="font-size:11px;color:var(--text-3);font-family:var(--mono)">Rep: \${escHtml(acc.rep)} · $\${formatNum(acc.total||0)}</div>\` : ''}
+                </div>
+                <button onclick="apkRestoreGlobalRemoved('\${escHtml(name)}')"
+                  style="font-size:10px;padding:5px 12px;background:rgba(59,130,246,0.12);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-weight:700">
+                  ↩ RESTORE TO ALL POOLS
+                </button>
+              </div>\`;
+            }).join('')}
+          </div>` : `
+          <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)">
+            <div style="font-size:22px;margin-bottom:8px">✓</div>
+            <div style="font-family:var(--mono);font-size:11px">No accounts globally removed</div>
+          </div>`}
+        </div>
+      </div>
+
+      <!-- ⑦ NDA LOG ─────────────────────────────────────────────────── -->
       <div>
         <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
           🔒 NDA Acceptance Log
@@ -3970,6 +4045,9 @@ function switchViewAs(rep) {
     label.textContent = 'ADMIN — ALL REPS';
     label.style.color = '';
   }
+  // Hide admin-only nav when impersonating a rep, show when back to admin view
+  const removalsNav = document.getElementById('nav-removals');
+  if (removalsNav) removalsNav.style.display = rep ? 'none' : 'block';
   state.selectedAccount = null;
   switchView(rep ? 'accounts' : 'accounts');
 }
@@ -6139,6 +6217,7 @@ async function renderAttackPlan() {
   }
   window.apkState = planState;
   apkLoadHiddenTransferAccounts();
+  await apkLoadGloballyRemoved();
   apkRender(repAccs, otherAccs, repFilter);
 }
 
@@ -6209,7 +6288,7 @@ function apkRender(repAccs, otherAccs, rep) {
             <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--orange);letter-spacing:0.08em">⇄ TRANSFER</span>
             <div style="display:flex;gap:4px">
               <button onclick="apkOpenTransferModal()" style="font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.15);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r)">VIEW ALL</button>
-              ${state.isAdmin ? `<button onclick="switchView('removals')" style="font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r)">REQUESTS</button>` : ''}
+              ${(state.isAdmin && !state.viewAsRep) ? `<button onclick="switchView('removals')" style="font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r)">REQUESTS</button>` : ''}
             </div>
           </div>
           <div style="font-size:11px;color:var(--text-3);margin-top:2px">Other reps' inactive accounts</div>
@@ -6259,6 +6338,8 @@ function apkRender(repAccs, otherAccs, rep) {
           <span style="font-size:11px;color:var(--text-3)">Click zone buttons on a card to assign it · ↑ star to add, ↓ to return to pool</span>
           <div style="margin-left:auto;display:flex;gap:7px;align-items:center">
             <button id="apk-diag-btn" onclick="apkToggleDiag()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r)">DIAG</button>
+            <button onclick="apkShowMyHidden()" id="apk-hidden-btn" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">MY HIDDEN</button>
+            ${(state.isAdmin && !state.viewAsRep) ? `<button onclick="apkShowGlobalRemoved()" style="background:transparent;border:1px solid rgba(220,38,38,0.5);color:var(--red);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">ALL REMOVED</button>` : ''}
             <button onclick="apkConfirmReset()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">RESET</button>
             <button onclick="apkSaveNow()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:5px 14px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;font-weight:700" id="apk-save-btn">SAVE PLAN</button>
           </div>
@@ -6350,10 +6431,23 @@ function apkRenderPool(repAccs) {
   const cols = apkGetCols();
   const poolEl = document.getElementById('apk-pool');
   if (!poolEl) return;
+  const repId = window.apkRep || state.repId || '';
+  const myHidden = apkGetMyHiddenSet();
+  const globalRemoved = state.globallyRemovedFromPool || new Set();
+  // Filter pool: exclude personally hidden + globally removed
+  const visiblePool = cols.pool.filter(n => !myHidden.has(n) && !globalRemoved.has(n));
+  const hiddenCount = cols.pool.filter(n => myHidden.has(n)).length;
   const countEl = document.getElementById('apk-pool-count');
-  if (countEl) countEl.textContent = 'POOL — ' + cols.pool.length + ' accounts';
-  poolEl.innerHTML = cols.pool.length
-    ? cols.pool.map(n => apkCardHtml(n, 'pool')).join('')
+  if (countEl) countEl.textContent = 'POOL — ' + visiblePool.length + ' accounts' + (hiddenCount ? ' (' + hiddenCount + ' hidden)' : '');
+  // Update MY HIDDEN button badge
+  const hiddenBtn = document.getElementById('apk-hidden-btn');
+  if (hiddenBtn) {
+    hiddenBtn.style.color = hiddenCount > 0 ? 'var(--orange)' : 'var(--text-3)';
+    hiddenBtn.style.borderColor = hiddenCount > 0 ? 'var(--orange)' : 'var(--border)';
+    hiddenBtn.textContent = hiddenCount > 0 ? 'MY HIDDEN (' + hiddenCount + ')' : 'MY HIDDEN';
+  }
+  poolEl.innerHTML = visiblePool.length
+    ? visiblePool.map(n => apkCardHtml(n, 'pool')).join('')
     : '<div style="color:var(--text-3);font-size:11px;font-family:var(--mono);padding:12px">All accounts assigned to zones ✓</div>';
 }
 
@@ -6468,7 +6562,12 @@ function apkShowTransferActionModal(name) {
         <button onclick="apkDoRemoveFromPool('${escHtml(name)}')"
           style="width:100%;padding:10px 16px;background:rgba(100,100,100,0.1);border:1px solid var(--border);color:var(--text-2);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;text-align:left">
           ✕ REMOVE FROM MY LIST
-          <span style="display:block;font-size:10px;font-weight:400;opacity:0.7;margin-top:2px">Hide this account from your transfer panel — won't show again</span>
+          <span style="display:block;font-size:10px;font-weight:400;opacity:0.7;margin-top:2px">Hide from your inactive pool only — you can restore it yourself anytime</span>
+        </button>
+        <button onclick="apkDoRequestGlobalRemove('${escHtml(name)}')"
+          style="width:100%;padding:10px 16px;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.4);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;text-align:left">
+          🚫 REQUEST REMOVE FROM ALL USERS
+          <span style="display:block;font-size:10px;font-weight:400;opacity:0.8;margin-top:2px">Ask John to permanently remove from everyone's inactive pool — requires his approval</span>
         </button>
         <button onclick="document.getElementById('apk-action-modal-overlay').remove()"
           style="width:100%;padding:7px 16px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">
@@ -6494,9 +6593,7 @@ function apkDoRequestTransfer(name) {
 }
 
 function apkDoRemoveFromPool(name) {
-  const note = document.getElementById('apk-action-note')?.value.trim() || 'none';
-  document.getElementById('apk-action-modal-overlay')?.remove();
-  apkRequestHideTransfer(name, note);
+  apkDoRemoveFromMyPool(name);
 }
 
 function apkRequestHideTransfer(name, existingNote) {
@@ -6724,6 +6821,186 @@ function apkUnhideTransfer(name) {
   } catch(e) {}
   showToast(name.slice(0,22) + ' unhidden ✓', 'success');
   apkRenderTransferModalBody();
+}
+
+// ── MY HIDDEN POOL (per-rep, self-managed) ────────────────────────────────
+
+function apkGetMyHiddenSet() {
+  const repId = window.apkRep || state.repId || '';
+  if (!state.myHiddenPool[repId]) {
+    // Load from localStorage
+    try {
+      const stored = localStorage.getItem('it_pool_hidden_' + repId);
+      state.myHiddenPool[repId] = stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch(e) { state.myHiddenPool[repId] = new Set(); }
+  }
+  return state.myHiddenPool[repId];
+}
+
+function apkSaveMyHiddenSet(repId) {
+  try {
+    localStorage.setItem('it_pool_hidden_' + repId, JSON.stringify(Array.from(state.myHiddenPool[repId])));
+  } catch(e) {}
+}
+
+function apkDoRemoveFromMyPool(name) {
+  // Called from the action modal "Remove from my list"
+  const note = document.getElementById('apk-action-note')?.value.trim() || '';
+  document.getElementById('apk-action-modal-overlay')?.remove();
+  const repId = window.apkRep || state.repId || '';
+  const hidden = apkGetMyHiddenSet();
+  hidden.add(name);
+  apkSaveMyHiddenSet(repId);
+  showToast(name.slice(0,24) + ' hidden from your pool ✓', 'success');
+  // Re-render pool
+  const repAccs = state.accounts.filter(a => a.rep === repId);
+  apkRenderPool(repAccs);
+  apkRenderHeaders();
+}
+
+function apkShowMyHidden() {
+  const repId = window.apkRep || state.repId || '';
+  const hidden = apkGetMyHiddenSet();
+  const existing = document.getElementById('apk-my-hidden-overlay');
+  if (existing) { existing.remove(); return; }
+  if (hidden.size === 0) { showToast('No accounts hidden from your pool', 'success'); return; }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'apk-my-hidden-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9000;display:flex;align-items:center;justify-content:center';
+
+  const items = Array.from(hidden).map(name => {
+    const acc = state.accounts.find(a => a.name === name);
+    const total = acc ? '$' + formatNum(acc.total || 0) : '—';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-size:12px;font-weight:500">${escHtml(name)}</div>
+        <div style="font-size:10px;color:var(--text-3);font-family:var(--mono)">${total}${acc ? ' · ' + escHtml(acc.rep) : ''}</div>
+      </div>
+      <button onclick="apkRestoreToPool('${escHtml(name)}')"
+        style="font-size:10px;padding:4px 10px;background:rgba(59,130,246,0.15);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono)">↩ RESTORE</button>
+    </div>`;
+  }).join('');
+
+  overlay.innerHTML = `<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);width:480px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--s0)">
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.12em;color:var(--text-3)">MY HIDDEN POOL ACCOUNTS</div>
+        <div style="font-size:13px;font-weight:600;margin-top:2px">${hidden.size} account${hidden.size!==1?'s':''} hidden from your inactive pool</div>
+      </div>
+      <button onclick="document.getElementById('apk-my-hidden-overlay').remove()" style="background:transparent;border:none;color:var(--text-3);font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div style="overflow-y:auto;flex:1">${items}</div>
+    <div style="padding:10px 18px;border-top:1px solid var(--border);font-size:11px;color:var(--text-3)">Click RESTORE to move an account back into your inactive pool</div>
+  </div>`;
+
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+function apkRestoreToPool(name) {
+  const repId = window.apkRep || state.repId || '';
+  const hidden = apkGetMyHiddenSet();
+  hidden.delete(name);
+  apkSaveMyHiddenSet(repId);
+  showToast(name.slice(0,24) + ' restored to pool ✓', 'success');
+  // Re-render hidden list
+  const overlay = document.getElementById('apk-my-hidden-overlay');
+  if (overlay) overlay.remove();
+  if (hidden.size > 0) apkShowMyHidden();
+  // Re-render pool
+  const repAccs = state.accounts.filter(a => a.rep === repId);
+  apkRenderPool(repAccs);
+  apkRenderHeaders();
+}
+
+// ── GLOBAL POOL REMOVE (all users, requires admin approval) ────────────────
+
+function apkDoRequestGlobalRemove(name) {
+  const note = document.getElementById('apk-action-note')?.value.trim() || '';
+  document.getElementById('apk-action-modal-overlay')?.remove();
+  if (!note) {
+    showToast('Please add a reason in the note field first', 'error');
+    // Re-open the modal
+    setTimeout(() => apkShowTransferActionModal(name), 100);
+    return;
+  }
+  const repId = window.apkRep || state.repId || '';
+  sheetsAppend("'_LOG'!A1", [[
+    new Date().toISOString(), state.user?.email || repId, 'POOL_GLOBAL_REMOVE_REQUEST',
+    'Rep ' + repId + ' requests global pool removal: ' + name + '. Reason: ' + note
+  ]]).then(() => showToast('Request sent to John for approval ✓', 'success'))
+    .catch(e => showToast('Error: ' + e.message, 'error'));
+}
+
+async function apkLoadGloballyRemoved() {
+  // Load from _POOL_REMOVED tab in History Sheet
+  try {
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_REMOVED'!A1:E2000");
+    if (rows.length > 1) {
+      const hdrs = rows[0];
+      const iName = hdrs.indexOf('ACCOUNT_NAME');
+      state.globallyRemovedFromPool = new Set(
+        rows.slice(1).filter(r => r[iName]).map(r => r[iName].trim())
+      );
+    }
+  } catch(e) {
+    state.globallyRemovedFromPool = new Set();
+  }
+}
+
+async function apkApproveGlobalRemove(name, reason, requestRow) {
+  if (!state.isAdmin) return;
+  if (!confirm('Approve global removal of "' + name + '" from all users\' inactive pool?\n\nThis cannot be self-reversed by reps.')) return;
+  try {
+    // Write to _POOL_REMOVED tab
+    const sid = CONFIG.HISTORY_SPREADSHEET_ID;
+    const now = new Date().toISOString();
+    let rows = [['ACCOUNT_NAME','REMOVED_BY','REASON','APPROVED_BY','DATE']];
+    try {
+      const existing = await sheetsGetFrom(sid, "'_POOL_REMOVED'!A1:E2000");
+      if (existing.length > 0 && existing[0][0] === 'ACCOUNT_NAME') rows = existing;
+      else rows = [['ACCOUNT_NAME','REMOVED_BY','REASON','APPROVED_BY','DATE'], ...existing];
+    } catch(e) {}
+    rows.push([name, requestRow || '—', reason || '—', 'FJohn/Admin', now]);
+    await sheetsUpdateIn(sid, "'_POOL_REMOVED'!A1:E" + rows.length, rows);
+    state.globallyRemovedFromPool.add(name);
+    showToast(name.slice(0,24) + ' removed from all pools ✓', 'success');
+    // Re-render requests page
+    switchView('removals');
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+async function apkRestoreGlobalRemoved(name) {
+  if (!state.isAdmin) return;
+  if (!confirm('Restore "' + name + '" back into all users\' inactive pools?')) return;
+  try {
+    const sid = CONFIG.HISTORY_SPREADSHEET_ID;
+    let rows = await sheetsGetFrom(sid, "'_POOL_REMOVED'!A1:E2000");
+    const filtered = rows.filter((r, i) => i === 0 || (r[0]||'').trim() !== name);
+    await sheetsUpdateIn(sid, "'_POOL_REMOVED'!A1:E" + filtered.length, filtered);
+    // Clear remaining rows
+    if (filtered.length < rows.length) {
+      try { await sheetsUpdateIn(sid, "'_POOL_REMOVED'!A" + (filtered.length+1) + ":E" + (rows.length+5), Array(rows.length-filtered.length+5).fill(['','','','',''])); } catch(e) {}
+    }
+    state.globallyRemovedFromPool.delete(name);
+    showToast(name + ' restored to all pools ✓', 'success');
+    switchView('removals');
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+function apkShowGlobalRemoved() {
+  if (!state.isAdmin || state.viewAsRep) return;
+  switchView('removals');
+  // Scroll to the global removed section — we'll add it to the removals page
+  setTimeout(() => {
+    const el = document.getElementById('section-global-removed');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  }, 300);
 }
 
 // Legacy aliases kept for backward compat

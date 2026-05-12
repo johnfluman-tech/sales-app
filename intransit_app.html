@@ -3308,7 +3308,7 @@ function getSignatureForCurrentRep() {
 }
 
 function getDisclaimer() {
-  const email = state.user || 'john.fluman@intransittech.com';
+  const email = state.user?.email || 'john.fluman@intransittech.com';
   return `CONFIDENTIALITY NOTICE: This email and any attachments are intended solely for the named recipient(s) and may contain confidential, proprietary, or legally privileged information belonging to Intransit Technologies Corp. Unauthorized review, use, disclosure, dissemination, or copying of this communication is strictly prohibited. If you have received this message in error, please notify the sender immediately at ${email}, permanently delete this message and all copies from your system, and do not retain, print, or forward any portion of its contents. Thank you.`;
 }
 function renderCollectionsView() {
@@ -3692,46 +3692,83 @@ function saveCollectionsNote(name) {
 }
 
 async function generateCollectionsEmail(name, tone) {
-  const c    = state.collectionsCache[name] || {};
-  const acc  = state.accounts.find(a => a.name.trim() === name.trim());
+  const c       = state.collectionsCache[name] || {};
+  const acc     = state.accounts.find(a => a.name.trim() === name.trim());
   const collNote = state.collectionsNotes[name] || {};
-  const toneDesc = tone === 'gentle' ? 'a polite, friendly payment reminder' :
-                   tone === 'firm'   ? 'a firm but professional overdue notice' :
-                                       'a final notice before escalation to collections';
+  const toneLabel = tone === 'gentle' ? 'GENTLE REMINDER' :
+                    tone === 'firm'   ? 'FIRM NOTICE' : 'FINAL NOTICE';
+  const toneDesc  = tone === 'gentle'
+    ? 'a warm, professional payment reminder — friendly but clear that payment is needed'
+    : tone === 'firm'
+    ? 'a firm, direct overdue notice — professional but no-nonsense, with a clear payment deadline of 5 business days'
+    : 'a serious final notice — consequences clearly stated (credit hold, collections escalation), urgent but not threatening';
 
+  // Build detailed invoice list with tracking info
   const invoices = state.collectionsInvoicesCache[name] || [];
-  const invoiceDetail = invoices.slice(0,5).map(inv =>
-    `Invoice #${inv.invoiceNum} dated ${inv.date} — $${formatNum(inv.balance)} outstanding`
-  ).join('\n') || 'No invoice detail available';
+  const invoiceLines = invoices.slice(0, 8).map(inv => {
+    const trackUrl = getTrackingUrl(inv.tracking, inv.shipVia);
+    const trackInfo = inv.tracking
+      ? ` | Shipped via ${inv.shipVia || 'carrier'}: ${inv.tracking}${trackUrl ? ' ('+trackUrl+')' : ''}`
+      : '';
+    const today = new Date();
+    const termsStr = (inv.terms||'').toUpperCase();
+    let termsDays = 30;
+    if (/COD|CASH|CIA|PREPAID|T\/T|TT|WIRE/.test(termsStr)) termsDays = 0;
+    else { const m = termsStr.match(/(\d+)/); if(m) termsDays = parseInt(m[1]); }
+    const invDate = new Date(inv.date);
+    const dueDate = new Date(invDate); dueDate.setDate(dueDate.getDate() + termsDays);
+    const daysPast = Math.max(0, Math.floor((today - dueDate) / 86400000));
+    return `  Invoice #${inv.invoiceNum} | Date: ${inv.date} | Amount due: $${formatNum(inv.balance)} | ${daysPast > 0 ? daysPast + ' days past due' : 'current'} | Terms: ${inv.terms || 'NET30'}${trackInfo}`;
+  }).join('\n') || '  No invoice detail on record';
 
-  const contacts = (state.contactsCache[name] || []).filter(ct => ct.type === 'AP/Collections');
+  const totalDue = invoices.reduce((s, i) => s + (i.balance || 0), 0);
+
+  // Get contact name
+  const allContacts = state.contactsCache[name] || [];
   const toContact = document.getElementById('coll-email-to')?.value;
-  const selectedContact = (state.contactsCache[name] || []).find(ct => ct.email === toContact);
-  const contactFirstName = selectedContact ? selectedContact.name.trim().split(' ')[0] : (contacts[0]?.name?.trim().split(' ')[0] || '');
+  const selectedContact = allContacts.find(ct => ct.email === toContact);
+  const apContacts = allContacts.filter(ct => ct.type === 'AP/Collections');
+  const contactFirstName = selectedContact
+    ? selectedContact.name.trim().split(' ')[0]
+    : (apContacts[0]?.name?.trim().split(' ')[0] || allContacts[0]?.name?.trim().split(' ')[0] || '');
 
-  const prompt = `You are writing ${toneDesc} on behalf of ${acc?.rep || 'our team'} at Intransit Technologies, an industrial parts distributor.
+  const repName = acc?.rep || 'our team';
 
-Account: ${name}
-Contact first name: ${contactFirstName || 'Sir/Madam'}
-Outstanding balance: $${formatNum(c.balance)}
-Credit limit: $${formatNum(c.credit)}
-Average days to pay: ${c.avgPay ? Math.round(c.avgPay) : 'unknown'}
-Credit hold: ${c.appHold === 'YES' ? 'YES — account is on hold' : 'No'}
-Days past due: ${c.daysPastDue > 0 ? c.daysPastDue + ' days past due' : 'Current'}
-Payment terms: ${c.terms || 'unknown'}
-Collections status: ${collNote.status || 'Not set'}
-Promised payment date: ${collNote.promisedDate || 'None on record'}
-Recent note: ${collNote.note?.slice(0,200) || 'None'}
+  const prompt = `You are writing a ${toneLabel} collections email for Intransit Technologies, an aerospace and industrial parts distributor. The email is sent by a sales rep to a customer's accounts payable contact.
 
-Unpaid invoices:
-${invoiceDetail}
+ACCOUNT: ${name}
+CONTACT FIRST NAME: ${contactFirstName || 'there'}
+REP: ${repName}
+TOTAL OUTSTANDING: $${formatNum(totalDue)}
+DAYS PAST DUE: ${c.daysPastDue > 0 ? c.daysPastDue + ' days' : 'current'}
+PAYMENT TERMS: ${c.terms || 'NET30'}
+CREDIT HOLD STATUS: ${c.appHold === 'YES' ? 'ACCOUNT IS ON HOLD' : 'No hold'}
+COLLECTIONS STATUS: ${collNote.status || 'Not contacted yet'}
+PROMISED PAYMENT DATE: ${collNote.promisedDate || 'None on record'}
+PREVIOUS NOTE: ${collNote.note?.slice(0, 150) || 'None'}
 
-Write a ${toneDesc}. Reference specific invoice numbers and amounts. Be professional and direct. For gentle: warm but clear. For firm: no-nonsense, deadline-focused. For final: serious, consequence-focused without being threatening.
+UNPAID INVOICES:
+${invoiceLines}
 
-Return ONLY a JSON object with keys "subject" and "body". No preamble.`;
+TONE: ${toneDesc}
+
+INSTRUCTIONS:
+- Open with the contact's first name greeting
+- Reference the TOTAL OUTSTANDING amount prominently
+- List specific invoice numbers and amounts (not all — pick the 3 most important/largest)
+- For gentle: thank them for their business, assume it may be an oversight, ask for payment or update
+- For firm: state clearly payment is X days overdue, request payment within 5 business days, mention account may be placed on hold
+- For final: state account will be placed on credit hold and referred to collections if payment not received within 48 hours — include all invoice numbers
+- End with a clear call to action (remit payment, call to discuss, confirm receipt)
+- Keep it under 200 words
+- Sound like a real person wrote it, not a robot
+
+Return ONLY a valid JSON object with exactly two keys: "subject" and "body". 
+The body must use real line breaks (\\n), not escaped newlines.
+No markdown, no code fences, no explanation. Just the JSON.`;
 
   try {
-    showToast('Generating email...', 'success');
+    showToast('Generating ' + toneLabel + '...', 'success');
     const apiKey = getAnthropicKey();
     if (!apiKey) return;
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -3742,25 +3779,57 @@ Return ONLY a JSON object with keys "subject" and "body". No preamble.`;
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1200,
+        messages: [{ role: 'user', content: prompt }]
+      })
     });
     const data = await response.json();
-    const text = data.content?.[0]?.text || '';
-    let parsed;
-    try { parsed = JSON.parse(text.replace(/```json|```/g,'').trim()); }
-    catch(e) {
-      const subMatch = text.match(/"subject"\s*:\s*"([^"]+)"/);
-      const bodyMatch = text.match(/"body"\s*:\s*"([\s\S]+?)"\s*\}/);
-      parsed = { subject: subMatch?.[1] || 'Payment Reminder', body: bodyMatch?.[1]?.replace(/\\n/g,'\n') || text };
+    const rawText = data.content?.[0]?.text || '';
+
+    // Robust parsing — handle escaped newlines, code fences, trailing content
+    let parsed = null;
+    try {
+      const cleaned = rawText
+        .replace(/^```json\s*/i, '')
+        .replace(/```\s*$/,  '')
+        .trim();
+      parsed = JSON.parse(cleaned);
+    } catch(e1) {
+      // Try extracting just the JSON object
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try { parsed = JSON.parse(jsonMatch[0]); } catch(e2) { parsed = null; }
+      }
     }
-    document.getElementById('coll-email-fields').style.display = 'block';
-    document.getElementById('coll-email-subject').value = parsed.subject || '';
-    const collSig = getSignatureForCurrentRep();
+    // Last resort — pull subject/body with regex
+    if (!parsed || !parsed.body) {
+      const subMatch  = rawText.match(/"subject"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+      const bodyMatch = rawText.match(/"body"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/s);
+      parsed = {
+        subject: subMatch?.[1]  || toneLabel + ' — ' + name,
+        body:    bodyMatch?.[1] || rawText,
+      };
+    }
+
+    // Unescape newlines and quotes in both fields
+    if (parsed.subject) parsed.subject = String(parsed.subject).replace(/\\n/g,' ').replace(/\\"/g,'"').replace(/\\t/g,' ');
+    if (parsed.body)    parsed.body    = String(parsed.body).replace(/\\n/g,'\n').replace(/\\"/g,'"').replace(/\\t/g,'\t');
+
+    const collSig        = getSignatureForCurrentRep();
     const collDisclaimer = getDisclaimer();
-    document.getElementById('coll-email-body').value = (parsed.body || '') + (collSig ? '\n\n' + collSig : '') + '\n\n--\n' + collDisclaimer;
+    const fullBody       = (parsed.body || '').trim()
+      + (collSig ? '\n\n' + collSig : '')
+      + '\n\n--\n' + collDisclaimer;
+
+    document.getElementById('coll-email-fields').style.display = 'block';
+    document.getElementById('coll-email-subject').value = parsed.subject || (toneLabel + ' — ' + name);
+    document.getElementById('coll-email-body').value = fullBody;
     showToast('Email generated ✓', 'success');
   } catch(e) {
-    showToast('Error: ' + e.message, 'error');
+    showToast('Error generating email: ' + e.message, 'error');
+    console.error('Collections email error:', e);
   }
 }
 

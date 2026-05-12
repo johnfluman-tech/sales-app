@@ -214,6 +214,12 @@ body::before {
   flex-shrink: 0; transition: background 0.15s; margin-left: auto;
 }
 .help-btn:hover { background: var(--blue); }
+.apk-ai-quick {
+  background: transparent; border: 1px solid var(--border); color: var(--text-2);
+  font-size: 11px; padding: 4px 10px; cursor: pointer; border-radius: var(--r);
+  transition: all 0.15s;
+}
+.apk-ai-quick:hover { border-color: var(--gold); color: var(--gold); }
 .sort-btn {
   background: transparent; border: 1px solid var(--border); color: var(--text-3);
   font-family: var(--mono); font-size: 9px; padding: 3px 8px; cursor: pointer;
@@ -2845,8 +2851,22 @@ function renderEmailTab(acc) {
           <div style="font-size:10px;color:var(--text-3);margin-top:3px">Hold Ctrl/Cmd to select multiple</div>
         </div>
       </div>` : `
-      <div style="font-size:11px;color:var(--orange);padding:8px 12px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:var(--r)">
-        ⚠ No email contacts on file for this account
+      <div>
+        <div style="font-size:11px;color:var(--orange);padding:8px 12px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:var(--r);margin-bottom:6px">
+          ⚠ No email contacts found for: <strong>${escHtml(name)}</strong>
+        </div>
+        <div style="font-size:10px;font-family:var(--mono);color:var(--text-3);padding:8px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r)">
+          <div style="color:var(--text-2);margin-bottom:4px">CONTACT LOOKUP DIAGNOSTIC:</div>
+          <div>Cache keys total: ${collDiag.cacheKeys}</div>
+          <div>Exact match: ${collDiag.exactMatch ? '✓' : '✗ NOT FOUND'}</div>
+          <div>Raw contacts found: ${collDiag.rawCount} (${collDiag.withEmail} with email)</div>
+          ${collDiag.sample.length ? '<div>Similar keys: ' + collDiag.sample.map(k => escHtml(k)).join(' | ') + '</div>' : '<div style="color:var(--red)">No similar keys in cache — contacts may not have loaded yet</div>'}
+          <div style="margin-top:4px">
+            <input type="text" id="coll-manual-email" placeholder="Enter email manually..."
+              style="background:var(--s1);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px 8px;width:200px;font-family:var(--font);outline:none;border-radius:var(--r)">
+            <button onclick="applyManualEmail()" style="background:var(--blue-b);border:none;color:#fff;font-size:10px;font-family:var(--mono);padding:5px 10px;cursor:pointer;border-radius:var(--r);margin-left:6px">USE THIS EMAIL</button>
+          </div>
+        </div>
       </div>`}
 
       <!-- Research context / custom prompt -->
@@ -3205,31 +3225,67 @@ function openAccountFromContact(accountName) {
 
 async function renderRemovalsView() {
   const el = document.getElementById('main-content');
-  el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div class="loading-spinner">LOADING...</div></div>';
+  el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div style="font-family:var(--mono);letter-spacing:0.15em">LOADING REQUESTS...</div></div>';
+
+  // ── DIAGNOSTIC ──────────────────────────────────────────────────────────
+  const diagLog = [];
+  const diag = (msg, ok=true) => diagLog.push({ msg, ok });
+
+  diag('state.accounts loaded: ' + state.accounts.length);
+  diag('state.isAdmin: ' + state.isAdmin);
 
   const pending = state.accounts.filter(a =>
     a.removeFlag && a.removeFlag.trim() !== '' &&
     a.removeFlag.toUpperCase() !== 'YES' &&
     a.johnApproval?.toUpperCase() !== 'YES'
   );
+  diag('Accounts with REMOVE_FLAG set: ' + pending.length);
+
+  // Sample — show first few removeFlag values for debugging
+  const sampleFlags = state.accounts.filter(a => a.removeFlag && a.removeFlag.trim()).slice(0,3);
+  sampleFlags.forEach(a => diag('  Sample: ' + a.name + ' → flag="' + a.removeFlag + '" approval="' + (a.johnApproval||'') + '"'));
 
   let transferReqs = [];
+  let holdReqs = [];
+  let logLoadError = '';
   try {
     const logRows = await sheetsGet("'_LOG'!A1:E1000");
-    transferReqs = logRows.filter((r,i) => i > 0 && (r[2]||'') === 'TRANSFER_REQUEST')
-      .slice().reverse().slice(0,20);
-  } catch(e) {}
+    diag('_LOG rows loaded: ' + logRows.length);
+    transferReqs = logRows.filter((r,i) => i > 0 && (r[2]||'') === 'TRANSFER_REQUEST').slice().reverse().slice(0,20);
+    holdReqs     = logRows.filter((r,i) => i > 0 && (r[2]||'') === 'HOLD_REQUEST').slice().reverse().slice(0,20);
+    diag('Transfer requests found: ' + transferReqs.length);
+    diag('Hold requests found: ' + holdReqs.length);
+  } catch(e) {
+    logLoadError = e.message;
+    diag('_LOG load failed: ' + e.message, false);
+  }
 
-  // Load NDA log
   let ndaRows = [];
   try {
     const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_NDA_LOG'!A1:L2000");
     ndaRows = raw.filter(r => r[7] === 'ACCEPTED' || r[7] === 'DECLINED').slice().reverse();
-  } catch(e) {}
+    diag('NDA log rows: ' + ndaRows.length);
+  } catch(e) {
+    diag('NDA log load failed: ' + e.message, false);
+  }
+
+  // Build diagnostic bar HTML
+  const diagHtml = `
+    <div id="removals-diag" style="display:none;background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:12px 16px;margin-bottom:16px">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:8px">DIAGNOSTIC LOG</div>
+      ${diagLog.map(d => `<div style="font-size:11px;color:${d.ok?'var(--green)':'var(--red)'};margin-bottom:2px">${d.ok?'✓':'✗'} ${escHtml(d.msg)}</div>`).join('')}
+    </div>`;
 
   el.innerHTML = `
     <div style="flex:1;overflow-y:auto;padding:24px">
-      <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.18em;color:var(--text-3);margin-bottom:20px">ADMIN — PENDING REQUESTS</div>
+      ${diagHtml}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.18em;color:var(--text-3)">ADMIN — PENDING REQUESTS</div>
+      <button onclick="const d=document.getElementById('removals-diag');d.style.display=d.style.display==='none'?'block':'none'"
+        style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 10px;cursor:pointer;border-radius:var(--r)">
+        DIAG ${diagLog.filter(d=>!d.ok).length > 0 ? '⚠ ' + diagLog.filter(d=>!d.ok).length + ' ISSUES' : '✓ OK'}
+      </button>
+    </div>
 
       <!-- Removal Requests -->
       <div style="margin-bottom:32px">
@@ -3311,9 +3367,9 @@ async function renderRemovalsView() {
         <div style="font-size:18px;font-weight:700;margin-bottom:12px">🔒 Hold Requests</div>
         <div id="hold-requests-list">
           ${(()=>{
-            const holdReqs = (transferReqs || []).filter ? transferReqs.filter(r=>(r[2]||'')==='HOLD_REQUEST') : [];
-            if (!holdReqs.length) return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)"><div style=\"font-size:24px;margin-bottom:8px\">✓</div><div style=\"font-family:var(--mono);font-size:11px\">No pending hold requests</div></div>';
-            return holdReqs.map(r => {
+            const _hReqs = holdReqs || [];
+            if (!_hReqs.length) return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)"><div style=\"font-size:24px;margin-bottom:8px\">✓</div><div style=\"font-family:var(--mono);font-size:11px\">No pending hold requests</div></div>';
+            return _hReqs.map(r => {
               const ts = r[0] ? new Date(r[0]).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
               const msg = r[3]||'';
               return '<div style=\"background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:12px 16px;margin-bottom:8px\"><div style=\"display:flex;justify-content:space-between\"><div style=\"font-size:13px;font-weight:600\">' + escHtml(msg.slice(0,80)) + '</div><div style=\"font-family:var(--mono);font-size:10px;color:var(--text-3)\">' + ts + '</div></div><div style=\"font-size:11px;color:var(--text-3);margin-top:4px\">Approve in CRM: Accounts → Credit Hold</div></div>';
@@ -4481,7 +4537,30 @@ function selectCollectionsAccount(name) {
   });
   const c = state.collectionsCache[name] || {};
   const acc = state.accounts.find(a => a.name.trim() === name.trim());
-  const allContacts = (state.contactsCache[name] || []).filter(ct => ct.email);
+  // ── CONTACT LOOKUP DIAGNOSTIC ──────────────────────────────────────────
+  // Try exact match first, then case-insensitive, then partial
+  let rawContacts = state.contactsCache[name] || [];
+  if (rawContacts.length === 0) {
+    // Try case-insensitive match
+    const nameLower = name.trim().toLowerCase();
+    const matchKey = Object.keys(state.contactsCache).find(k => k.trim().toLowerCase() === nameLower);
+    if (matchKey) rawContacts = state.contactsCache[matchKey] || [];
+  }
+  if (rawContacts.length === 0) {
+    // Try partial match (first 20 chars)
+    const nameStart = name.trim().toLowerCase().slice(0, 20);
+    const matchKey = Object.keys(state.contactsCache).find(k => k.trim().toLowerCase().startsWith(nameStart));
+    if (matchKey) rawContacts = state.contactsCache[matchKey] || [];
+  }
+  const collDiag = {
+    accountName: name,
+    cacheKeys: Object.keys(state.contactsCache).length,
+    exactMatch: !!(state.contactsCache[name]),
+    rawCount: rawContacts.length,
+    withEmail: rawContacts.filter(ct => ct.email).length,
+    sample: Object.keys(state.contactsCache).filter(k => k.toLowerCase().includes(name.toLowerCase().slice(0,8))).slice(0,3),
+  };
+  const allContacts = rawContacts.filter(ct => ct.email);
   const apContacts  = allContacts.filter(ct => ct.type === 'AP/Collections');
   const collNote    = state.collectionsNotes[name] || {};
   const riskColor   = c.risk?.includes('HIGH') ? 'var(--red)' : c.risk?.includes('WATCH') ? 'var(--orange)' : 'var(--gold)';
@@ -4598,6 +4677,7 @@ function selectCollectionsAccount(name) {
                     <span style="font-family:var(--mono);font-weight:700;font-size:13px">#${escHtml(inv.invoiceNum)}</span>
                     <span style="font-size:11px;color:var(--text-3)">${escHtml(inv.date)}</span>
                     ${inv.orderNum ? `<span style="font-size:10px;color:var(--text-3);font-family:var(--mono)">PO#${escHtml(inv.orderNum)}</span>` : ''}
+                    ${apContacts[0] ? `<span style="font-size:10px;color:var(--blue-b);background:rgba(52,152,219,0.1);border:1px solid rgba(52,152,219,0.2);padding:1px 7px;border-radius:10px">👤 ${escHtml(apContacts[0].name||allContacts[0]?.name||'')}</span>` : allContacts[0] ? `<span style="font-size:10px;color:var(--text-3);background:var(--s3);padding:1px 7px;border-radius:10px">👤 ${escHtml(allContacts[0].name)}</span>` : ''}
                   </div>
                   <span style="font-family:var(--mono);font-weight:700;font-size:14px;color:var(--red);white-space:nowrap">$${formatNum(inv.balance)}</span>
                 </div>
@@ -4713,6 +4793,25 @@ function updateCollEmailBtnState() {
     }
   }
 }
+
+function applyManualEmail() {
+  const emailInput = document.getElementById('coll-manual-email');
+  const email = emailInput?.value.trim();
+  if (!email || !email.includes('@')) { showToast('Please enter a valid email', 'error'); return; }
+  const toSel = document.getElementById('coll-email-to');
+  if (toSel) {
+    // Add as option if not already there
+    const exists = [...toSel.options].some(o => o.value === email);
+    if (!exists) {
+      const opt = document.createElement('option');
+      opt.value = email; opt.textContent = 'Manual: ' + email;
+      toSel.appendChild(opt);
+    }
+    toSel.value = email;
+    showToast('Email set to ' + email + ' ✓', 'success');
+  }
+}
+
 
 async function generateCollectionsEmail(name, tone) {
   const c       = state.collectionsCache[name] || {};
@@ -5801,10 +5900,28 @@ async function showTransferRequests() {
 
 async function renderAttackPlan() {
   const el = document.getElementById('main-content');
-  el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font-family:var(--mono);color:var(--text-3);letter-spacing:0.15em">LOADING ATTACK PLAN...</div></div>';
 
-  const repFilter = state.isAdmin ? (state.viewAsRep || 'FJohn') : state.repId;
-  if (!repFilter) { el.innerHTML = '<div style="padding:40px;color:var(--text-3)">Select a rep first.</div>'; return; }
+  // When admin hasn't picked a rep, show a picker
+  const repFilter = state.isAdmin ? state.viewAsRep : state.repId;
+  if (!repFilter) {
+    el.innerHTML = `<div style="flex:1;display:flex;align-items:center;justify-content:center">
+      <div style="text-align:center;padding:40px">
+        <div style="font-size:32px;margin-bottom:16px">⚔</div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px">Sales Attack Plan</div>
+        <div style="font-size:13px;color:var(--text-3);margin-bottom:24px">Select a rep to view or edit their plan</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:400px">
+          ${CONFIG.REPS.map(r => `<button onclick="document.getElementById('view-as-select').value='${r}';switchViewAs('${r}')"
+            style="padding:10px 20px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r);transition:all 0.15s"
+            onmouseover="this.style.borderColor='var(--blue-b)';this.style.color='var(--blue-b)'"
+            onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">${r}</button>`).join('')}
+        </div>
+        <div style="margin-top:20px;font-size:11px;color:var(--text-3)">Or use the <strong>VIEW AS REP</strong> dropdown in the sidebar</div>
+      </div>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font-family:var(--mono);color:var(--text-3);letter-spacing:0.15em">LOADING ATTACK PLAN...</div></div>';
 
   // ── STATE: plan is a simple object {accountName: zone} ──────────────────
   // This is the source of truth. All moves update this object then re-render.
@@ -5944,6 +6061,30 @@ function apkRender(repAccs, otherAccs, rep) {
           <!-- pool cards injected by apkRenderPool -->
         </div>
       </div>
+
+      <!-- AI Advisor Panel (hidden by default) -->
+      <div id="apk-ai-panel" style="display:none;border-top:2px solid var(--gold);background:var(--s1);flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border)">
+          <span style="font-family:var(--mono);font-size:9px;font-weight:700;color:var(--gold);letter-spacing:0.15em">✦ AI ATTACK PLAN ADVISOR</span>
+          <span style="font-size:11px;color:var(--text-3)">Ask the AI to help move accounts, suggest strategies, or explain your plan</span>
+          <button onclick="apkToggleAI()" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:2px 8px;cursor:pointer;border-radius:var(--r)">CLOSE</button>
+        </div>
+        <div style="display:flex;gap:8px;padding:8px 14px;flex-wrap:wrap;border-bottom:1px solid var(--border)">
+          <button onclick="apkAIAsk('Analyze my current plan and suggest improvements. Which accounts should I move?')" class="apk-ai-quick">Analyze my plan</button>
+          <button onclick="apkAIAsk('Which inactive accounts in my pool are most worth pursuing this quarter?')" class="apk-ai-quick">Best pool picks</button>
+          <button onclick="apkAIAsk('Which Solid Core accounts are at risk? Should any be moved to Active Pursue?')" class="apk-ai-quick">Core at risk?</button>
+          <button onclick="apkAIAsk('Build me an optimal plan: suggest which 10 accounts for Solid Core, 10 for Active Pursue, and 30 for Outer Ring')" class="apk-ai-quick">Optimize my plan</button>
+          <button onclick="apkAIAsk('Which accounts have been declining and need urgent attention?')" class="apk-ai-quick">Declining accounts</button>
+        </div>
+        <div id="apk-ai-chat" style="max-height:220px;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:6px"></div>
+        <div style="display:flex;gap:8px;padding:8px 14px;border-top:1px solid var(--border)">
+          <input id="apk-ai-input" type="text" placeholder="Ask anything about your accounts... e.g. Move all Long Dormant accounts to pool"
+            style="flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;padding:7px 12px;outline:none;border-radius:var(--r)"
+            onkeydown="if(event.key==='Enter')apkAISend()">
+          <button onclick="apkAISend()" style="background:var(--gold);border:none;color:#000;font-family:var(--mono);font-size:10px;padding:7px 16px;cursor:pointer;border-radius:var(--r);font-weight:700">ASK</button>
+        </div>
+      </div>
+    </div>
     </div>`;
 
   apkRenderColumns(repAccs);
@@ -6093,6 +6234,116 @@ async function apkResetDefault(rep) { apkConfirmReset(); }
 function apkMoveCard(name, fromZone, toZone) { apkMove(name, toZone); }
 function requestTransfer(name, rep) { apkRequestTransfer(name); }
 
+
+
+// ── ATTACK PLAN AI ADVISOR ─────────────────────────────────────────────────
+function apkToggleAI() {
+  const panel = document.getElementById('apk-ai-panel');
+  if (!panel) return;
+  const isVisible = panel.style.display !== 'none';
+  panel.style.display = isVisible ? 'none' : 'block';
+  if (!isVisible) document.getElementById('apk-ai-input')?.focus();
+}
+
+function apkAIAsk(q) {
+  const input = document.getElementById('apk-ai-input');
+  if (input) input.value = q;
+  apkAISend();
+}
+
+async function apkAISend() {
+  const input = document.getElementById('apk-ai-input');
+  const chat  = document.getElementById('apk-ai-chat');
+  if (!input || !chat) return;
+  const question = input.value.trim();
+  if (!question) return;
+
+  const apiKey = getAnthropicKey();
+  if (!apiKey) { showToast('Set API key in Settings first', 'error'); return; }
+
+  // Add user message
+  chat.innerHTML += `<div style="display:flex;justify-content:flex-end">
+    <div style="background:var(--blue-b);color:#fff;border-radius:var(--r2) var(--r2) 2px var(--r2);padding:7px 11px;font-size:12px;max-width:85%">${escHtml(question)}</div>
+  </div>`;
+  const thinkId = 'apk-think-' + Date.now();
+  chat.innerHTML += `<div id="${thinkId}" style="font-size:11px;color:var(--text-3);font-style:italic;padding:4px">Analyzing your plan...</div>`;
+  chat.scrollTop = chat.scrollHeight;
+  input.value = '';
+  input.disabled = true;
+
+  // Build context about current plan
+  const rep = window.apkRep || state.viewAsRep || state.repId;
+  const cols = apkGetCols();
+  const repAccs = state.accounts.filter(a => a.rep === rep);
+
+  const planSummary = ['solid','center','ring','pool'].map(zone => {
+    const names = cols[zone] || [];
+    return zone.toUpperCase() + ' (' + names.length + '): ' + names.slice(0,5).map(n => {
+      const a = repAccs.find(x => x.name === n);
+      return n + (a ? ' $' + formatNum(a.total||0) + ' ' + (a.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim().slice(0,15) : '');
+    }).join(', ') + (names.length > 5 ? '... +' + (names.length-5) + ' more' : '');
+  }).join('\n');
+
+  const topAccs = repAccs.sort((a,b) => (b.total||0)-(a.total||0)).slice(0,20).map(a =>
+    a.name + ' $' + formatNum(a.total||0) + ' ' + (a.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim().slice(0,20) + ' ' + (a.daysInactive > 0 ? a.daysInactive+'d inactive' : 'active')
+  ).join('\n');
+
+  const prompt = `You are an AI sales strategy advisor for ${rep} at Intransit Technologies, an aerospace/industrial parts distributor.
+
+CURRENT ATTACK PLAN:
+${planSummary}
+
+TOP 20 ACCOUNTS BY REVENUE:
+${topAccs}
+
+ZONES EXPLAINED:
+- Solid Core (max 10): Top accounts to protect and grow — most revenue, strongest relationships
+- Active Pursue (max 10): Accounts being actively worked — requires follow-up, in sales cycle
+- Outer Ring (max 30): Warm accounts to keep in sight — some activity, not top priority
+- Pool: Remaining accounts — available but not actively focused on
+
+USER QUESTION: ${question}
+
+INSTRUCTIONS:
+- Be specific and actionable. Reference actual account names from the plan.
+- If suggesting moves, be explicit: "Move [Account Name] from Outer Ring to Solid Core because..."
+- If the user says "move X to Y zone", confirm you understand and suggest they use the zone buttons on that card.
+- Keep answers concise (3-5 sentences or a short list).
+- Focus on what will drive the most revenue and re-engagement.`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await resp.json();
+    const answer = data.content?.[0]?.text || 'No response';
+    const thinkEl = document.getElementById(thinkId);
+    if (thinkEl) thinkEl.outerHTML = `
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <div style="width:22px;height:22px;border-radius:50%;background:rgba(212,175,55,0.2);border:1px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;margin-top:2px;color:var(--gold)">✦</div>
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:2px var(--r2) var(--r2) var(--r2);padding:9px 12px;font-size:12px;line-height:1.6;color:var(--text);max-width:92%;white-space:pre-wrap">${escHtml(answer)}</div>
+      </div>`;
+    apkLogDiag('AI asked: ' + question.slice(0,40));
+  } catch(e) {
+    const thinkEl = document.getElementById(thinkId);
+    if (thinkEl) thinkEl.outerHTML = `<div style="color:var(--red);font-size:11px;padding:4px">Error: ${escHtml(e.message)}</div>`;
+  } finally {
+    input.disabled = false;
+    input.focus();
+    chat.scrollTop = chat.scrollHeight;
+  }
+}
 
 
 // ══════════════════════════════════════════════════════════

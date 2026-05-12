@@ -5066,11 +5066,8 @@ async function generateCollectionsEmail(name, tone) {
   const allInvoices = state.collectionsInvoicesCache[name] || [];
   const checkedBoxes = [...document.querySelectorAll('.coll-inv-chk:checked')].map(el => parseInt(el.dataset.idx));
   const invoices = checkedBoxes.length > 0 ? checkedBoxes.map(i => allInvoices[i]).filter(Boolean) : allInvoices;
-  const invoiceLines = invoices.slice(0, 8).map(inv => {
+  const invoiceLines = invoices.map(inv => {
     const trackUrl = getTrackingUrl(inv.tracking, inv.shipVia);
-    const trackInfo = inv.tracking
-      ? ` | Shipped via ${inv.shipVia || 'carrier'}: ${inv.tracking}${trackUrl ? ' ('+trackUrl+')' : ''}`
-      : '';
     const today = new Date();
     const termsStr = (inv.terms||'').toUpperCase();
     let termsDays = 30;
@@ -5079,7 +5076,14 @@ async function generateCollectionsEmail(name, tone) {
     const invDate = new Date(inv.date);
     const dueDate = new Date(invDate); dueDate.setDate(dueDate.getDate() + termsDays);
     const daysPast = Math.max(0, Math.floor((today - dueDate) / 86400000));
-    return `  Invoice #${inv.invoiceNum} | Date: ${inv.date} | Amount due: $${formatNum(inv.balance)} | ${daysPast > 0 ? daysPast + ' days past due' : 'current'} | Terms: ${inv.terms || 'NET30'}${trackInfo}`;
+    const dueDateStr = dueDate.toLocaleDateString('en-US', { month:'2-digit', day:'2-digit', year:'numeric' });
+    const statusStr = daysPast > 0 ? daysPast + ' days past due' : 'Current';
+    const trackPart = inv.tracking
+      ? (trackUrl
+          ? ' | Track: ' + trackUrl
+          : ' | Tracking: ' + (inv.shipVia ? inv.shipVia + ' ' : '') + inv.tracking)
+      : '';
+    return `  • Invoice #${String(inv.invoiceNum).replace('.0','')} | Ship date: ${inv.date} | Due: ${dueDateStr} | Amount: $${formatNum(inv.balance)} | ${statusStr} | Terms: ${inv.terms || 'NET30'}${trackPart}`;
   }).join('\n') || '  No invoice detail on record';
 
   const totalDue = invoices.reduce((s, i) => s + (i.balance || 0), 0);
@@ -5116,10 +5120,10 @@ TONE: ${toneDesc}
 INSTRUCTIONS:
 - Open with the contact's first name greeting
 - Reference the TOTAL OUTSTANDING amount prominently
-- List specific invoice numbers and amounts (not all — pick the 3 most important/largest)
+- List EVERY invoice from UNPAID INVOICES above — do not omit any. For each, include the invoice number, ship date, due date, and amount. If a tracking link is provided, include it as a clickable URL so the customer can verify delivery
 - For gentle: thank them for their business, assume it may be an oversight, ask for payment or update
-- For firm: state clearly payment is X days overdue, request payment within 5 business days, mention account may be placed on hold
-- For final: state account will be placed on credit hold and referred to collections if payment not received within 48 hours — include all invoice numbers
+- For firm: state clearly payment is overdue, request payment within 5 business days, mention account may be placed on hold
+- For final: state account will be placed on credit hold and referred to collections if payment not received within 48 hours — list every invoice number
 - End with a clear call to action (remit payment, call to discuss, confirm receipt)
 - Keep it under 200 words
 - Sound like a real person wrote it, not a robot
@@ -5142,7 +5146,7 @@ No markdown, no code fences, no explanation. Just the JSON.`;
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
-        max_tokens: 1200,
+        max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }]
       })
     });
@@ -5195,7 +5199,27 @@ No markdown, no code fences, no explanation. Just the JSON.`;
 
     const collSig        = getSignatureForCurrentRep();
     const collDisclaimer = getDisclaimer();
-    const fullBody       = (parsed.body || '').trim()
+
+    // Verify ALL selected invoices appear in the body — append any missing ones
+    let finalBody = (parsed.body || '').trim();
+    const missingInvs = invoices.filter(inv => !finalBody.includes(String(inv.invoiceNum).replace('.0','')));
+    if (missingInvs.length > 0) {
+      const missingLines = missingInvs.map(inv => {
+        const termsStr = (inv.terms||'').toUpperCase();
+        let termsDays = 30;
+        if (/COD|CASH|CIA|PREPAID|T\/T|TT|WIRE/.test(termsStr)) termsDays = 0;
+        else { const m2 = termsStr.match(/(\d+)/); if(m2) termsDays = parseInt(m2[1]); }
+        const invDate2 = new Date(inv.date);
+        const dueDate2 = new Date(invDate2); dueDate2.setDate(dueDate2.getDate() + termsDays);
+        const dueDateStr2 = dueDate2.toLocaleDateString('en-US', { month:'2-digit', day:'2-digit', year:'numeric' });
+        const trackUrl2 = getTrackingUrl(inv.tracking, inv.shipVia);
+        const trackPart2 = inv.tracking ? (trackUrl2 ? ' | Track: ' + trackUrl2 : ' | Tracking: ' + inv.tracking) : '';
+        return '  • Invoice #' + String(inv.invoiceNum).replace('.0','') + ' | Ship date: ' + inv.date + ' | Due: ' + dueDateStr2 + ' | $' + formatNum(inv.balance) + ' | ' + (inv.terms || 'NET30') + trackPart2;
+      }).join('\n');
+      finalBody += '\n\n[Additional invoices included in this balance:]\n' + missingLines;
+    }
+
+    const fullBody = finalBody
       + (collSig ? '\n\n' + collSig : '')
       + '\n\n--\n' + collDisclaimer;
 
@@ -6941,20 +6965,31 @@ async function apkApproveGlobalRemove(name, reason, requestRow) {
   if (!state.isAdmin) return;
   if (!confirm('Approve global removal of "' + name + '" from all users\' inactive pool?\n\nThis cannot be self-reversed by reps.')) return;
   try {
-    // Write to _POOL_REMOVED tab
     const sid = CONFIG.HISTORY_SPREADSHEET_ID;
     const now = new Date().toISOString();
     let rows = [['ACCOUNT_NAME','REMOVED_BY','REASON','APPROVED_BY','DATE']];
+
+    // Try to read existing tab first
     try {
       const existing = await sheetsGetFrom(sid, "'_POOL_REMOVED'!A1:E2000");
       if (existing.length > 0 && existing[0][0] === 'ACCOUNT_NAME') rows = existing;
-      else rows = [['ACCOUNT_NAME','REMOVED_BY','REASON','APPROVED_BY','DATE'], ...existing];
-    } catch(e) {}
+      else if (existing.length > 0) rows = [['ACCOUNT_NAME','REMOVED_BY','REASON','APPROVED_BY','DATE'], ...existing];
+    } catch(e) {
+      // Tab doesn't exist yet — create it first
+      try {
+        const createUrl = 'https://sheets.googleapis.com/v4/spreadsheets/' + sid + ':batchUpdate';
+        await fetch(createUrl, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + state.accessToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: '_POOL_REMOVED' } } }] })
+        });
+      } catch(ce) { /* tab may have been created by another call */ }
+    }
+
     rows.push([name, requestRow || '—', reason || '—', 'FJohn/Admin', now]);
     await sheetsUpdateIn(sid, "'_POOL_REMOVED'!A1:E" + rows.length, rows);
     state.globallyRemovedFromPool.add(name);
     showToast(name.slice(0,24) + ' removed from all pools ✓', 'success');
-    // Re-render requests page
     switchView('removals');
   } catch(e) {
     showToast('Error: ' + e.message, 'error');

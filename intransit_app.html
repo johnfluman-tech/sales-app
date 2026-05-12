@@ -4539,7 +4539,11 @@ async function renderAttackPlan() {
   const allPlans = await loadAttackPlan(repFilter);
   const saved = allPlans[repFilter] || [];
   const repAccs = state.accounts.filter(a=>a.rep===repFilter).sort((a,b)=>(b.total||0)-(a.total||0));
-  const otherAccs = state.accounts.filter(a=>a.rep!==repFilter).sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,30);
+  // Only show inactive accounts (6+ months) from other reps as transfer candidates
+  const otherAccs = state.accounts
+    .filter(a => a.rep !== repFilter && isInactive(a))
+    .sort((a,b) => (b.total||0) - (a.total||0))
+    .slice(0, 40);
 
   const cols = { solid:[], center:[], ring:[], pool:[] };
   if (saved.length > 0) {
@@ -4561,10 +4565,15 @@ async function renderAttackPlan() {
   function cardHtml(name, col) {
     const acc = state.accounts.find(a=>a.name===name);
     const statusTxt = (acc?.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim();
+    // Determine actual year range from account data
+    const years = acc?.years ? Object.keys(acc.years).filter(y => acc.years[y] > 0).sort() : [];
+    const rangeLabel = years.length >= 2 ? years[0] + '–' + years[years.length-1]
+                     : years.length === 1 ? years[0]
+                     : '2020–2026';
     return `<div class="apk-card" data-name="${escHtml(name)}" data-col="${col}" draggable="true">
       <div class="apk-card-drag-handle">⠿</div>
       <div class="apk-card-name" title="${escHtml(name)}">${escHtml(name)}</div>
-      <div class="apk-card-rev">$${formatNum(acc?.total||0)}</div>
+      <div class="apk-card-rev">$${formatNum(acc?.total||0)} <span style="font-size:9px;color:var(--text-muted);font-weight:400">${rangeLabel}</span></div>
       ${statusTxt?`<div class="apk-card-status">${escHtml(statusTxt)}</div>`:''}
     </div>`;
   }
@@ -4583,8 +4592,13 @@ async function renderAttackPlan() {
         </div>`;
       }).join('')}
       <div class="apk-col-header" style="width:220px;min-width:220px;flex:none;border-right:none;border-left:1px solid var(--border)">
-        <div style="color:var(--orange)">⇄ Transfer Candidates</div>
-        <div style="font-size:10px;color:var(--text-muted);text-transform:none;letter-spacing:0;font-weight:400">Click to request from John</div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="color:var(--orange)">⇄ Transfer Candidates</div>
+          ${state.isAdmin ? `<button onclick="showTransferRequests()" style="font-size:9px;font-family:var(--font-mono);padding:2px 8px;background:rgba(211,84,0,0.15);border:1px solid var(--orange);color:var(--orange);cursor:pointer;letter-spacing:0.05em">VIEW REQUESTS</button>` : ''}
+        </div>
+        <div style="font-size:10px;color:var(--text-muted);text-transform:none;letter-spacing:0;font-weight:400">
+          ${state.isAdmin ? 'Review requests below' : 'Click to request from John'}
+        </div>
         <div class="apk-progress"><div class="apk-progress-fill" style="width:100%;background:var(--orange);opacity:0.3"></div></div>
       </div>
     </div>
@@ -4668,7 +4682,9 @@ function apkDrop(e, targetCol) {
   const newCard=document.createElement('div');
   newCard.className='apk-card'; newCard.dataset.name=name; newCard.dataset.col=targetCol; newCard.draggable=true;
   if(targetCol==='pool') newCard.style.cssText='flex-shrink:0;width:164px';
-  newCard.innerHTML=`<div class="apk-card-drag-handle">⠿</div><div class="apk-card-name" title="${escHtml(name)}">${escHtml(name)}</div><div class="apk-card-rev">$${formatNum(acc?.total||0)}</div>${statusTxt?`<div class="apk-card-status">${escHtml(statusTxt)}</div>`:''}`;
+  const years2 = acc?.years ? Object.keys(acc.years).filter(y=>acc.years[y]>0).sort() : [];
+  const rangeLabel2 = years2.length>=2 ? years2[0]+'–'+years2[years2.length-1] : years2.length===1 ? years2[0] : '2020–2026';
+  newCard.innerHTML=`<div class="apk-card-drag-handle">⠿</div><div class="apk-card-name" title="${escHtml(name)}">${escHtml(name)}</div><div class="apk-card-rev">$${formatNum(acc?.total||0)} <span style="font-size:9px;color:var(--text-muted);font-weight:400">${rangeLabel2}</span></div>${statusTxt?`<div class="apk-card-status">${escHtml(statusTxt)}</div>`:''}`;
   newCard.addEventListener('dragstart',apkDragStart); newCard.addEventListener('dragend',apkDragEnd);
   const ph=target.querySelector('div:not(.apk-card)'); if(ph) ph.remove();
   target.appendChild(newCard);
@@ -4694,6 +4710,58 @@ function apkSave(rep) {
   document.querySelectorAll('#apk-pool .apk-card').forEach((el,i)=>cards.push({name:el.dataset.name,zone:'POOL',order:i}));
   saveAttackPlan(rep,cards);
 }
+
+async function showTransferRequests() {
+  try {
+    const rows = await sheetsGet("'_LOG'!A1:D500");
+    if (!rows.length) { showToast('No log entries found', 'error'); return; }
+    const hdrs = rows[0];
+    // Find TRANSFER_REQUEST rows — col 3 (index 2) is event type
+    const requests = rows.filter((r,i) => i > 0 && (r[2]||'') === 'TRANSFER_REQUEST');
+    if (!requests.length) { showToast('No transfer requests found', 'success'); return; }
+
+    // Build modal
+    const modal = document.createElement('div');
+    modal.id = 'transfer-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+    modal.innerHTML = `
+      <div style="background:var(--navy-light);border:1px solid var(--border);width:600px;max-height:80vh;display:flex;flex-direction:column;border-top:3px solid var(--orange)">
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em;color:var(--orange);margin-bottom:3px">⇄ TRANSFER REQUESTS</div>
+            <div style="font-size:15px;font-weight:600">${requests.length} pending request${requests.length!==1?'s':''}</div>
+          </div>
+          <button onclick="document.getElementById('transfer-modal').remove()"
+            style="background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:11px;padding:5px 12px;cursor:pointer">CLOSE</button>
+        </div>
+        <div style="overflow-y:auto;padding:12px 16px;flex:1">
+          ${requests.reverse().map(r => {
+            const ts = r[0] ? new Date(r[0]).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
+            const msg = r[3] || '';
+            // Parse account name from message
+            const accMatch = msg.match(/transfer of: (.+?)\. Note:/);
+            const noteMatch = msg.match(/Note: (.+)$/);
+            const accName = accMatch?.[1] || msg;
+            const note = noteMatch?.[1] || '';
+            const rep = (r[1]||'').replace('@intransittech.com','');
+            return `<div style="padding:12px 14px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid var(--orange);margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+                <div style="font-weight:600;font-size:13px">${escHtml(accName)}</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);white-space:nowrap;margin-left:12px">${escHtml(ts)}</div>
+              </div>
+              <div style="font-size:12px;color:var(--blue-bright);margin-bottom:4px">Requested by: ${escHtml(rep)}</div>
+              ${note && note !== 'none' ? `<div style="font-size:12px;color:var(--text-dim)">Note: ${escHtml(note)}</div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  } catch(e) {
+    showToast('Error loading requests: ' + e.message, 'error');
+  }
+}
+
 async function apkResetDefault(rep) {
   if(!confirm('Reset to default layout? This clears your current arrangement.')) return;
   try {

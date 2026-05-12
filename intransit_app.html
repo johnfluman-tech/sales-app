@@ -1198,7 +1198,7 @@ td {
         <span class="nav-icon">⚔</span> Attack Plan
       </div>
       <div class="nav-item" id="nav-all" data-view="all" onclick="switchView('all')" style="display:none">
-        <span class="nav-icon">⊞</span> All Reps
+        <span class="nav-icon">⊞</span> All Accounts
         <span class="nav-badge" id="badge-all">—</span>
       </div>
       <div class="nav-item" id="nav-settings" data-view="settings" onclick="switchView('settings')">
@@ -1504,6 +1504,12 @@ async function loadSupplementalData() {
         });
       }
     }
+    // Load open orders
+    let orderRows = [];
+    try {
+      orderRows = await sheetsGet("'_OPEN_ORDERS'!A1:Z2000");
+    } catch(e) { orderRows = []; }
+
     if (orderRows.length > 1) {
       const hdrs = orderRows[0];
       state.ordersCache = orderRows.slice(1).map(r => {
@@ -2320,7 +2326,13 @@ function switchView(view) {
       renderContactsView();
     }
   } else if (view === 'attack') {
-    renderAttackPlan();
+    if (!state.cacheLoaded) {
+      loadSupplementalData().then(() => {
+        if (state.activeView === 'attack') renderAttackPlan();
+      });
+    } else {
+      renderAttackPlan();
+    }
   } else if (view === 'settings') {
     renderSettingsView();
   } else {

@@ -3267,6 +3267,22 @@ async function renderRemovalsView() {
         </div>`}
       </div>
 
+      <!-- Hold Requests -->
+      <div style="margin-bottom:32px" id="hold-requests-section">
+        <div style="font-size:18px;font-weight:700;margin-bottom:12px">🔒 Hold Requests</div>
+        <div id="hold-requests-list">
+          ${(()=>{
+            const holdReqs = (transferReqs || []).filter ? transferReqs.filter(r=>(r[2]||'')==='HOLD_REQUEST') : [];
+            if (!holdReqs.length) return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)"><div style=\"font-size:24px;margin-bottom:8px\">✓</div><div style=\"font-family:var(--mono);font-size:11px\">No pending hold requests</div></div>';
+            return holdReqs.map(r => {
+              const ts = r[0] ? new Date(r[0]).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
+              const msg = r[3]||'';
+              return '<div style=\"background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:12px 16px;margin-bottom:8px\"><div style=\"display:flex;justify-content:space-between\"><div style=\"font-size:13px;font-weight:600\">' + escHtml(msg.slice(0,80)) + '</div><div style=\"font-family:var(--mono);font-size:10px;color:var(--text-3)\">' + ts + '</div></div><div style=\"font-size:11px;color:var(--text-3);margin-top:4px\">Approve in CRM: Accounts → Credit Hold</div></div>';
+            }).join('');
+          })()}
+        </div>
+      </div>
+
       <!-- Transfer Requests -->
       <div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -4061,6 +4077,11 @@ www.intransittech.com"
             CLEAR
           </button>
         </div>
+        <!-- Diagnostic log — shown when save is attempted -->
+        <div id="sig-diagnostic" style="display:none;margin-top:12px;padding:12px 14px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);font-family:var(--mono)">
+          <div style="font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:8px">SAVE DIAGNOSTIC</div>
+          <div id="sig-diag-log"></div>
+        </div>
 
         <div id="sig-preview" style="display:none;margin-top:16px;padding:14px 16px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid var(--blue);font-size:13px;white-space:pre-wrap;line-height:1.7;color:var(--text-dim)"></div>
       </div>
@@ -4182,62 +4203,96 @@ async function saveSignature() {
     : state.repId;
   const text = document.getElementById('sig-text')?.value || '';
   const btn  = document.querySelector('[onclick="saveSignature()"]');
+  const diagWrap = document.getElementById('sig-diagnostic'); const diag = document.getElementById('sig-diag-log'); if (diagWrap) diagWrap.style.display = 'block';
   if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
+  if (diag) diag.innerHTML = '<div style="color:var(--text-3);font-size:11px">Saving...</div>';
+
+  const log = [];
+  const addLog = (msg, ok=true) => {
+    log.push({ msg, ok });
+    if (diag) diag.innerHTML = log.map(l =>
+      `<div style="font-size:11px;color:${l.ok?'var(--green)':'var(--red)'};margin-bottom:2px">${l.ok?'✓':'✗'} ${escHtml(l.msg)}</div>`
+    ).join('');
+  };
 
   try {
     const now = new Date().toLocaleString('en-US', {
       month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'
     });
+    addLog('Rep: ' + rep + ' · Sheet: ' + CONFIG.SPREADSHEET_ID.slice(0,12) + '...');
 
-    // Strategy: read existing rows, update or add rep, then write back.
-    // The tab may not exist yet — sheetsAppend creates it; sheetsUpdate requires it.
+    // Step 1: try to read existing _SIGNATURES tab
     let rows = [['REP','SIGNATURE_TEXT','LAST_UPDATED']];
+    let tabExists = false;
     try {
       const existing = await sheetsGet("'_SIGNATURES'!A1:C200");
+      tabExists = true;
+      addLog('_SIGNATURES tab found (' + existing.length + ' rows)');
       if (existing.length > 0) {
-        // Check if it has our header
-        const firstCell = (existing[0][0] || '').toString().toUpperCase().trim();
+        const firstCell = (existing[0][0]||'').toString().toUpperCase().trim();
         rows = firstCell === 'REP' ? existing : [['REP','SIGNATURE_TEXT','LAST_UPDATED'], ...existing];
       }
     } catch(e) {
-      // Tab doesn't exist yet — rows stays as header-only, append will create it
+      addLog('_SIGNATURES tab not found — will create it', false);
     }
 
-    // Find or add this rep's row
-    const repIdx = rows.findIndex((r, i) => i > 0 && (r[0]||'').trim() === rep);
+    // Step 2: update or add this rep
+    const repIdx = rows.findIndex((r,i) => i > 0 && (r[0]||'').trim() === rep);
     if (repIdx === -1) {
       rows.push([rep, text, now]);
+      addLog('Adding new row for ' + rep);
     } else {
       rows[repIdx] = [rep, text, now];
+      addLog('Updating existing row for ' + rep);
     }
 
-    // Pad all rows to 3 columns
-    const padded = rows.map(r => {
-      const p = [...r];
-      while (p.length < 3) p.push('');
-      return p.slice(0, 3);
-    });
+    // Pad rows to exactly 3 cols
+    const padded = rows.map(r => { const p=[...r]; while(p.length<3)p.push(''); return p.slice(0,3); });
+    addLog('Writing ' + padded.length + ' rows to _SIGNATURES tab...');
 
-    // Try sheetsUpdate first (fast if tab exists)
+    // Step 3: write — try update first, fall back to creating via batchUpdate then update
     let saved = false;
-    try {
-      await sheetsUpdate("'_SIGNATURES'!A1:C" + padded.length, padded);
-      saved = true;
-    } catch(e) {
-      // Tab doesn't exist or range error — fall back to append
-      console.warn('sheetsUpdate failed, trying append:', e.message);
+    if (tabExists) {
+      try {
+        await sheetsUpdate("'_SIGNATURES'!A1:C" + padded.length, padded);
+        saved = true;
+        addLog('Saved via sheetsUpdate ✓');
+      } catch(e2) {
+        addLog('sheetsUpdate failed: ' + e2.message, false);
+      }
     }
 
     if (!saved) {
-      // Append creates the tab if missing — write header + all rows
-      for (const row of padded) {
-        await sheetsAppend("'_SIGNATURES'!A1", [row]);
+      // Create the tab via batchUpdate, then write
+      try {
+        addLog('Creating _SIGNATURES tab...');
+        const createUrl = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SPREADSHEET_ID}:batchUpdate`;
+        const createRes = await fetch(createUrl, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + state.accessToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: '_SIGNATURES' } } }] })
+        });
+        const createData = await createRes.json();
+        if (!createRes.ok) {
+          // Tab might already exist with a different case — just try writing
+          addLog('Tab create response: ' + (createData.error?.message || createRes.status), !createData.error?.message?.includes('already exists'));
+        } else {
+          addLog('Tab created ✓');
+        }
+        // Now write
+        await sheetsUpdate("'_SIGNATURES'!A1:C" + padded.length, padded);
+        saved = true;
+        addLog('Saved via create+update ✓');
+      } catch(e3) {
+        addLog('Create+update failed: ' + e3.message, false);
+        throw e3;
       }
     }
 
     state.signaturesCache[rep] = text;
     showToast('Signature saved for ' + rep + ' ✓', 'success');
   } catch(e) {
+    addLog('FINAL ERROR: ' + e.message, false);
     showToast('Error saving signature: ' + e.message, 'error');
     console.error('Signature save error:', e);
   } finally {
@@ -4424,7 +4479,7 @@ function selectCollectionsAccount(name) {
         ${c.appHold === 'YES' ? '<span style="color:var(--red);font-weight:700">⚠ ON HOLD</span>' : ''}
         ${state.isAdmin && c.appHold === 'YES'
           ? `<button onclick="toggleAppHold('${escHtml(name)}',false)" class="btn btn-ghost btn-sm" style="margin-left:auto">REMOVE HOLD</button>`
-          : state.isAdmin ? `<button onclick="toggleAppHold('${escHtml(name)}',true)" class="btn btn-ghost btn-sm" style="margin-left:auto">PLACE ON HOLD</button>` : ''}
+          : state.isAdmin ? `<button onclick="toggleAppHold('${escHtml(name)}',true)" class="btn btn-ghost btn-sm" style="margin-left:auto">PLACE ON HOLD</button>` : `<button onclick="requestHold('${escHtml(name)}')" class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--orange);border-color:rgba(249,115,22,0.4)">📋 REQUEST HOLD</button>`}
       </div>
     </div>
 
@@ -4786,6 +4841,24 @@ No markdown, no code fences, no explanation. Just the JSON.`;
     console.error('Collections email error:', e);
   }
 }
+
+async function requestHold(accountName) {
+  const reason = prompt('Request credit hold for "' + accountName + '"?\n\nDescribe why (will be sent to John):');
+  if (reason === null) return;
+  if (!reason.trim()) { showToast('Please provide a reason', 'error'); return; }
+  try {
+    await sheetsAppend("'_LOG'!A1", [[
+      new Date().toISOString(),
+      state.user?.email || state.repId,
+      'HOLD_REQUEST',
+      'Rep ' + state.repId + ' requests hold for: ' + accountName + '. Reason: ' + reason
+    ]]);
+    showToast('Hold request sent to John ✓', 'success');
+  } catch(e) {
+    showToast('Error sending request: ' + e.message, 'error');
+  }
+}
+
 
 async function toggleAppHold(name, setHold) {
   if (!state.isAdmin) { showToast('Only admins can manage holds', 'error'); return; }
@@ -5555,33 +5628,86 @@ function openContactEmailClient(accountName, safeId) {
 // ══════════════════════════════════════════════════════════════
 
 async function loadAttackPlan(rep) {
+  // Try Google Sheets first
   try {
     const rows = await sheetsGet("'_ATTACK_PLAN'!A1:F2000");
-    if (!rows || rows.length < 2) return {};
-    const hdrs = rows[0];
-    const iRep=hdrs.indexOf('REP'), iName=hdrs.indexOf('ACCOUNT_NAME');
-    const iZone=hdrs.indexOf('ZONE'), iOrd=hdrs.indexOf('POSITION');
-    const plan = {};
-    for (let r=1; r<rows.length; r++) {
-      const row=rows[r], rk=(row[iRep]||'').trim();
-      if (!plan[rk]) plan[rk]=[];
-      plan[rk].push({name:(row[iName]||'').trim(), zone:(row[iZone]||'POOL').trim(), order:parseInt(row[iOrd]||'99')});
+    if (rows && rows.length >= 2) {
+      const hdrs = rows[0];
+      const iRep=hdrs.indexOf('REP'), iName=hdrs.indexOf('ACCOUNT_NAME');
+      const iZone=hdrs.indexOf('ZONE'), iOrd=hdrs.indexOf('POSITION');
+      const plan = {};
+      for (let r=1; r<rows.length; r++) {
+        const row=rows[r], rk=(row[iRep]||'').trim();
+        if (!plan[rk]) plan[rk]=[];
+        plan[rk].push({name:(row[iName]||'').trim(), zone:(row[iZone]||'POOL').trim(), order:parseInt(row[iOrd]||'99')});
+      }
+      // Also cache to localStorage
+      localStorage.setItem('it_attackplan_' + rep, JSON.stringify(plan[rep] || []));
+      return plan;
     }
-    return plan;
-  } catch(e) { return {}; }
+  } catch(e) { console.warn('loadAttackPlan from Sheets failed:', e.message); }
+
+  // Fall back to localStorage
+  try {
+    const cached = localStorage.getItem('it_attackplan_' + rep);
+    if (cached) {
+      const cards = JSON.parse(cached);
+      showToast('Loaded plan from local cache', 'success');
+      return { [rep]: cards };
+    }
+  } catch(e) {}
+  return {};
 }
 
 async function saveAttackPlan(rep, cards) {
+  const saveBtns = document.querySelectorAll('[onclick*="apkSave"]');
+  saveBtns.forEach(b => { b.disabled=true; b.textContent='SAVING...'; });
   try {
-    let rows;
-    try { const ex=await sheetsGet("'_ATTACK_PLAN'!A1:F2000"); rows=ex&&ex.length>0?ex:[['REP','ACCOUNT_NAME','ZONE','POSITION','TOTAL','LAST_UPDATED']]; }
-    catch(e) { rows=[['REP','ACCOUNT_NAME','ZONE','POSITION','TOTAL','LAST_UPDATED']]; }
-    const filtered=rows.filter((r,i)=>i===0||(r[0]||'').trim()!==rep);
-    const now=new Date().toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
-    cards.forEach((c,i)=>{ const acc=state.accounts.find(a=>a.name===c.name); filtered.push([rep,c.name,c.zone,i,acc?formatNum(acc.total):'',now]); });
-    await sheetsUpdate("'_ATTACK_PLAN'!A1:F"+filtered.length, filtered);
-    showToast('Attack plan saved ✓','success');
-  } catch(e) { showToast('Error saving: '+e.message,'error'); }
+    const header = ['REP','ACCOUNT_NAME','ZONE','POSITION','TOTAL','LAST_UPDATED'];
+    let rows = [header];
+    let tabExists = false;
+    try {
+      const ex = await sheetsGet("'_ATTACK_PLAN'!A1:F2000");
+      if (ex && ex.length > 0) { rows = ex; tabExists = true; }
+    } catch(e) { tabExists = false; }
+
+    const filtered = rows.filter((r,i) => i===0 || (r[0]||'').trim() !== rep);
+    const now = new Date().toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+    cards.forEach((c,i) => {
+      const acc = state.accounts.find(a => a.name===c.name);
+      filtered.push([rep, c.name, c.zone, i, acc ? formatNum(acc.total) : '', now]);
+    });
+
+    let saved = false;
+    if (tabExists) {
+      try {
+        await sheetsUpdate("'_ATTACK_PLAN'!A1:F" + filtered.length, filtered);
+        saved = true;
+      } catch(e) { console.warn('Attack plan update failed:', e.message); }
+    }
+    if (!saved) {
+      // Create tab first
+      try {
+        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SPREADSHEET_ID}:batchUpdate`, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer '+state.accessToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests:[{ addSheet:{ properties:{ title:'_ATTACK_PLAN' } } }] })
+        });
+      } catch(e) { /* tab may already exist */ }
+      await sheetsUpdate("'_ATTACK_PLAN'!A1:F" + filtered.length, filtered);
+    }
+
+    // Save to localStorage as backup so it persists even if Sheets fails
+    localStorage.setItem('it_attackplan_' + rep, JSON.stringify(cards));
+    showToast('Attack plan saved ✓ (' + cards.length + ' accounts)', 'success');
+  } catch(e) {
+    // Still save to localStorage even if Sheets fails
+    localStorage.setItem('it_attackplan_' + rep, JSON.stringify(cards));
+    showToast('Saved locally (Sheet error: ' + e.message.slice(0,40) + ')', 'error');
+    console.error('saveAttackPlan error:', e);
+  } finally {
+    saveBtns.forEach(b => { b.disabled=false; b.textContent='SAVE PLAN'; });
+  }
 }
 
 async function requestTransfer(accountName, fromRep) {
@@ -5667,12 +5793,24 @@ async function renderAttackPlan() {
     const st=(acc?.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim();
     const yrs=acc?.years?Object.keys(acc.years).filter(y=>acc.years[y]>0).sort():[];
     const range=yrs.length>=2?yrs[0]+'–'+yrs[yrs.length-1]:yrs.length===1?yrs[0]:'';
+    // Zone buttons — show options that are NOT the current zone
+    const zones = [{key:'solid',label:'★',title:'Solid Core'},{key:'center',label:'◈',title:'Active Pursue'},{key:'ring',label:'○',title:'Outer Ring'},{key:'pool',label:'↓',title:'Pool'}];
+    const zoneBtns = zones.filter(z=>z.key!==col).map(z=>
+      `<button onclick="apkMoveCard('${escHtml(name)}','${col}','${z.key}')" title="Move to ${z.title}"
+        style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-size:9px;padding:1px 5px;cursor:pointer;border-radius:2px;line-height:1.2;transition:all 0.12s"
+        onmouseover="this.style.borderColor='var(--blue-b)';this.style.color='var(--blue-b)'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-3)'">${z.label}</button>`
+    ).join('');
     return `<div class="apk-card" data-name="${escHtml(name)}" data-col="${col}" draggable="true">
-      <div class="apk-card-drag-handle">⠿</div>
-      <div class="apk-card-name" title="${escHtml(name)}">${escHtml(name)}</div>
-      <div class="apk-card-rev">$${formatNum(acc?.total||0)}${range?` <span style="font-size:9px;color:var(--text-3)">${range}</span>`:''}
+      <div style="display:flex;align-items:flex-start;gap:4px">
+        <div class="apk-card-drag-handle" style="flex-shrink:0">⠿</div>
+        <div style="flex:1;min-width:0">
+          <div class="apk-card-name" title="${escHtml(name)}">${escHtml(name)}</div>
+          <div class="apk-card-rev">$${formatNum(acc?.total||0)}${range?` <span style="font-size:9px;color:var(--text-3)">${range}</span>`:''}</div>
+          ${st?`<div class="apk-card-status">${escHtml(st)}</div>`:''}
+        </div>
       </div>
-      ${st?`<div class="apk-card-status">${escHtml(st)}</div>`:''}
+      <div style="display:flex;gap:3px;margin-top:5px;justify-content:flex-end">${zoneBtns}</div>
     </div>`;
   }
 
@@ -5739,6 +5877,49 @@ async function renderAttackPlan() {
   </div>`;
   apkBindCards();
 }
+
+function apkMoveCard(name, fromCol, toCol) {
+  const limits = {solid:10, center:10, ring:30, pool:9999};
+  const targetEl = toCol==='pool' ? document.getElementById('apk-pool') : document.getElementById('apk-col-'+toCol);
+  const sourceEl = fromCol==='pool' ? document.getElementById('apk-pool') : document.getElementById('apk-col-'+fromCol);
+  if (!targetEl || !sourceEl) return;
+  // Check limit
+  if (toCol !== 'pool' && targetEl.querySelectorAll('.apk-card').length >= limits[toCol]) {
+    showToast(toCol.charAt(0).toUpperCase()+toCol.slice(1)+' is full ('+limits[toCol]+' max)', 'error');
+    return;
+  }
+  // Find and move the card
+  const card = sourceEl.querySelector('.apk-card[data-name="'+CSS.escape(name)+'"]') ||
+               document.querySelector('.apk-card[data-name="'+CSS.escape(name)+'"]');
+  if (!card) return;
+  card.dataset.col = toCol;
+  if (toCol === 'pool') card.style.cssText = 'flex-shrink:0;width:155px';
+  else card.style.cssText = '';
+  // Remove empty placeholder if present
+  const ph = targetEl.querySelector('div:not(.apk-card)');
+  if (ph && ph.textContent.includes('DROP HERE')) ph.remove();
+  targetEl.appendChild(card);
+  // Re-bind drag events
+  card.addEventListener('dragstart', apkDragStart);
+  card.addEventListener('dragend', apkDragEnd);
+  apkUpdateHeaders();
+  // Re-render zone buttons on this card
+  const acc = state.accounts.find(a=>a.name===name);
+  const st = (acc?.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim();
+  const yrs = acc?.years?Object.keys(acc.years).filter(y=>acc.years[y]>0).sort():[];
+  const range = yrs.length>=2?yrs[0]+'–'+yrs[yrs.length-1]:yrs.length===1?yrs[0]:'';
+  const zones = [{key:'solid',label:'★',title:'Solid Core'},{key:'center',label:'◈',title:'Active Pursue'},{key:'ring',label:'○',title:'Outer Ring'},{key:'pool',label:'↓',title:'Pool'}];
+  const zoneBtns = zones.filter(z=>z.key!==toCol).map(z=>
+    `<button onclick="apkMoveCard('${name.replace(/'/g,"\\'")}','${toCol}','${z.key}')" title="Move to ${z.title}"
+      style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-size:9px;padding:1px 5px;cursor:pointer;border-radius:2px;line-height:1.2;transition:all 0.12s"
+      onmouseover="this.style.borderColor='var(--blue-b)';this.style.color='var(--blue-b)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-3)'">${z.label}</button>`
+  ).join('');
+  const btnRow = card.querySelector('div[style*="justify-content:flex-end"]');
+  if (btnRow) btnRow.innerHTML = zoneBtns;
+  showToast(name.slice(0,20) + ' → ' + toCol, 'success');
+}
+
 
 let apkDragging = null;
 function apkBindCards() {

@@ -3864,7 +3864,22 @@ No markdown, no code fences, no explanation. Just the JSON.`;
       })
     });
     const data = await response.json();
+
+    // Check for API-level errors
+    if (data.error) {
+      showToast('API error: ' + (data.error.message || JSON.stringify(data.error)), 'error');
+      document.getElementById('coll-email-fields').style.display = 'block';
+      document.getElementById('coll-email-body').value = 'API Error: ' + JSON.stringify(data.error);
+      return;
+    }
+
     const rawText = data.content?.[0]?.text || '';
+    if (!rawText) {
+      showToast('API returned empty response', 'error');
+      document.getElementById('coll-email-fields').style.display = 'block';
+      document.getElementById('coll-email-body').value = 'Empty response. Full API data:\n' + JSON.stringify(data).slice(0, 500);
+      return;
+    }
 
     // Robust parsing — handle escaped newlines, code fences, trailing content
     let parsed = null;

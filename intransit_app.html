@@ -1194,7 +1194,7 @@ function renderContactsTab(acc) {
         <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:${color};margin-bottom:8px;text-transform:uppercase">${label} (${list.length})</div>
         ${list.map(c => `
           <div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${color};margin-bottom:8px">
-            <div style="font-weight:500;font-size:13px">${escHtml(c.name)}</div>
+            <div style="font-weight:500;font-size:13px;cursor:pointer;color:var(--blue-b);text-decoration:underline" onclick="openContactFromAccount('${escHtml(acc.name)}','${escHtml(c.name)}')">${escHtml(c.name)}</div>
             ${c.title ? `<div style="font-size:11px;color:var(--text-muted);margin-top:1px">${escHtml(c.title)}</div>` : ''}
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
               ${c.email ? `<a class="contact-link contact-blur" href="mailto:${escHtml(c.email)}" style="font-size:11px">✉ ${escHtml(c.email)}</a>` : ''}
@@ -2321,8 +2321,8 @@ function renderNoteInput(acc) {
   const hasRemoveRequest = acc.removeFlag && acc.removeFlag.toUpperCase() !== 'YES' && acc.removeFlag.trim();
 
   return `
-    <div class="note-input-area">
-      <div class="note-input-label">Add Note</div>
+    <div class="note-input-area" style="padding:16px 20px 20px;flex-shrink:0">
+      <div class="note-input-label" style="font-size:13px;margin-bottom:10px">Add Note</div>
       <textarea class="note-textarea" id="note-text-input" rows="5"
         style="min-height:110px;font-size:13px;line-height:1.6;resize:vertical"
         placeholder="Type your note here... It will be timestamped and locked when saved.&#10;&#10;Example: Called 5/12 — spoke with Karen, confirmed PO in process, expects to order Q3 bearings next week."></textarea>
@@ -2356,34 +2356,76 @@ function renderNoteInput(acc) {
 }
 
 function renderEmailTab(acc) {
+  const contacts = (state.contactsCache[acc.name.trim()] || []).filter(ct => ct.email);
+  const apContacts = contacts.filter(ct => ct.type === 'AP/Collections');
+  const primaryContact = contacts[0] || null;
+  const apEmails = [...new Set(apContacts.map(ct => ct.email).filter(Boolean))];
+  const multipleAP = apEmails.length > 1;
+
   return `
-    <div class="email-draft-area">
+    <div class="email-draft-area" style="display:flex;flex-direction:column;gap:12px;padding:16px;overflow-y:auto">
+
+      <!-- TO / CC selectors -->
+      ${contacts.length ? `
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:8px">RECIPIENTS</div>
+        <div style="margin-bottom:8px">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-bottom:4px">TO</div>
+          <select id="email-to-contact" class="field-select" style="font-size:12px">
+            <option value="">— Select contact —</option>
+            ${contacts.map(ct => `<option value="${escHtml(ct.email)}"
+              ${!multipleAP && (apContacts[0]||contacts[0])?.email === ct.email ? 'selected' : ''}
+            >${escHtml(ct.name)}${ct.title?' ('+escHtml(ct.title)+')':''} — ${escHtml(ct.email)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--text-3)">CC (OPTIONAL)</div>
+            <button onclick="document.querySelectorAll('#email-cc-contacts option').forEach(o=>o.selected=false)"
+              class="btn btn-ghost btn-sm">CLEAR</button>
+          </div>
+          <select id="email-cc-contacts" multiple class="field-select"
+            style="font-size:12px;height:${Math.min(contacts.length*22+8,80)}px;padding:4px">
+            ${contacts.map(ct => `<option value="${escHtml(ct.email)}">${escHtml(ct.name)}${ct.title?' ('+escHtml(ct.title)+')':''} — ${escHtml(ct.email)}</option>`).join('')}
+          </select>
+          <div style="font-size:10px;color:var(--text-3);margin-top:3px">Hold Ctrl/Cmd to select multiple</div>
+        </div>
+      </div>` : `
+      <div style="font-size:11px;color:var(--orange);padding:8px 12px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:var(--r)">
+        ⚠ No email contacts on file for this account
+      </div>`}
 
       <!-- Research context / custom prompt -->
-      <div style="margin-bottom:12px">
+      <div>
         <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:5px">
-          TELL AI WHAT TO FOCUS ON (optional — paste research, mention specific parts, events, etc.)
+          TELL AI WHAT TO FOCUS ON (optional)
         </div>
-        <textarea id="email-custom-prompt" rows="3"
-          class="field-input field-textarea"
-          placeholder="e.g. They have 3 plants in Mexico and use our bearings for production lines. Ask about their Q3 expansion project. Reference invoice #174140..."
-          style="font-size:12px;resize:vertical;min-height:64px;margin-bottom:0"></textarea>
+        <textarea id="email-custom-prompt" rows="3" class="field-input field-textarea"
+          placeholder="e.g. They have 3 plants in Mexico. Ask about Q3 expansion. Reference last invoice #174140..."
+          style="font-size:12px;resize:vertical;min-height:60px"></textarea>
       </div>
 
+      <!-- Generate button -->
       <button class="email-gen-btn" id="email-gen-btn" onclick="generateEmail()">
         <div class="email-spinner" id="email-spinner"></div>
         ✦ GENERATE OUTREACH EMAIL WITH AI
       </button>
-      <div id="email-fields" style="display:none">
-        <div class="email-subject-wrap">
-          <div class="email-field-label">Subject</div>
-          <input class="email-subject-input" type="text" id="email-subject" placeholder="Subject line...">
+
+      <!-- Generated email -->
+      <div id="email-fields" style="display:none;display:flex;flex-direction:column;gap:8px">
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-bottom:4px">SUBJECT</div>
+          <input class="field-input" type="text" id="email-subject" placeholder="Subject line..." style="font-size:13px">
         </div>
-        <div class="email-field-label" style="margin-bottom:4px">Body</div>
-        <textarea class="email-body-textarea" id="email-body" placeholder="Email body will appear here..."></textarea>
-        <div class="email-actions">
-          <button class="email-copy-btn" onclick="copyEmail()">COPY TO CLIPBOARD</button>
-          <button class="email-open-btn" onclick="openInEmail()">OPEN IN EMAIL</button>
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-bottom:4px">BODY</div>
+          <textarea class="field-input field-textarea" id="email-body" rows="14"
+            style="font-size:12px;line-height:1.7;min-height:280px;resize:vertical"
+            placeholder="Email body will appear here..."></textarea>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="copyEmail()">COPY</button>
+          <button class="btn btn-primary" onclick="openInEmail()">OPEN IN EMAIL</button>
         </div>
       </div>
     </div>`;
@@ -2642,6 +2684,23 @@ function useResearchInEmail(accountName, question, answerSnippet) {
   }, 200);
 }
 
+function openContactFromAccount(accountName, contactName) {
+  switchView('contacts');
+  setTimeout(() => {
+    // Find and click the contact card
+    const cards = document.querySelectorAll('.contact-card');
+    for (const card of cards) {
+      if (card.dataset.account?.toLowerCase() === accountName.toLowerCase() &&
+          card.dataset.ctname === contactName) {
+        card.click();
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+    }
+  }, 400);
+}
+
+
 function openAccountFromContact(accountName) {
   // Switch to My Accounts view and select the account
   switchView('accounts');
@@ -2775,11 +2834,7 @@ async function refreshDashboard() {
     const d = normDate(r[gpDateCol] || r.INVOICE_DATE || '');
     const repVal = (r[gpSalesRepCol] || r.SALES_REP || '').trim();
     const repMatch = !repFilter || repVal === repFilter;
-    const custName = (r.CUSTOMER_NAME || '').toLowerCase();
-    const extPrice = parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE);
-    // Exclude internal cost adjustments: Deleted Inventory rows with no shipped revenue
-    const isInternalAdj = custName.includes('deleted inventory') && extPrice === 0;
-    return d >= from && d <= to && repMatch && !isInternalAdj;
+    return d >= from && d <= to && repMatch;
   });
 
   // Filter reqs — normalize dates which may be M/D/YYYY or YYYY-MM-DD
@@ -2988,10 +3043,7 @@ async function refreshDashboard() {
       const ra  = state.accounts.filter(a => a.rep === rep);
       const gpR = state.gpCache.filter(r => {
         const d = normDate(r[gpDateCol] || r.INVOICE_DATE || '');
-        const custName = (r.CUSTOMER_NAME || '').toLowerCase();
-        const extPrice = parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE);
-        const isInternalAdj = custName.includes('deleted inventory') && extPrice === 0;
-        return d >= from && d <= to && (r[gpSalesRepCol] || r.SALES_REP || '').trim() === rep && !isInternalAdj;
+        return d >= from && d <= to && (r[gpSalesRepCol] || r.SALES_REP || '').trim() === rep;
       });
       const ordR = state.ordersHistoryCache.length > 0
         ? state.ordersHistoryCache.filter(r => {
@@ -3132,7 +3184,13 @@ async function saveNote() {
 
   } catch(e) {
     console.error(e);
-    showToast('Error saving note: ' + e.message, 'error');
+    let msg = e.message || 'Unknown error';
+    if (msg.includes('401') || msg.includes('403') || msg.includes('expired')) {
+      msg = 'Session expired — please refresh the page (F5) and sign in again';
+    } else if (msg.includes('400')) {
+      msg = 'Save failed (400) — tab name or row may be out of sync. Try refreshing.';
+    }
+    showToast('Error saving note: ' + msg, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'SAVE & LOCK'; }
   }
@@ -3202,10 +3260,16 @@ async function generateEmail() {
       .map(([y, v]) => `${y}: $${formatNum(v)}`)
       .join(', ');
 
+    // Get selected contact for TO
+    const toEmail = document.getElementById('email-to-contact')?.value || acc.contactEmail || '';
+    const toContact = (state.contactsCache[acc.name.trim()]||[]).find(ct => ct.email === toEmail);
+    const contactFirstName = toContact?.name?.trim().split(' ')[0] || acc.contactName?.trim().split(' ')[0] || '';
+    const contactTitle = toContact?.title || acc.contactTitle || '';
+
     const prompt = `You are writing a professional sales outreach email for ${acc.rep} at Intransit Technologies, an industrial parts and electronics distributor serving manufacturing companies in Mexico and the US.
 
 Account: ${acc.name}
-Contact: ${acc.contactName ? acc.contactName.trim().split(' ')[0] : ''}${acc.contactTitle ? ' (' + acc.contactTitle + ')' : ''}
+Contact: ${contactFirstName}${contactTitle ? ' (' + contactTitle + ')' : ''}
 Account status: ${acc.status}
 Days since last order: ${acc.daysInactive}
 Last order date: ${acc.lastSaleDate || 'unknown'}
@@ -3276,11 +3340,14 @@ function copyEmail() {
 }
 
 function openInEmail() {
-  const acc     = state.selectedAccount;
+  const toSel  = document.getElementById('email-to-contact');
+  const ccSel  = document.getElementById('email-cc-contacts');
+  const to     = toSel?.value || state.selectedAccount?.contactEmail || '';
+  const ccList = ccSel ? [...ccSel.selectedOptions].map(o=>o.value).filter(v=>v!==to) : [];
   const subject = encodeURIComponent(document.getElementById('email-subject')?.value || '');
   const body    = encodeURIComponent(document.getElementById('email-body')?.value    || '');
-  const to      = acc?.contactEmail ? encodeURIComponent(acc.contactEmail) : '';
-  window.open(`mailto:${to}?subject=${subject}&body=${body}`);
+  const cc      = ccList.length ? '&cc='+encodeURIComponent(ccList.join(',')) : '';
+  window.open(`mailto:${encodeURIComponent(to)}?subject=${subject}${cc}&body=${body}`);
 }
 
 // ══════════════════════════════════════════════════════════

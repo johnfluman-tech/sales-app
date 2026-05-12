@@ -1952,13 +1952,13 @@ function loadGapi() {
 
 async function initGapiClient() {
   try {
-    // Load gapi client
     await new Promise((resolve, reject) => {
       gapi.load('client', { callback: resolve, onerror: reject });
     });
     await gapi.client.init({});
 
-    // Use Google Identity Services token client (popup, no redirect needed)
+    const hasConsented = localStorage.getItem('it_consented') === 'true';
+
     const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CONFIG.CLIENT_ID,
       scope: CONFIG.SCOPES,
@@ -1966,16 +1966,24 @@ async function initGapiClient() {
       hosted_domain: 'intransittech.com',
       callback: (tokenResponse) => {
         if (tokenResponse.error) {
-          showToast('Sign-in error: ' + tokenResponse.error, 'error');
+          // If user closed the popup, show a retry message
+          if (tokenResponse.error === 'access_denied' || tokenResponse.error === 'popup_closed_by_user') {
+            showToast('Sign-in cancelled — click Sign In to try again', 'error');
+          } else {
+            showToast('Sign-in error: ' + tokenResponse.error, 'error');
+          }
           return;
         }
         state.accessToken = tokenResponse.access_token;
         localStorage.setItem('it_token', state.accessToken);
         localStorage.setItem('it_token_time', Date.now().toString());
+        localStorage.setItem('it_consented', 'true');
         completeLogin();
       },
     });
-    tokenClient.requestAccessToken({ prompt: '' });
+
+    // Use 'consent' prompt first time, then '' for repeat logins
+    tokenClient.requestAccessToken({ prompt: hasConsented ? '' : 'consent' });
   } catch(e) {
     console.error('Auth error:', e);
     showToast('Sign-in error: ' + (e.error || e.message || JSON.stringify(e)), 'error');

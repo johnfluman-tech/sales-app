@@ -206,6 +206,14 @@ body::before {
 .content { flex: 1; overflow: hidden; display: flex; min-height: 0; }
 
 /* ── ACCOUNT LIST ──────────────────────── */
+.help-btn {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--blue-b); border: none; color: #fff;
+  font-family: var(--mono); font-size: 14px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: background 0.15s; margin-left: auto;
+}
+.help-btn:hover { background: var(--blue); }
 .sort-btn {
   background: transparent; border: 1px solid var(--border); color: var(--text-3);
   font-family: var(--mono); font-size: 9px; padding: 3px 8px; cursor: pointer;
@@ -705,7 +713,7 @@ body::before {
     <div class="login-logo">Intransit Technologies</div>
     <div class="login-title">Sales Intelligence</div>
     <div class="login-divider"></div>
-    <div class="login-sub">Sign in with your @intransittech.com account to access your account dashboard.</div>
+    <div class="login-sub"><span id="login-sub-text">Sign in with your @intransittech.com account to access your account dashboard.</span></div>
     <div id="g_id_onload"
          data-client_id="379521778420-8gjfdn4ea5knllkdvd675klu80tcl8jb.apps.googleusercontent.com"
          data-callback="handleGoogleCredential"
@@ -728,9 +736,15 @@ body::before {
 <div id="app">
   <!-- SIDEBAR -->
   <div class="sidebar">
-    <div class="sidebar-header">
+    <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
       <div class="sidebar-title">Sales Intelligence</div>
+      <button id="lang-toggle" onclick="toggleLanguage()"
+        style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
+        onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
+        onmouseout="this.style.borderColor='rgba(255,255,255,0.2)';this.style.color='rgba(255,255,255,0.7)'">
+        🌐 ES
+      </button>
     </div>
     <div class="sidebar-user">
       <div class="sidebar-user-name" id="sidebar-user-name">—</div>
@@ -738,7 +752,7 @@ body::before {
     </div>
     <div class="sidebar-nav">
       <div class="nav-section-label">Intelligence</div>
-      <div class="nav-item active" data-view="accounts" onclick="switchView('accounts')">
+      <div class="nav-item active" data-view="accounts" id="nav-accounts" onclick="switchView('accounts')">
         <div class="nav-item-inner">
           <span class="nav-icon">◈</span> My Accounts
           <span class="nav-badge" id="badge-accounts">—</span>
@@ -750,31 +764,31 @@ body::before {
           <span class="nav-badge orange" id="badge-followup">—</span>
         </div>
       </div>
-      <div class="nav-item" id="nav-dashboard" data-view="dashboard" onclick="switchView('dashboard')">
+      <div class="nav-item" id="nav-dashboard" data-view="dashboard" id="nav-dashboard" onclick="switchView('dashboard')">
         <div class="nav-item-inner">
           <span class="nav-icon">▦</span> Dashboard
         </div>
       </div>
       <div class="nav-section-label">Workflow</div>
-      <div class="nav-item" id="nav-collections" data-view="collections" onclick="switchView('collections')">
+      <div class="nav-item" id="nav-collections" data-view="collections" id="nav-collections" onclick="switchView('collections')">
         <div class="nav-item-inner">
           <span class="nav-icon">$</span> Collections
           <span class="nav-badge red" id="badge-collections">—</span>
         </div>
       </div>
-      <div class="nav-item" id="nav-contacts" data-view="contacts" onclick="switchView('contacts')">
+      <div class="nav-item" id="nav-contacts" data-view="contacts" id="nav-contacts" onclick="switchView('contacts')">
         <div class="nav-item-inner">
           <span class="nav-icon">◉</span> Contacts
           <span class="nav-badge blue" id="badge-contacts">—</span>
         </div>
       </div>
-      <div class="nav-item" id="nav-attack" data-view="attack" onclick="switchView('attack')">
+      <div class="nav-item" id="nav-attack" data-view="attack" id="nav-attack" onclick="switchView('attack')">
         <div class="nav-item-inner">
           <span class="nav-icon">⊹</span> Attack Plan
         </div>
       </div>
       <div class="nav-section-label">System</div>
-      <div class="nav-item" id="nav-settings" data-view="settings" onclick="switchView('settings')">
+      <div class="nav-item" id="nav-settings" data-view="settings" id="nav-settings" onclick="switchView('settings')">
         <div class="nav-item-inner">
           <span class="nav-icon">◧</span> Settings
         </div>
@@ -813,10 +827,80 @@ body::before {
       <button class="filter-btn active" id="filter-active" onclick="setFilter('active')">ACTIVE</button>
       <button class="filter-btn" id="filter-inactive-btn" onclick="setFilter('inactive')">INACTIVE</button>
       <button class="filter-btn" id="filter-declining" onclick="setFilter('declining')">DECLINING</button>
+      <button class="help-btn" onclick="showHelp()" title="Help &amp; AI Assistant" style="margin-left:auto">
+        <span style="font-size:15px">?</span>
+      </button>
     </div>
 
     <div class="content" id="main-content">
       <!-- Account list + detail panel injected here -->
+    </div>
+  </div>
+</div>
+
+<!-- NDA MODAL -->
+<div id="nda-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:10001;align-items:center;justify-content:center">
+  <div style="background:var(--s1);border:1px solid var(--border-hi);border-top:4px solid var(--gold);border-radius:var(--r2);width:580px;max-height:85vh;overflow-y:auto;padding:32px 36px;box-shadow:0 24px 64px rgba(0,0,0,0.8)">
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="font-size:28px;margin-bottom:8px">🔒</div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px" id="nda-title">Confidentiality Agreement</div>
+      <div style="font-size:12px;color:var(--text-3);font-family:var(--mono)" id="nda-subtitle">Intransit Technologies Corp.</div>
+    </div>
+    <div id="nda-body" style="font-size:12px;line-height:1.8;color:var(--text-2);margin-bottom:24px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:20px 24px"></div>
+    <div style="display:flex;gap:12px;justify-content:center">
+      <button id="nda-decline-btn" onclick="declineNDA()"
+        style="padding:10px 24px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:11px;letter-spacing:0.1em;cursor:pointer;border-radius:var(--r)">
+      </button>
+      <button id="nda-accept-btn" onclick="acceptNDA()"
+        style="padding:10px 32px;background:var(--gold);border:none;color:#000;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.1em;cursor:pointer;border-radius:var(--r)">
+      </button>
+    </div>
+    <div id="nda-both-lang" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;line-height:1.7;color:var(--text-3)"></div>
+  </div>
+</div>
+
+<!-- HELP MODAL -->
+<div id="help-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:flex-end;justify-content:flex-end;padding:16px">
+  <div style="background:var(--s1);border:1px solid var(--border-hi);border-radius:var(--r2);width:420px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.7)">
+    <!-- Header -->
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;color:var(--blue-b);margin-bottom:3px">HELP &amp; AI ASSISTANT</div>
+        <div style="font-size:15px;font-weight:700" id="help-view-title">How to use this view</div>
+      </div>
+      <button onclick="document.getElementById('help-modal').style.display='none'"
+        style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:4px 12px;cursor:pointer;border-radius:var(--r)">CLOSE</button>
+    </div>
+
+    <!-- Tabs: Guide | Ask AI -->
+    <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0">
+      <button id="help-tab-guide" onclick="showHelpTab('guide')"
+        style="flex:1;padding:10px;background:var(--blue-b);color:#fff;border:none;font-family:var(--mono);font-size:10px;letter-spacing:0.1em;cursor:pointer">
+        📖 GUIDE
+      </button>
+      <button id="help-tab-ai" onclick="showHelpTab('ai')"
+        style="flex:1;padding:10px;background:transparent;color:var(--text-3);border:none;font-family:var(--mono);font-size:10px;letter-spacing:0.1em;cursor:pointer;border-left:1px solid var(--border)">
+        ✦ ASK AI
+      </button>
+    </div>
+
+    <!-- Guide content -->
+    <div id="help-guide-content" style="flex:1;overflow-y:auto;padding:16px 18px;font-size:13px;line-height:1.7">
+      <!-- Injected per view -->
+    </div>
+
+    <!-- AI chat content -->
+    <div id="help-ai-content" style="display:none;flex:1;display:none;flex-direction:column;overflow:hidden">
+      <div id="help-chat-history" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:8px;min-height:200px;max-height:400px">
+        <div style="font-size:12px;color:var(--text-3);padding:16px 0;text-align:center">Ask me anything about how to use this app.</div>
+      </div>
+      <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
+        <input type="text" id="help-chat-input"
+          placeholder="e.g. How do I save a note? What does Stalled mean?"
+          style="flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;padding:8px 12px;outline:none;border-radius:var(--r)"
+          onkeydown="if(event.key==='Enter')sendHelpMessage()">
+        <button onclick="sendHelpMessage()" class="btn btn-gold btn-sm" style="white-space:nowrap">ASK</button>
+      </div>
     </div>
   </div>
 </div>
@@ -859,7 +943,7 @@ const CONFIG = {
 // ══════════════════════════════════════════════════════
 const SECURITY = {
   SESSION_TIMEOUT_MS: 30 * 60 * 1000,   // 30 min inactivity
-  MAX_ACCOUNTS_PER_SESSION: 60,           // flag if user views > 60 accounts
+  MAX_ACCOUNTS_PER_SESSION: 200,          // flag if user views > 200 accounts (admin exempt)
   activityLog: [],
   accountsViewed: new Set(),
   lastActivity: Date.now(),
@@ -1494,7 +1578,236 @@ function renderHistoryTab(acc) {
   return invHtml + reqHtml + quoteHtml;
 }
 
+// ══════════════════════════════════════════════════════════
+//  BILINGUAL SYSTEM (EN / ES)
+// ══════════════════════════════════════════════════════════
+
+const LANG = {
+  en: {
+    // Nav
+    myAccounts: 'My Accounts', followups: 'Follow-ups Due', dashboard: 'Dashboard',
+    collections: 'Collections', contacts: 'Contacts', attackPlan: 'Attack Plan',
+    settings: 'Settings', signOut: 'SIGN OUT', removalRequests: 'Removal Requests',
+    viewAsRep: 'VIEW AS REP', intelligence: 'INTELLIGENCE', workflow: 'WORKFLOW', system: 'SYSTEM',
+    // Topbar filters
+    all: 'ALL', active: 'ACTIVE', inactive: 'INACTIVE', declining: 'DECLINING',
+    searchPlaceholder: 'Search accounts...',
+    // Account list sort
+    sortName: 'NAME', sortLastSale: 'LAST SALE', sortValue: 'VALUE',
+    sortInactive: 'INACTIVE', sortStatus: 'STATUS',
+    // Account detail tabs
+    tabNotes: 'Notes', tabContacts: 'Contacts', tabHistory: 'History',
+    tabOutreach: 'Outreach', tabCollections: 'Collections', tabResearch: '✦ Research', tabAccount: 'Account',
+    // Notes
+    addNote: 'Add Note', saveAndLock: 'SAVE & LOCK', noNotes: 'NO NOTES YET',
+    followUpDate: 'Follow-up Date', status: 'Status',
+    // Buttons
+    saveNote: 'SAVE NOTE', generateEmail: '✦ GENERATE OUTREACH EMAIL WITH AI',
+    copy: 'COPY', openInEmail: 'OPEN IN EMAIL', analyzeRecommend: '✦ ANALYZE ACCOUNT & RECOMMEND NEXT STEPS',
+    askAI: 'ASK', ask: '✦ ASK', gentle: '✦ GENTLE', firm: '✦ FIRM', final: '✦ FINAL',
+    savePlan: 'SAVE PLAN', reset: 'RESET',
+    // Dashboard
+    totalShipped: 'Total Shipped', ordersBooked: 'Orders Booked', grossProfit: 'Gross Profit',
+    gpMargin: 'GP Margin', rfqs: 'RFQs', accounts: 'Accounts', inactiveAccounts: 'Inactive',
+    decliningAccounts: 'Declining', followupsDue: 'Follow-ups Due',
+    // Loading
+    loading: 'LOADING...', buildingView: 'BUILDING VIEW...',
+    // NDA
+    ndaTitle: 'Confidentiality Agreement',
+    ndaSubtitle: 'Intransit Technologies Corp.',
+    ndaAccept: 'I ACCEPT',
+    ndaDecline: 'DECLINE',
+    ndaBody: `This application and the data contained within are the exclusive proprietary property of Intransit Technologies Corp. ("Intransit").
+
+By clicking "I ACCEPT" you agree to the following:
+
+1. CONFIDENTIALITY — All information accessed through this application, including customer data, revenue figures, contact information, and business intelligence, is strictly confidential. You may not disclose, copy, transmit, or share this information with any person or entity outside of Intransit Technologies Corp.
+
+2. AUTHORIZED USE ONLY — Access is granted solely for legitimate business purposes in the performance of your duties at Intransit Technologies. Any other use is strictly prohibited.
+
+3. NO DISTRIBUTION — You may not export, print, screenshot, or distribute any data from this application without explicit written authorization from management.
+
+4. MONITORING — All sessions are logged, monitored, and subject to audit. Unauthorized access or misuse will result in immediate termination of access and may result in disciplinary action, termination of employment, and/or legal proceedings.
+
+5. ACKNOWLEDGMENT — By accepting, you confirm that you understand these obligations and agree to comply with all applicable confidentiality policies of Intransit Technologies Corp.`,
+  },
+  es: {
+    // Nav
+    myAccounts: 'Mis Cuentas', followups: 'Seguimientos Pendientes', dashboard: 'Panel',
+    collections: 'Cobranza', contacts: 'Contactos', attackPlan: 'Plan de Ataque',
+    settings: 'Configuración', signOut: 'CERRAR SESIÓN', removalRequests: 'Solicitudes de Baja',
+    viewAsRep: 'VER COMO REP', intelligence: 'INTELIGENCIA', workflow: 'FLUJO DE TRABAJO', system: 'SISTEMA',
+    // Topbar filters
+    all: 'TODOS', active: 'ACTIVOS', inactive: 'INACTIVOS', declining: 'EN DECLINE',
+    searchPlaceholder: 'Buscar cuentas...',
+    // Account list sort
+    sortName: 'NOMBRE', sortLastSale: 'ÚLT. VENTA', sortValue: 'VALOR',
+    sortInactive: 'INACTIVO', sortStatus: 'ESTADO',
+    // Account detail tabs
+    tabNotes: 'Notas', tabContacts: 'Contactos', tabHistory: 'Historial',
+    tabOutreach: 'Correo', tabCollections: 'Cobranza', tabResearch: '✦ Investigar', tabAccount: 'Cuenta',
+    // Notes
+    addNote: 'Agregar Nota', saveAndLock: 'GUARDAR Y BLOQUEAR', noNotes: 'SIN NOTAS AÚN',
+    followUpDate: 'Fecha de Seguimiento', status: 'Estado',
+    // Buttons
+    saveNote: 'GUARDAR NOTA', generateEmail: '✦ GENERAR CORREO CON IA',
+    copy: 'COPIAR', openInEmail: 'ABRIR EN CORREO', analyzeRecommend: '✦ ANALIZAR CUENTA Y RECOMENDAR',
+    askAI: 'PREGUNTAR', ask: '✦ PREGUNTAR', gentle: '✦ AMABLE', firm: '✦ FIRME', final: '✦ AVISO FINAL',
+    savePlan: 'GUARDAR PLAN', reset: 'REINICIAR',
+    // Dashboard
+    totalShipped: 'Total Facturado', ordersBooked: 'Órdenes Reservadas', grossProfit: 'Utilidad Bruta',
+    gpMargin: 'Margen Bruto', rfqs: 'Cotizaciones', accounts: 'Cuentas', inactiveAccounts: 'Inactivas',
+    decliningAccounts: 'En Declive', followupsDue: 'Seguimientos Vencidos',
+    // Loading
+    loading: 'CARGANDO...', buildingView: 'CONSTRUYENDO VISTA...',
+    // NDA
+    ndaTitle: 'Acuerdo de Confidencialidad',
+    ndaSubtitle: 'Intransit Technologies Corp.',
+    ndaAccept: 'ACEPTO',
+    ndaDecline: 'RECHAZAR',
+    ndaBody: `Esta aplicación y los datos contenidos en ella son propiedad exclusiva de Intransit Technologies Corp. ("Intransit").
+
+Al hacer clic en "ACEPTO" usted acepta lo siguiente:
+
+1. CONFIDENCIALIDAD — Toda la información accesible a través de esta aplicación, incluyendo datos de clientes, cifras de ingresos, información de contacto e inteligencia comercial, es estrictamente confidencial. No podrá divulgar, copiar, transmitir ni compartir esta información con ninguna persona o entidad fuera de Intransit Technologies Corp.
+
+2. USO AUTORIZADO ÚNICAMENTE — El acceso se otorga únicamente para fines comerciales legítimos en el desempeño de sus funciones en Intransit Technologies. Cualquier otro uso está estrictamente prohibido.
+
+3. SIN DISTRIBUCIÓN — No podrá exportar, imprimir, capturar pantalla ni distribuir ningún dato de esta aplicación sin autorización escrita y explícita de la dirección.
+
+4. MONITOREO — Todas las sesiones son registradas, monitoreadas y sujetas a auditoría. El acceso no autorizado o el uso indebido resultará en la cancelación inmediata del acceso y podrá resultar en medidas disciplinarias, terminación del empleo y/o procedimientos legales.
+
+5. RECONOCIMIENTO — Al aceptar, confirma que comprende estas obligaciones y acepta cumplir con todas las políticas de confidencialidad aplicables de Intransit Technologies Corp.`,
+  }
+};
+
+// Current language — persisted in localStorage
+let currentLang = localStorage.getItem('it_lang') || 'en';
+
+function t(key) {
+  return LANG[currentLang]?.[key] || LANG.en[key] || key;
+}
+
+function toggleLanguage() {
+  currentLang = currentLang === 'en' ? 'es' : 'en';
+  localStorage.setItem('it_lang', currentLang);
+  applyLanguage();
+  showToast(currentLang === 'es' ? 'Idioma: Español 🇲🇽' : 'Language: English 🇺🇸', 'success');
+}
+
+function applyLanguage() {
+  const btn = document.getElementById('lang-toggle');
+  if (btn) btn.textContent = currentLang === 'en' ? '🌐 ES' : '🌐 EN';
+
+  // Nav labels
+  const navMap = {
+    'nav-accounts':   'myAccounts',
+    'nav-followup':   'followups',
+    'nav-dashboard':  'dashboard',
+    'nav-collections':'collections',
+    'nav-contacts':   'contacts',
+    'nav-attack':     'attackPlan',
+    'nav-settings':   'settings',
+    'nav-removals':   'removalRequests',
+  };
+  Object.entries(navMap).forEach(([id, key]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = t(key);
+  });
+
+  // Sign out
+  const signout = document.querySelector('[onclick="handleSignout()"]');
+  if (signout) signout.textContent = t('signOut');
+
+  // Section labels
+  document.querySelectorAll('.nav-section-label').forEach(el => {
+    const txt = el.textContent.trim();
+    if (txt === 'INTELLIGENCE' || txt === 'INTELIGENCIA') el.textContent = t('intelligence');
+    if (txt === 'WORKFLOW' || txt === 'FLUJO DE TRABAJO') el.textContent = t('workflow');
+    if (txt === 'SYSTEM' || txt === 'SISTEMA') el.textContent = t('system');
+  });
+
+  // Topbar filter buttons
+  const filterMap = {
+    'filter-all': 'all', 'filter-active': 'active',
+    'filter-inactive-btn': 'inactive', 'filter-declining': 'declining'
+  };
+  Object.entries(filterMap).forEach(([id, key]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = t(key);
+  });
+
+  // Search placeholder
+  const search = document.getElementById('search-input');
+  if (search) search.placeholder = t('searchPlaceholder');
+
+  // Sort buttons
+  const sortMap = { 'sort-name': 'sortName', 'sort-lastSale': 'sortLastSale',
+    'sort-total': 'sortValue', 'sort-daysInactive': 'sortInactive', 'sort-status': 'sortStatus' };
+  Object.entries(sortMap).forEach(([id, key]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = t(key);
+  });
+
+  // View as rep label
+  const viewAsLabel = document.querySelector('[for="view-as-rep"], .view-as-label');
+  if (viewAsLabel) viewAsLabel.textContent = t('viewAsRep');
+
+  // Re-render current view to pick up translated tab labels etc.
+  if (state.selectedAccount) renderDetail(state.selectedAccount);
+}
+
+// ── NDA MODAL ─────────────────────────────────────────────
+function showNDA() {
+  const modal = document.getElementById('nda-modal');
+  if (!modal) return;
+
+  const lang = currentLang;
+  document.getElementById('nda-title').textContent = t('ndaTitle');
+  document.getElementById('nda-subtitle').textContent = t('ndaSubtitle');
+  document.getElementById('nda-accept-btn').textContent = t('ndaAccept');
+  document.getElementById('nda-decline-btn').textContent = t('ndaDecline');
+
+  // Body with formatted paragraphs
+  const body = t('ndaBody');
+  document.getElementById('nda-body').innerHTML = body.split('\n\n').map(p =>
+    `<p style="margin:0 0 12px 0">${escHtml(p).replace(/\n/g,'<br>')}</p>`
+  ).join('');
+
+  // Show both languages below in smaller text
+  const otherLang = lang === 'en' ? 'es' : 'en';
+  const otherBody = LANG[otherLang].ndaBody;
+  const bothEl = document.getElementById('nda-both-lang');
+  bothEl.innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:8px">
+      ${lang === 'en' ? 'VERSIÓN EN ESPAÑOL' : 'ENGLISH VERSION'}
+    </div>
+    ${otherBody.split('\n\n').map(p =>
+      `<p style="margin:0 0 8px 0;color:var(--text-3)">${escHtml(p).replace(/\n/g,'<br>')}</p>`
+    ).join('')}`;
+
+  modal.style.display = 'flex';
+}
+
+function acceptNDA() {
+  document.getElementById('nda-modal').style.display = 'none';
+  sessionStorage.setItem('it_nda_accepted', '1');
+}
+
+function declineNDA() {
+  handleSignout();
+  document.getElementById('nda-modal').style.display = 'none';
+  showToast(currentLang === 'es' ? 'Debe aceptar para continuar.' : 'You must accept to continue.', 'error');
+}
+
+
 function initSecurity() {
+  // Show NDA if not yet accepted this session
+  if (!sessionStorage.getItem('it_nda_accepted')) {
+    showNDA();
+  }
+  // Apply saved language
+  applyLanguage();
   // Set watermark with user email + date
   updateWatermark();
 
@@ -1556,8 +1869,8 @@ function trackAccountView(acc) {
   SECURITY.accountsViewed.add(acc.name + '|' + acc.rep);
   logSecurityEvent('VIEW_ACCOUNT', acc.name);
 
-  // Flag unusual bulk viewing
-  if (SECURITY.accountsViewed.size > SECURITY.MAX_ACCOUNTS_PER_SESSION) {
+  // Flag unusual bulk viewing — admin exempt
+  if (!state.isAdmin && SECURITY.accountsViewed.size > SECURITY.MAX_ACCOUNTS_PER_SESSION) {
     document.getElementById('activity-warning').classList.add('show');
     logSecurityEvent('HIGH_VOLUME_WARNING', `${SECURITY.accountsViewed.size} accounts viewed this session`);
   }
@@ -2230,7 +2543,7 @@ function renderDetail(acc) {
   }).join('');
 
   const tabs = ['notes', 'contacts', 'history', 'email', 'collections', 'research', 'info'];
-  const tabLabels = { notes: 'Notes', contacts: 'Contacts', history: 'History', email: 'Outreach', collections: 'Collections', research: '✦ Research', info: 'Account' };
+  const tabLabels = { notes: t('tabNotes'), contacts: t('tabContacts'), history: t('tabHistory'), email: t('tabOutreach'), collections: t('tabCollections'), research: t('tabResearch'), info: t('tabAccount') };
 
   const hasRemoveRequest = acc.removeFlag && acc.removeFlag.toUpperCase() !== 'YES' && acc.removeFlag.trim() !== '';
   const johnCanApprove = state.isAdmin && hasRemoveRequest;
@@ -2545,7 +2858,7 @@ function renderResearchTab(acc) {
         <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:8px">SUGGESTED QUESTIONS — click to ask</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
           ${suggestedQs.map(q => `
-            <button onclick="document.getElementById('research-input-${safeId}').value=${JSON.stringify(q)};askResearchQuestion('${escHtml(acc.name)}','${safeId}')"
+            <button onclick="fillResearchQuestion('research-input-${safeId}',this.dataset.q);askResearchQuestion('${escHtml(acc.name)}','${safeId}')" data-q="${escHtml(q)}"
               style="background:var(--s2);border:1px solid var(--border);color:var(--text-2);font-size:11px;padding:5px 10px;cursor:pointer;border-radius:var(--r);text-align:left;transition:border-color 0.15s"
               onmouseover="this.style.borderColor='var(--blue-b)'" onmouseout="this.style.borderColor='var(--border)'">
               ${escHtml(q)}
@@ -2579,6 +2892,12 @@ function renderResearchTab(acc) {
 
     </div>`;
 }
+
+function fillResearchQuestion(inputId, question) {
+  const el = document.getElementById(inputId);
+  if (el) { el.value = question; el.focus(); }
+}
+
 
 async function askResearchQuestion(accountName, safeId) {
   const input   = document.getElementById('research-input-'+safeId);
@@ -2760,6 +3079,153 @@ function openAccountFromContact(accountName) {
       });
     }
   }, 150);
+}
+
+
+async function renderRemovalsView() {
+  const el = document.getElementById('main-content');
+  el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div class="loading-spinner">LOADING REMOVAL REQUESTS</div></div>';
+
+  // Find all accounts with REMOVE_FLAG set
+  const pending = state.accounts.filter(a =>
+    a.removeFlag && a.removeFlag.trim() !== '' &&
+    a.removeFlag.toUpperCase() !== 'YES' &&
+    a.johnApproval?.toUpperCase() !== 'YES'
+  );
+
+  // Also check _LOG for transfer requests
+  let transferReqs = [];
+  try {
+    const logRows = await sheetsGet("'_LOG'!A1:E1000");
+    transferReqs = logRows.filter((r,i) => i > 0 && (r[2]||'') === 'TRANSFER_REQUEST')
+      .slice().reverse().slice(0,20);
+  } catch(e) {}
+
+  el.innerHTML = `
+    <div style="flex:1;overflow-y:auto;padding:24px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.18em;color:var(--text-3);margin-bottom:20px">ADMIN — PENDING REQUESTS</div>
+
+      <!-- Removal Requests -->
+      <div style="margin-bottom:32px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div>
+            <div style="font-size:18px;font-weight:700;margin-bottom:2px">🗑 Removal Requests</div>
+            <div style="font-size:12px;color:var(--text-3)">${pending.length} account${pending.length!==1?'s':''} requesting removal</div>
+          </div>
+        </div>
+        ${pending.length ? `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${pending.map(acc => `
+            <div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--red);border-radius:var(--r2);padding:14px 18px;display:flex;align-items:center;gap:16px">
+              <div style="flex:1">
+                <div style="font-size:14px;font-weight:600;margin-bottom:3px">
+                  <span style="cursor:pointer;color:var(--blue-b);text-decoration:underline"
+                    onclick="switchView('accounts');setTimeout(()=>{const a=state.accounts.find(x=>x.name==='${escHtml(acc.name)}');if(a){selectAccount(a);}},200)">
+                    ${escHtml(acc.name)}
+                  </span>
+                </div>
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">Rep: ${escHtml(acc.rep)} · Status: ${escHtml((acc.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim())}</div>
+                <div style="font-size:12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px;color:var(--text-2)">
+                  <span style="font-family:var(--mono);font-size:9px;color:var(--red);letter-spacing:0.1em;display:block;margin-bottom:3px">REP REQUEST:</span>
+                  ${escHtml(acc.removeFlag)}
+                </div>
+                ${acc.repNote ? `<div style="font-size:11px;color:var(--text-3);margin-top:5px">Rep note: ${escHtml(acc.repNote.slice(0,100))}</div>` : ''}
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0">
+                <div style="text-align:right;font-family:var(--mono);font-size:12px;color:var(--text-2)">$${formatNum(acc.total||0)}</div>
+                <button onclick="approveRemovalDirect('${escHtml(acc.name)}')" class="btn btn-danger" style="white-space:nowrap">
+                  ✓ APPROVE REMOVAL
+                </button>
+                <button onclick="denyRemoval('${escHtml(acc.name)}')" class="btn btn-ghost btn-sm" style="white-space:nowrap">
+                  ✗ DENY / KEEP
+                </button>
+              </div>
+            </div>`).join('')}
+        </div>` : `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:32px;text-align:center;color:var(--text-3)">
+          <div style="font-size:24px;margin-bottom:8px">✓</div>
+          <div style="font-family:var(--mono);font-size:11px">No pending removal requests</div>
+        </div>`}
+      </div>
+
+      <!-- Transfer Requests -->
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div>
+            <div style="font-size:18px;font-weight:700;margin-bottom:2px">⇄ Territory Transfer Requests</div>
+            <div style="font-size:12px;color:var(--text-3)">${transferReqs.length} recent request${transferReqs.length!==1?'s':''}</div>
+          </div>
+        </div>
+        ${transferReqs.length ? `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${transferReqs.map(r => {
+            const ts = r[0] ? new Date(r[0]).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
+            const msg = r[3] || '';
+            const accMatch = msg.match(/requests: (.+?)\. Note:/);
+            const noteMatch = msg.match(/Note: (.+)$/);
+            const accName = accMatch?.[1] || msg;
+            const note = noteMatch?.[1] || '';
+            const rep = (r[1]||'').replace('@intransittech.com','');
+            return `<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:14px 18px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div>
+                  <div style="font-size:14px;font-weight:600;margin-bottom:3px">${escHtml(accName)}</div>
+                  <div style="font-size:11px;color:var(--blue-b);margin-bottom:4px">Requested by: ${escHtml(rep)}</div>
+                  ${note&&note!=='none'?`<div style="font-size:12px;color:var(--text-3)">Note: ${escHtml(note)}</div>`:''}
+                </div>
+                <div style="font-family:var(--mono);font-size:10px;color:var(--text-3)">${escHtml(ts)}</div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>` : `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:32px;text-align:center;color:var(--text-3)">
+          <div style="font-size:24px;margin-bottom:8px">✓</div>
+          <div style="font-family:var(--mono);font-size:11px">No recent transfer requests</div>
+        </div>`}
+      </div>
+    </div>`;
+
+  // Update badge
+  const badge = document.getElementById('badge-removals');
+  if (badge) badge.textContent = pending.length || '';
+}
+
+async function approveRemovalDirect(accountName) {
+  if (!confirm(`Approve removal of "${accountName}"? This will exclude it from all future reports.`)) return;
+  const acc = state.accounts.find(a => a.name === accountName);
+  if (!acc) return;
+  try {
+    const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
+    const rows = await sheetsGet(range);
+    const row = rows[0] || [];
+    const newRow = [...row];
+    while (newRow.length < acc.headers.length) newRow.push('');
+    const iJohn = acc.headers.indexOf('JOHN_APPROVAL');
+    if (iJohn >= 0) newRow[iJohn] = 'YES';
+    await sheetsUpdate(range, [newRow]);
+    acc.johnApproval = 'YES';
+    showToast(`${accountName} approved for removal ✓`, 'success');
+    renderRemovalsView();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function denyRemoval(accountName) {
+  if (!confirm(`Deny removal request for "${accountName}" and clear the flag?`)) return;
+  const acc = state.accounts.find(a => a.name === accountName);
+  if (!acc) return;
+  try {
+    const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
+    const rows = await sheetsGet(range);
+    const row = rows[0] || [];
+    const newRow = [...row];
+    while (newRow.length < acc.headers.length) newRow.push('');
+    const iRemove = acc.headers.indexOf('REMOVE_FLAG');
+    if (iRemove >= 0) newRow[iRemove] = '';
+    await sheetsUpdate(range, [newRow]);
+    acc.removeFlag = '';
+    showToast(`Removal request denied for ${accountName} ✓`, 'success');
+    renderRemovalsView();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 
@@ -3582,7 +4048,15 @@ async function saveSignature() {
     let rows;
     try {
       const existing = await sheetsGet("'_SIGNATURES'!A1:D100");
-      rows = existing.length > 0 ? existing : [['REP','SIGNATURE_TEXT','LAST_UPDATED']];
+      // Validate that it looks like a real signatures sheet (first row has REP)
+      if (existing.length > 0 && existing[0].includes('REP')) {
+        rows = existing;
+      } else if (existing.length > 0) {
+        // Has data but wrong format - rebuild with header
+        rows = [['REP','SIGNATURE_TEXT','LAST_UPDATED'], ...existing.filter(r => r[0] && r[0] !== 'REP')];
+      } else {
+        rows = [['REP','SIGNATURE_TEXT','LAST_UPDATED']];
+      }
     } catch(e) {
       rows = [['REP','SIGNATURE_TEXT','LAST_UPDATED']];
     }
@@ -3597,11 +4071,14 @@ async function saveSignature() {
       rows[repIdx] = [rep, text, now];
     }
 
-    // Write back entire sheet - use column Z to be safe with range
-    const colCount = rows[0]?.length || 3;
-    const colLetter = ['A','B','C','D','E','F','G','H','I','J','K','L','M',
-                       'N','O','P','Q','R','S','T','U','V','W','X','Y','Z'][colCount-1] || 'D';
-    await sheetsUpdate("'_SIGNATURES'!A1:" + colLetter + rows.length, rows);
+    // Write back entire sheet using a fixed generous range
+    // Pad all rows to same length to avoid range mismatch
+    const maxCols = Math.max(...rows.map(r => r.length));
+    const paddedRows = rows.map(r => { const p=[...r]; while(p.length<maxCols) p.push(''); return p; });
+    // Use column letter based on actual columns
+    const colLetters='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const endCol = colLetters[Math.min(maxCols-1, 25)] || 'Z';
+    await sheetsUpdate("'_SIGNATURES'!A1:" + endCol + paddedRows.length, paddedRows);
 
     // Update local cache
     state.signaturesCache[rep] = text;
@@ -4772,6 +5249,9 @@ function updateBadges() {
   setB('badge-followup',    due || '0');
   setB('badge-collections', collectionsCount || '—');
   setB('badge-contacts',    contactsCount || '—');
+  // Removal requests badge
+  const pendingRemovals = accs.filter(a => a.removeFlag && a.removeFlag.trim() && a.removeFlag.toUpperCase() !== 'YES' && a.johnApproval?.toUpperCase() !== 'YES').length;
+  setB('badge-removals', pendingRemovals || '');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -5178,8 +5658,246 @@ async function apkResetDefault(rep) {
   renderAttackPlan();
 }
 
+// ══════════════════════════════════════════════════════════
+//  HELP SYSTEM
+// ══════════════════════════════════════════════════════════
+
+const HELP_GUIDES = {
+  accounts: {
+    title: 'My Accounts',
+    sections: [
+      { icon: '📋', heading: 'What you see', text: 'A list of all accounts assigned to you, with status, last sale date, and lifetime revenue. Click any account to open its detail panel on the right.' },
+      { icon: '🔍', heading: 'Filtering & Sorting', text: 'Use ACTIVE / INACTIVE / DECLINING buttons to filter. Use the SORT bar above the list to sort by Name, Last Sale, Value, Inactive days, or Status. The search box filters by account name.' },
+      { icon: '📝', heading: 'Saving a Note', text: 'Click an account → Notes tab → type in the Add Note box → choose a Status and Follow-up Date → click SAVE & LOCK. Notes are permanent and saved to Google Sheets.' },
+      { icon: '✦', heading: 'AI Research', text: 'Click the ✦ Research tab on any account to ask the AI anything about the company — locations, what they make, competitors, recent news. The AI uses web search for current info.' },
+      { icon: '✉', heading: 'Sending Email', text: 'Click Outreach tab → optionally type context in the box → click Generate. Then use OPEN IN EMAIL to launch your mail client with the email pre-filled.' },
+      { icon: '🎨', heading: 'Status Colors', text: 'RED = High Value Lost or Severe Decline · ORANGE = At Risk or Moderate Decline · GRAY = Long Dormant · YELLOW = Monitor · GREEN = Active' },
+    ]
+  },
+  followups: {
+    title: 'Follow-ups Due',
+    sections: [
+      { icon: '📅', heading: 'What this shows', text: 'All accounts where you set a follow-up date that is today or earlier. Use this as your daily call list.' },
+      { icon: '✅', heading: 'Clearing a follow-up', text: 'Click the account → Notes tab → save a new note with an updated follow-up date, or leave the date blank to clear it.' },
+      { icon: '💡', heading: 'Best practice', text: 'Every time you contact an account, log a note and set the next follow-up date. This keeps the list accurate and nothing falls through the cracks.' },
+    ]
+  },
+  dashboard: {
+    title: 'Dashboard',
+    sections: [
+      { icon: '📊', heading: 'KPI Cards', text: 'Shows Total Shipped (invoiced revenue), Orders Booked (open orders placed), Gross Profit $, and GP% for the selected date range.' },
+      { icon: '📅', heading: 'Date Ranges', text: 'MTD = current month · YTD = Jan 1 to today · Q1–Q4 = calendar quarters · CUSTOM = pick any range using the date fields.' },
+      { icon: '🔍', heading: 'Data Verification Table', text: 'The table below the KPIs shows every invoice row in the date range. Compare this to your CRM Performance Dashboard to verify the numbers match.' },
+      { icon: '⚠', heading: 'COST ADJ rows', text: 'Orange rows marked COST ADJ are Deleted Inventory entries — internal cost adjustments with no shipped revenue. They reduce GP just like they do in CRM.' },
+      { icon: '👥', heading: 'Rep Table (Admin)', text: 'When viewing as All Reps, a performance table shows each rep\'s shipped revenue, GP, and RFQ count for the period.' },
+    ]
+  },
+  collections: {
+    title: 'Collections',
+    sections: [
+      { icon: '💰', heading: 'What you see', text: 'All accounts with unpaid invoice balances. Sorted by balance size. RED = more than 30 days past due · ORANGE = past due but within 30 days.' },
+      { icon: '✉', heading: 'Sending a Collections Email', text: '1. Click an account · 2. Check/uncheck the invoices to include · 3. Verify the TO contact · 4. Choose GENTLE, FIRM, or FINAL — or type your own guidance and click CUSTOM · 5. Click OPEN IN EMAIL.' },
+      { icon: '📝', heading: 'Collections Notes', text: 'Use the note area to log call outcomes, payment promises, disputes. Set a Status (Contacted, Promised Payment, etc.) and promised date. Notes show in the contact page history too.' },
+      { icon: '🔒', heading: 'APP HOLD', text: 'Admin only. Places a visible hold badge on the account. Does not affect the CRM credit hold — this is an app-side flag to track internal holds.' },
+    ]
+  },
+  contacts: {
+    title: 'Contacts',
+    sections: [
+      { icon: '👤', heading: 'What you see', text: 'All contacts across your accounts. BUYER = purchasing contacts · AP = accounts payable / collections contacts. Click any contact to see their full detail.' },
+      { icon: '🔗', heading: 'Navigation', text: 'Click the account name under a contact to jump to that account. Click a contact name in the account Contacts tab to jump here.' },
+      { icon: '✉', heading: 'Emailing a Contact', text: 'Click a contact → scroll to AI Email section → type what you want (optional) → pick a type or click Generate → OPEN IN EMAIL launches your mail client.' },
+      { icon: '📝', heading: 'Contact Notes', text: 'Log calls, emails, and meetings per contact. These show in the note history alongside any collections notes for that account.' },
+      { icon: '✦', heading: 'AI Next Best Action', text: 'Click ANALYZE & RECOMMEND in the contact panel to get 3 specific AI-suggested next steps. Then ask follow-up questions in the chat box below.' },
+    ]
+  },
+  attack: {
+    title: 'Attack Plan',
+    sections: [
+      { icon: '⭐', heading: 'Three Zones', text: 'SOLID CORE (10 max) = your top accounts to protect and grow · ACTIVE PURSUE (10 max) = accounts you\'re actively working · OUTER RING (30 max) = accounts to keep warm.' },
+      { icon: '🖱', heading: 'Drag & Drop', text: 'Drag cards between zones. Drag from the POOL at the bottom to add accounts to your plan. Drag to the pool to remove them from active focus.' },
+      { icon: '💾', heading: 'Saving', text: 'Click SAVE PLAN to persist your arrangement to Google Sheets. Your plan survives app updates — it always loads your saved layout.' },
+      { icon: '⇄', heading: 'Transfer Requests', text: 'The right panel shows inactive accounts owned by other reps. Click one to request it from John. John sees all requests in the Removal Requests view.' },
+      { icon: '🔄', heading: 'Reset', text: 'Click RESET to clear your saved plan and rebuild it by revenue ranking. You\'ll be asked to confirm first.' },
+    ]
+  },
+  research: {
+    title: '✦ Research',
+    sections: [
+      { icon: '🔍', heading: 'What it does', text: 'Ask the AI anything about this account\'s company. It uses web search to find current information — locations, what they make, industry, news, competitors, company size.' },
+      { icon: '💡', heading: 'Suggested Questions', text: 'Click any suggested question to fill it in and send it automatically. Or type your own question in the box and press Enter or click ASK.' },
+      { icon: '✉', heading: 'Use in Email', text: 'After getting a research answer, click "USE IN OUTREACH EMAIL →" to send that context to the Outreach tab. The AI will write an email that references your research.' },
+      { icon: '🧠', heading: 'What the AI knows', text: 'The AI already knows this account\'s revenue history, top purchased parts, days inactive, contacts, and open RFQs. It combines that with web search results.' },
+    ]
+  },
+  settings: {
+    title: 'Settings',
+    sections: [
+      { icon: '✍', heading: 'Email Signatures', text: 'Set your signature here — it auto-appends to every AI-generated email (outreach and collections). Admin can set signatures for any rep.' },
+      { icon: '🔑', heading: 'API Key', text: 'The Anthropic API key enables all AI features. It\'s stored only in your browser (never sent to any server). Get yours at console.anthropic.com. Cost is very low — roughly $0.01–$0.05 per email.' },
+    ]
+  },
+  removals: {
+    title: 'Removal Requests',
+    sections: [
+      { icon: '🗑', heading: 'What this shows', text: 'Accounts where reps have typed a reason in the REMOVE_FLAG column requesting removal from future reports.' },
+      { icon: '✓', heading: 'Approving Removal', text: 'Click APPROVE REMOVAL to set JOHN_APPROVAL = YES. The account will be excluded from all future script runs. This cannot be undone from the app — you\'d need to edit the Google Sheet directly.' },
+      { icon: '✗', heading: 'Denying Removal', text: 'Click DENY / KEEP to clear the flag. The rep\'s request is dismissed and the account stays in reports.' },
+      { icon: '⇄', heading: 'Transfer Requests', text: 'Below the removals, all recent territory transfer requests from the Attack Plan are shown with timestamps and rep notes.' },
+    ]
+  },
+  all: {
+    title: 'All Accounts',
+    sections: [
+      { icon: '📋', heading: 'What you see', text: 'All 811 accounts across all reps. Same as My Accounts but unfiltered. Admin view only.' },
+    ]
+  },
+};
+
+function showHelp() {
+  const modal = document.getElementById('help-modal');
+  modal.style.display = 'flex';
+
+  // Determine current view
+  const view = state.activeView || 'accounts';
+  const guide = HELP_GUIDES[view] || HELP_GUIDES.accounts;
+
+  // Set title
+  document.getElementById('help-view-title').textContent = guide.title;
+
+  // Render guide content
+  const guideEl = document.getElementById('help-guide-content');
+  guideEl.innerHTML = guide.sections.map(s => `
+    <div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <span style="font-size:16px">${s.icon}</span>
+        <span style="font-weight:600;font-size:13px">${escHtml(s.heading)}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-2);line-height:1.7;padding-left:24px">${escHtml(s.text)}</div>
+    </div>`).join('') + `
+    <div style="padding:10px 12px;background:var(--s2);border-radius:var(--r);border:1px solid var(--border);font-size:11px;color:var(--text-3);text-align:center">
+      Switch to the ✦ ASK AI tab to ask anything else about this screen.
+    </div>`;
+
+  // Reset to guide tab
+  showHelpTab('guide');
+}
+
+function showHelpTab(tab) {
+  const guideContent = document.getElementById('help-guide-content');
+  const aiContent    = document.getElementById('help-ai-content');
+  const guideBtn     = document.getElementById('help-tab-guide');
+  const aiBtn        = document.getElementById('help-tab-ai');
+  if (tab === 'guide') {
+    guideContent.style.display = 'block';
+    aiContent.style.display    = 'none';
+    guideBtn.style.background  = 'var(--blue-b)';
+    guideBtn.style.color       = '#fff';
+    aiBtn.style.background     = 'transparent';
+    aiBtn.style.color          = 'var(--text-3)';
+  } else {
+    guideContent.style.display = 'none';
+    aiContent.style.display    = 'flex';
+    aiBtn.style.background     = 'var(--blue-b)';
+    aiBtn.style.color          = '#fff';
+    guideBtn.style.background  = 'transparent';
+    guideBtn.style.color       = 'var(--text-3)';
+    document.getElementById('help-chat-input')?.focus();
+  }
+}
+
+async function sendHelpMessage() {
+  const input = document.getElementById('help-chat-input');
+  const history = document.getElementById('help-chat-history');
+  if (!input || !history) return;
+  const question = input.value.trim();
+  if (!question) return;
+
+  const apiKey = getAnthropicKey();
+  if (!apiKey) { showToast('Set your API key in Settings first', 'error'); return; }
+
+  // Clear placeholder
+  const placeholder = history.querySelector('div[style*="text-align:center"]');
+  if (placeholder) placeholder.remove();
+
+  // Add user message
+  history.innerHTML += `
+    <div style="display:flex;justify-content:flex-end">
+      <div style="background:var(--blue-b);color:#fff;border-radius:var(--r2) var(--r2) 2px var(--r2);padding:8px 12px;font-size:12px;max-width:85%;line-height:1.5">
+        ${escHtml(question)}
+      </div>
+    </div>`;
+  const thinkId = 'help-think-' + Date.now();
+  history.innerHTML += `<div id="${thinkId}" style="font-size:11px;color:var(--text-3);padding:6px 4px;font-style:italic">Thinking...</div>`;
+  history.scrollTop = history.scrollHeight;
+  input.value = '';
+  input.disabled = true;
+
+  const view = state.activeView || 'accounts';
+  const guide = HELP_GUIDES[view] || HELP_GUIDES.accounts;
+  const guideText = guide.sections.map(s => s.heading + ': ' + s.text).join(' | ');
+
+  const systemPrompt = `You are a helpful assistant for the Intransit Sales Intelligence app — a web app used by sales reps at Intransit Technologies to manage accounts, collections, contacts, and outreach.
+
+The user is currently on the "${guide.title}" view.
+
+Here is a summary of what this view does:
+${guideText}
+
+App overview:
+- My Accounts: list of assigned accounts with revenue history, status flags, notes, outreach emails
+- Follow-ups Due: accounts with follow-up dates that are today or overdue
+- Dashboard: KPI cards for shipped revenue, GP$, GP%, orders booked, RFQs
+- Collections: accounts with unpaid invoices — send AI-generated collection emails
+- Contacts: all contacts across accounts — log notes, send emails
+- Attack Plan: drag-and-drop kanban to prioritize accounts into Solid Core / Active Pursue / Outer Ring
+- ✦ Research tab: AI + web search to research any account\'s company
+- Settings: email signatures, API key
+
+Answer the user's question clearly and concisely. If they ask how to do something, give step-by-step instructions. Be friendly and practical.`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 500,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: question }]
+      })
+    });
+    const data = await resp.json();
+    const answer = data.content?.[0]?.text || 'No response';
+    const thinkEl = document.getElementById(thinkId);
+    if (thinkEl) thinkEl.outerHTML = `
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <div style="width:24px;height:24px;border-radius:50%;background:rgba(52,152,219,0.15);border:1px solid var(--blue-b);display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;margin-top:2px">✦</div>
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:2px var(--r2) var(--r2) var(--r2);padding:9px 12px;font-size:12px;line-height:1.6;color:var(--text);max-width:90%;white-space:pre-wrap">${escHtml(answer)}</div>
+      </div>`;
+  } catch(e) {
+    const thinkEl = document.getElementById(thinkId);
+    if (thinkEl) thinkEl.outerHTML = `<div style="color:var(--red);font-size:11px;padding:4px">Error: ${escHtml(e.message)}</div>`;
+  } finally {
+    input.disabled = false;
+    input.focus();
+    history.scrollTop = history.scrollHeight;
+  }
+}
+
+// Close help modal on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('help-modal').style.display = 'none';
+});
+
+
 async function init() {
-  setLoading(true, 'CHECKING SESSION...', 10);
+  setLoading(true, currentLang==='es' ? 'VERIFICANDO SESIÓN...' : 'CHECKING SESSION...', 10);
 
   const authed = await checkAuth();
 

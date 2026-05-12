@@ -2296,11 +2296,13 @@ function switchView(view) {
 
   if (view === 'dashboard') {
     if (!state.cacheLoaded) {
+      renderDashboard(); // renders shell with $0 while loading
       loadSupplementalData().then(() => {
-        if (state.activeView === 'dashboard') renderDashboard();
+        if (state.activeView === 'dashboard') refreshDashboard();
       });
+    } else {
+      renderDashboard();
     }
-    renderDashboard();
   } else if (view === 'collections') {
     if (!state.cacheLoaded) {
       loadSupplementalData().then(() => {
@@ -2816,6 +2818,16 @@ function refreshDashboard() {
     const repMatch = !repFilter || r.SALES_REP?.trim() === repFilter;
     return d >= from && d <= to && repMatch;
   });
+
+  // Debug — show in console and UI
+  const debugEl = document.getElementById('dash-debug');
+  if (debugEl) {
+    const sample = state.gpCache[0];
+    debugEl.innerHTML = `<span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">
+      GP cache: ${state.gpCache.length} rows | Filtered: ${gpFiltered.length} | Range: ${from} → ${to} | Rep: ${repFilter||'all'}
+      ${sample ? ` | Sample keys: ${Object.keys(sample).join(', ')}` : ' | EMPTY CACHE'}
+    </span>`;
+  }
 
   const shipped   = gpFiltered.reduce((s,r) => s + parseMoney(r.INVOICE_TOTAL), 0);
   const gp        = gpFiltered.reduce((s,r) => s + parseMoney(r.GP), 0);

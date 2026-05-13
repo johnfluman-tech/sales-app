@@ -7801,6 +7801,9 @@ async function init() {
   const savedSidebar = localStorage.getItem('it_split_sidebar');
   if (savedSidebar) {
     document.documentElement.style.setProperty('--sidebar-w', savedSidebar + 'px');
+    let _st = document.getElementById('_sb_w');
+    if (!_st) { _st = document.createElement('style'); _st.id = '_sb_w'; document.head.appendChild(_st); }
+    _st.textContent = '.sidebar{width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important}';
   }
 
   setLoading(true, currentLang==='es' ? 'VERIFICANDO SESIÓN...' : 'CHECKING SESSION...', 10);
@@ -7838,6 +7841,9 @@ function startSplitH(e, leftId, rightId, splitterId) {
     function onMove(ev) {
       const newW = Math.max(160, Math.min(startW + (ev.clientX - startX), 380));
       document.documentElement.style.setProperty('--sidebar-w', newW + 'px');
+      let _st = document.getElementById('_sb_w');
+      if (!_st) { _st = document.createElement('style'); _st.id = '_sb_w'; document.head.appendChild(_st); }
+      _st.textContent = '.sidebar{width:' + newW + 'px!important;min-width:' + newW + 'px!important}';
       try { localStorage.setItem('it_split_sidebar', newW); } catch(e){}
     }
     function onUp() {
@@ -7914,10 +7920,13 @@ function startSplitV(e, bottomId, splitterId) {
 }
 
 function restoreSplitPositions() {
-  // Restore sidebar width via CSS variable (survives re-renders)
+  // Restore sidebar width via CSS variable + injected style tag
   const savedSidebar = localStorage.getItem('it_split_sidebar');
   if (savedSidebar) {
     document.documentElement.style.setProperty('--sidebar-w', savedSidebar + 'px');
+    let _st = document.getElementById('_sb_w');
+    if (!_st) { _st = document.createElement('style'); _st.id = '_sb_w'; document.head.appendChild(_st); }
+    _st.textContent = '.sidebar{width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important}';
   }
   // Restore panel splitter positions
   const panels = [

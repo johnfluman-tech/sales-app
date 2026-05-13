@@ -4368,65 +4368,55 @@ function renderFollowUpCommandCenter() {
   const el = document.getElementById('main-content');
   if (!el) return;
 
-  // If cache not loaded yet, show diagnostic panel + auto-retry
-  if (!state.cacheLoaded || !state.accounts || state.accounts.length === 0) {
-    function diagHtml() {
-      const token = localStorage.getItem('it_token') ? '✅ Token exists' : '❌ No token';
-      const accts = state.accounts ? state.accounts.length : 0;
-      const cache = state.cacheLoaded ? '✅ Loaded' : '⏳ Waiting...';
-      const contacts = Object.keys(state.contactsCache||{}).length;
-      const history = Object.keys(state.historyCache||{}).length;
-      const gp = (state.gpCache||[]).length;
-      return '<div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:12px;font-family:var(--mono)">' +
-        '<div style="font-size:28px">📅</div>' +
-        '<div style="font-size:11px;color:var(--blue-bright);letter-spacing:0.1em">DAILY MISSION — LOADING</div>' +
-        '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:16px 24px;min-width:280px">' +
-          '<div style="font-size:9px;color:var(--text-3);margin-bottom:10px;letter-spacing:0.1em">DIAGNOSTICS</div>' +
-          '<div style="display:flex;flex-direction:column;gap:6px;font-size:11px">' +
-            '<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:var(--text-3)">Auth token</span><span>' + token + '</span></div>' +
-            '<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:var(--text-3)">Accounts</span><span style="color:' + (accts > 0 ? 'var(--green)' : 'var(--gold)') + '">' + (accts > 0 ? '✅ ' + accts + ' loaded' : '⏳ Loading...') + '</span></div>' +
-            '<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:var(--text-3)">Cache</span><span>' + cache + '</span></div>' +
-            '<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:var(--text-3)">Contacts</span><span style="color:' + (contacts > 0 ? 'var(--green)' : 'var(--gold)') + '">' + (contacts > 0 ? '✅ ' + contacts + ' accounts' : '⏳ Loading...') + '</span></div>' +
-            '<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:var(--text-3)">History</span><span style="color:' + (history > 0 ? 'var(--green)' : 'var(--gold)') + '">' + (history > 0 ? '✅ ' + history + ' accounts' : '⏳ Loading...') + '</span></div>' +
-            '<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:var(--text-3)">GP records</span><span style="color:' + (gp > 0 ? 'var(--green)' : 'var(--gold)') + '">' + (gp > 0 ? '✅ ' + gp + ' rows' : '⏳ Loading...') + '</span></div>' +
-          '</div>' +
-        '</div>' +
-        '<div style="font-size:9px;color:var(--text-3)">Auto-refreshing every 2s...</div>' +
-        '<div style="width:200px;height:2px;background:var(--border);border-radius:1px;overflow:hidden">' +
-          '<div id="iq-load-bar" style="height:100%;background:var(--blue-b);width:0%;transition:width 1s;border-radius:1px"></div>' +
-        '</div>' +
-      '</div>';
-    }
+  // Show simple loading state and wait for cache
+  if (!state.cacheLoaded) {
+    el.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:16px;font-family:var(--mono)';
 
-    el.innerHTML = diagHtml();
+    const icon = document.createElement('div');
+    icon.style.fontSize = '32px';
+    icon.textContent = '📅';
 
-    // Animate bar
-    let pct = 0;
-    const barInterval = setInterval(() => {
-      pct = Math.min(92, pct + Math.random() * 6);
-      const bar = document.getElementById('iq-load-bar');
-      if (bar) bar.style.width = pct + '%';
-    }, 800);
+    const msg = document.createElement('div');
+    msg.id = 'iq-diag-msg';
+    msg.style.cssText = 'font-size:11px;color:var(--blue-bright);letter-spacing:0.1em';
+    msg.textContent = 'LOADING INTELLIGENCE DATA...';
 
-    // Poll + update diagnostics every 2s
+    const sub = document.createElement('div');
+    sub.id = 'iq-diag-sub';
+    sub.style.cssText = 'font-size:9px;color:var(--text-3)';
+    sub.textContent = 'Accounts: ' + (state.accounts?.length || 0) + ' · Contacts: ' + Object.keys(state.contactsCache||{}).length + ' · History: ' + Object.keys(state.historyCache||{}).length;
+
+    const barWrap = document.createElement('div');
+    barWrap.style.cssText = 'width:200px;height:2px;background:var(--border);border-radius:1px;overflow:hidden';
+    const bar = document.createElement('div');
+    bar.id = 'iq-load-bar';
+    bar.style.cssText = 'height:100%;background:var(--blue-b);width:5%;border-radius:1px;transition:width 1s';
+    barWrap.appendChild(bar);
+
+    wrap.appendChild(icon);
+    wrap.appendChild(msg);
+    wrap.appendChild(sub);
+    wrap.appendChild(barWrap);
+    el.appendChild(wrap);
+
+    let pct = 5;
     const poll = setInterval(() => {
-      if (state.activeView !== 'followup') { clearInterval(poll); clearInterval(barInterval); return; }
-      // Update diagnostic display
-      el.innerHTML = diagHtml();
-      const bar = document.getElementById('iq-load-bar');
-      if (bar) { pct = Math.min(92, pct + 5); bar.style.width = pct + '%'; }
-      // Check if ready
-      if (state.cacheLoaded && state.accounts && state.accounts.length > 0) {
+      if (state.activeView !== 'followup') { clearInterval(poll); return; }
+      pct = Math.min(92, pct + 6);
+      const b = document.getElementById('iq-load-bar');
+      if (b) b.style.width = pct + '%';
+      const s = document.getElementById('iq-diag-sub');
+      if (s) s.textContent = 'Accounts: ' + (state.accounts?.length||0) + ' · Contacts: ' + Object.keys(state.contactsCache||{}).length + ' · History: ' + Object.keys(state.historyCache||{}).length;
+      if (state.cacheLoaded) {
         clearInterval(poll);
-        clearInterval(barInterval);
-        const bar2 = document.getElementById('iq-load-bar');
-        if (bar2) { bar2.style.width = '100%'; bar2.style.background = 'var(--green)'; }
+        const b2 = document.getElementById('iq-load-bar');
+        if (b2) { b2.style.width = '100%'; b2.style.background = 'var(--green)'; }
         setTimeout(() => { if (state.activeView === 'followup') renderFollowUpCommandCenter(); }, 400);
       }
-    }, 2000);
+    }, 1500);
 
-    // Kick off loading
-    if (!state.accounts || state.accounts.length === 0) loadAllAccounts().catch(()=>{});
     ensureCacheLoaded().catch(()=>{});
     return;
   }

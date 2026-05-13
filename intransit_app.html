@@ -1380,20 +1380,47 @@ async function loadSupplementalData() {
       }
     } catch(e) { console.error('Orders history load failed:', e.message); }
 
-    // Load GP data (critical for dashboard)
+    // Load GP data (critical for dashboard) — paginated to avoid Worker timeout
     try {
-      const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:Z200000");
-      if (gpRows.length > 1) {
-        const hdrs = gpRows[0];
-        state.gpCache = gpRows.slice(1).map(r => {
+      const GP_BATCH = 10000;
+      let gpHdrs = null;
+      let gpAllRows = [];
+      let gpStartRow = 1;
+      let gpDone = false;
+      while (!gpDone) {
+        const endRow = gpStartRow === 1 ? GP_BATCH : gpStartRow + GP_BATCH - 1;
+        const range = gpStartRow === 1
+          ? "'_GP'!A1:Z" + GP_BATCH
+          : "'_GP'!A" + gpStartRow + ":Z" + endRow;
+        const batch = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, range);
+        if (!batch || batch.length === 0) { gpDone = true; break; }
+        if (gpStartRow === 1) {
+          gpHdrs = batch[0];
+          gpAllRows = gpAllRows.concat(batch.slice(1));
+        } else {
+          // Skip header row if returned again (shouldn't happen mid-range, but safe)
+          const isHdrRow = batch[0] && batch[0][0] === gpHdrs[0];
+          gpAllRows = gpAllRows.concat(isHdrRow ? batch.slice(1) : batch);
+        }
+        // If we got fewer rows than batch size we've hit the end
+        if (batch.length < (gpStartRow === 1 ? GP_BATCH : GP_BATCH)) { gpDone = true; }
+        gpStartRow += GP_BATCH;
+        if (gpStartRow > 300000) { gpDone = true; } // safety cap
+      }
+      if (gpHdrs && gpAllRows.length > 0) {
+        state.gpCache = gpAllRows.map(r => {
           const obj = {};
-          hdrs.forEach((h, i) => obj[h] = r[i] || '');
+          gpHdrs.forEach((h, i) => obj[h] = r[i] || '');
           return obj;
         });
         console.log('GP cache loaded:', state.gpCache.length, 'rows');
+      } else {
+        console.warn('GP cache: 0 rows returned — check _GP tab exists and has data');
+        state.gpLoadError = 'GP tab returned 0 rows. Check _GP tab in History sheet.';
       }
     } catch(e) {
       console.error('GP load failed:', e.message);
+      state.gpLoadError = 'GP load error: ' + e.message;
     }
 
     state.cacheLoaded = true;
@@ -2220,6 +2247,7 @@ let state = {
   ordersCache: [],        // open orders (current backlog)
   ordersHistoryCache: [], // orders placed by date (for booked calc)
   gpCache: [],            // GP records
+  gpLoadError: null,      // set if GP tab fails to load
   reqsCache: [],          // flat reqs for dashboard counting
   collectionsNotes: {},        // keyed by customer name — collections-specific notes
   collectionsInvoicesCache: {}, // keyed by customer name — open invoices
@@ -5257,7 +5285,7 @@ function renderDashboard() {
           <span style="font-size:10px;letter-spacing:0.15em;color:var(--gold)">⚙ DASHBOARD DIAGNOSTIC</span>
           <button onclick="document.getElementById('dash-diag-panel').style.display='none'" style="background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:14px">✕</button>
         </div>
-        <div id="dash-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;color:var(--text-3)">Loading...</div>
+        <div id="dash-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;color:var(--text-3)">Click DIAG to populate.</div>
       </div>
 
       <!-- KPI cards -->
@@ -5282,7 +5310,7 @@ function toggleDashDiag() {
   if (!panel) return;
   const showing = panel.style.display !== 'none';
   panel.style.display = showing ? 'none' : 'block';
-  if (!showing) refreshDashboard(); // force repopulate diag content
+  if (!showing) refreshDashboard(); // repopulate diag content immediately
 }
 
 function setDashPeriod(period, btn) {
@@ -5359,34 +5387,37 @@ async function refreshDashboard() {
 
   const shipped = gpFiltered.reduce((s, r) => s + parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE || 0), 0);
 
-  // ── Update diagnostic panel if visible ──
+  // ── Populate diagnostic panel if open ──
   const diagEl = document.getElementById('dash-diag-content');
-  if (diagEl) {
+  if (diagEl && document.getElementById('dash-diag-panel')?.style.display !== 'none') {
     const sampleRep   = state.gpCache.length > 0 ? (state.gpCache[0][gpSalesRepCol] || '(col not found)') : '(cache empty)';
     const sampleDate  = state.gpCache.length > 0 ? (state.gpCache[0][gpDateCol] || '(col not found)') : '(cache empty)';
-    const sampleTotal = state.gpCache.length > 0 ? (state.gpCache[0][gpInvTotalCol] || '(col not found)') : '(cache empty)';
+    const samplePrice = state.gpCache.length > 0 ? (state.gpCache[0][gpInvTotalCol] || '(col not found)') : '(cache empty)';
     const sampleGP    = state.gpCache.length > 0 ? (state.gpCache[0][gpGPCol] || '(col not found)') : '(cache empty)';
-    const allRepsInGP = [...new Set(state.gpCache.slice(0,500).map(r => (r[gpSalesRepCol]||'').trim()).filter(Boolean))].join(', ');
+    const inRange     = state.gpCache.filter(r => { const d = normDate(r[gpDateCol]||''); return d >= from && d <= to; }).length;
+    const uniqueReps  = [...new Set(state.gpCache.slice(0,500).map(r => (r[gpSalesRepCol]||'').trim()).filter(Boolean))];
     const rows = [
-      ['gpCache total rows', state.gpCache.length],
-      ['gpCache rows in date range (any rep)', state.gpCache.filter(r => { const d=normDate(r[gpDateCol]||''); return d>=from&&d<=to; }).length],
-      ['gpFiltered rows (after rep filter)', gpFiltered.length],
-      ['repFilter active', repFilter || '(none)'],
-      ['gpSalesRepCol detected', gpSalesRepCol],
-      ['gpDateCol detected', gpDateCol],
-      ['gpInvTotalCol detected', gpInvTotalCol],
-      ['gpGPCol detected', gpGPCol],
-      ['sample row[SALES_REP]', '"' + sampleRep + '"'],
-      ['sample row[INVOICE_DATE]', '"' + sampleDate + '"'],
-      ['sample row[INVOICE_TOTAL col]', '"' + sampleTotal + '"'],
-      ['sample row[GP col]', '"' + sampleGP + '"'],
-      ['unique SALES_REP values (first 500 rows)', allRepsInGP || '(none found)'],
-      ['date range', from + ' → ' + to],
+      ['gpCache total rows',                    state.gpCache.length],
+      ['gpLoadError',                           state.gpLoadError || '(none)'],
+      ['gpCache rows in date range (any rep)',  inRange],
+      ['gpFiltered rows (after rep filter)',    gpFiltered.length],
+      ['repFilter active',                      repFilter || '(none — admin all)'],
+      ['gpSalesRepCol detected',                gpSalesRepCol],
+      ['gpDateCol detected',                    gpDateCol],
+      ['gpInvTotalCol detected',                gpInvTotalCol],
+      ['gpGPCol detected',                      gpGPCol],
+      ['sample row[SALES_REP]',                 '"' + sampleRep + '"'],
+      ['sample row[INVOICE_DATE]',              '"' + sampleDate + '"'],
+      ['sample row[EXTENDED_PRICE]',            '"' + samplePrice + '"'],
+      ['sample row[GP]',                        '"' + sampleGP + '"'],
+      ['unique SALES_REP values (first 500r)',  uniqueReps.length ? uniqueReps.join(', ') : '(none found)'],
+      ['date range',                            from + ' → ' + to],
     ];
-    diagEl.innerHTML = rows.map(([k,v]) =>
-      '<div style="color:var(--text-3)">' + k + '</div>' +
-      '<div style="color:' + (String(v).includes('(none')||String(v).includes('empty')||v===0?'var(--red)':'var(--text)') + ';word-break:break-all">' + escHtml(String(v)) + '</div>'
-    ).join('');
+    diagEl.innerHTML = rows.map(([k, v]) => {
+      const bad = v === 0 || String(v).includes('(cache empty)') || String(v).includes('Error') || (k === 'gpLoadError' && v !== '(none)');
+      return '<div style="color:var(--text-3)">' + k + '</div>' +
+             '<div style="color:' + (bad ? 'var(--red)' : 'var(--text)') + ';word-break:break-all">' + escHtml(String(v)) + '</div>';
+    }).join('');
   }
   const gp      = gpFiltered.reduce((s, r) => s + parseMoney(r[gpGPCol] || r.GP || 0), 0);
   const gpPct   = shipped > 0 ? (gp / shipped * 100) : 0;
@@ -6232,15 +6263,6 @@ function renderCollectionsView() {
         </div>
       </div>
 
-      <!-- Collections Diagnostic Panel -->
-      <div id="coll-diag-panel" style="display:none;background:var(--s1);border:1px solid var(--gold);border-left:3px solid var(--gold);border-radius:var(--r2);padding:14px 16px;margin-bottom:16px;font-family:var(--mono);font-size:11px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span style="font-size:10px;letter-spacing:0.15em;color:var(--gold)">⚙ COLLECTIONS DIAGNOSTIC</span>
-          <button onclick="document.getElementById('coll-diag-panel').style.display='none'" style="background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:14px">✕</button>
-        </div>
-        <div id="coll-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:6px"></div>
-      </div>
-
       <!-- Filter bar -->
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
         <button class="filter-btn active" onclick="filterCollections('all',this)">ALL</button>
@@ -6251,7 +6273,6 @@ function renderCollectionsView() {
           oninput="filterCollections('search',null)"
           style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);
                  font-family:var(--font-main);font-size:12px;padding:6px 10px;outline:none;margin-left:auto;width:200px">
-        <button onclick="showCollDiag()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">⚙ DIAG</button>
       </div>
 
       <!-- Two-panel layout -->
@@ -6292,56 +6313,6 @@ function renderCollectionsView() {
 
       </div>
     </div>`;
-}
-
-function showCollDiag() {
-  const panel = document.getElementById('coll-diag-panel');
-  if (!panel) return;
-  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-  if (panel.style.display === 'none') return;
-
-  const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
-  const collKeys = Object.keys(state.collectionsCache);
-  const contactKeys = Object.keys(state.contactsCache);
-  const invKeys = Object.keys(state.collectionsInvoicesCache);
-  const withBal = collKeys.filter(k => state.collectionsCache[k].balance > 0);
-
-  // Check rep matching
-  const repMatches = withBal.filter(name => {
-    const acc = state.accounts.find(a => a.name.trim() === name.trim());
-    return !repFilter || acc?.rep === repFilter;
-  });
-  const repMisses = withBal.filter(name => {
-    const acc = state.accounts.find(a => a.name.trim() === name.trim());
-    return repFilter && acc?.rep !== repFilter;
-  });
-
-  const sampleCollNames = withBal.slice(0, 5).map(name => {
-    const acc = state.accounts.find(a => a.name.trim() === name.trim());
-    const match = !repFilter || acc?.rep === repFilter;
-    return (match ? '✓ ' : '✕ ') + name + ' [rep: ' + (acc?.rep || 'NOT IN ACCOUNTS') + ']';
-  });
-
-  const rows = [
-    ['cacheLoaded', state.cacheLoaded ? '✅ YES' : '❌ NO — data still loading'],
-    ['accounts loaded', state.accounts.length],
-    ['collectionsCache entries', collKeys.length],
-    ['  with balance > 0', withBal.length],
-    ['  matching repFilter', repMatches.length],
-    ['  NOT matching repFilter', repMisses.length],
-    ['contactsCache entries', contactKeys.length],
-    ['collectionsInvoicesCache entries', invKeys.length],
-    ['repFilter', repFilter || '(none — admin all reps)'],
-    ['--- SAMPLE ACCOUNTS (balance>0) ---', ''],
-    ...sampleCollNames.map(n => ['', n]),
-  ];
-
-  const el = document.getElementById('coll-diag-content');
-  el.innerHTML = rows.map(([k, v]) => {
-    const bad = String(v).includes('❌') || (k.includes('NOT matching') && Number(v) > 0);
-    return '<div style="color:var(--text-3)">' + escHtml(k) + '</div>' +
-           '<div style="color:' + (bad ? 'var(--red)' : 'var(--text)') + ';word-break:break-all">' + escHtml(String(v)) + '</div>';
-  }).join('');
 }
 
 function filterCollections(type, btn) {

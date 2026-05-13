@@ -1390,46 +1390,7 @@ async function loadSupplementalData() {
 
     state.cacheLoaded = true;
 
-    // Load per-contact revenue (_CONTACT_REVENUE tab — from ORDERED_BY field)
-    try {
-      const crRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_REVENUE'!A1:G200000");
-      if (crRows.length > 1) {
-        const hdrs = crRows[0];
-        const iRep  = hdrs.indexOf('SALES_REP');
-        const iCust = hdrs.indexOf('CUSTOMER_NAME');
-        const iOby  = hdrs.indexOf('ORDERED_BY');
-        const iCnt  = hdrs.indexOf('ORDER_COUNT');
-        const iShip = hdrs.indexOf('TOTAL_SHIPPED');
-        const iGp   = hdrs.indexOf('TOTAL_GP');
-        const iDate = hdrs.indexOf('LAST_ORDER_DATE');
-        state.contactRevenueCache = {};
-        for (let r = 1; r < crRows.length; r++) {
-          const row = crRows[r];
-          const cust = (row[iCust]||'').trim();
-          const name = (row[iOby]||'').trim();
-          if (!cust || !name) continue;
-          if (!state.contactRevenueCache[cust]) state.contactRevenueCache[cust] = {};
-          state.contactRevenueCache[cust][name] = {
-            rep:        (row[iRep]||'').trim(),
-            orderCount: parseInt(row[iCnt])||0,
-            shipped:    parseFloat(row[iShip])||0,
-            gp:         parseFloat(row[iGp])||0,
-            lastOrder:  (row[iDate]||'').trim(),
-          };
-        }
-        console.log('Contact revenue loaded:', Object.keys(state.contactRevenueCache).length, 'accounts');
-      }
-    } catch(e) {
-      state.contactRevenueCache = {};
-      console.log('No _CONTACT_REVENUE tab yet — run add_contact_revenue.py');
-    }
-
-    // Auto-render Daily Mission if it's the active view waiting for data
-    if (state.activeView === 'followup') {
-      setTimeout(() => renderFollowUpCommandCenter(), 100);
-    }
-
-    // Load contact notes (_CONTACT_NOTES tab — app-managed, may not exist yet)
+    // Load contact notes (non-blocking, after cacheLoaded)
     try {
       const cnRows = await sheetsGet("'_CONTACT_NOTES'!A1:F50000");
       if (cnRows.length > 1) {
@@ -1449,14 +1410,50 @@ async function loadSupplementalData() {
         }
       } else {
         state.contactNotesCache = {};
-        // Ensure tab exists by writing header
         try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT','CONTACT','TYPE','NOTE','DATE','REP']]); } catch(e2) {}
       }
     } catch(e) {
       state.contactNotesCache = {};
-      // Tab doesn't exist — create with header
       try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT','CONTACT','TYPE','NOTE','DATE','REP']]); } catch(e2) {}
     }
+
+    // Load schedule
+    try { await schedLoadFromSheets(); } catch(e) {}
+
+    // Auto-render Daily Mission now that all core data is ready
+    if (state.activeView === 'followup') {
+      setTimeout(() => renderFollowUpCommandCenter(), 100);
+    }
+
+    // Load contact revenue in background (non-blocking — tab may not exist yet)
+    sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_REVENUE'!A1:G200000")
+      .then(crRows => {
+        if (crRows.length > 1) {
+          const hdrs = crRows[0];
+          const iCust = hdrs.indexOf('CUSTOMER_NAME');
+          const iOby  = hdrs.indexOf('ORDERED_BY');
+          const iCnt  = hdrs.indexOf('ORDER_COUNT');
+          const iShip = hdrs.indexOf('TOTAL_SHIPPED');
+          const iGp   = hdrs.indexOf('TOTAL_GP');
+          const iDate = hdrs.indexOf('LAST_ORDER_DATE');
+          state.contactRevenueCache = {};
+          for (let r = 1; r < crRows.length; r++) {
+            const row = crRows[r];
+            const cust = (row[iCust]||'').trim();
+            const name = (row[iOby]||'').trim();
+            if (!cust || !name) continue;
+            if (!state.contactRevenueCache[cust]) state.contactRevenueCache[cust] = {};
+            state.contactRevenueCache[cust][name] = {
+              orderCount: parseInt(row[iCnt])||0,
+              shipped:    parseFloat(row[iShip])||0,
+              gp:         parseFloat(row[iGp])||0,
+              lastOrder:  (row[iDate]||'').trim(),
+            };
+          }
+          console.log('Contact revenue loaded:', Object.keys(state.contactRevenueCache).length, 'accounts');
+        }
+      })
+      .catch(() => { state.contactRevenueCache = {}; });
 
     console.log('Supplemental data loaded');
   } catch(e) {
@@ -2608,8 +2605,8 @@ function switchView(view) {
   document.getElementById('topbar-title').textContent = titles[view] || view;
 
   const viewRenderers = {
-    dashboard:   () => renderDashboard(),
-    collections: () => renderCollectionsView(),
+    dashboard:   () => ensureCacheLoaded().then(() => renderDashboard()),
+    collections: () => ensureCacheLoaded().then(() => renderCollectionsView()),
     contacts:    () => renderContactsView(),
     attack:      () => renderAttackPlan(),
     followup:    () => {

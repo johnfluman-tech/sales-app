@@ -6186,6 +6186,34 @@ function renderCollectionsView() {
         </div>
       </div>
 
+      <!-- DIAGNOSTIC PANEL -->
+      <div id="coll-diag-panel" style="display:none;background:var(--s1);border:1px solid var(--border-acc);border-left:3px solid var(--gold);border-radius:var(--r2);padding:14px 16px;margin-bottom:16px;font-family:var(--mono);font-size:11px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-size:10px;letter-spacing:0.15em;color:var(--gold)">⚙ COLLECTIONS DIAGNOSTIC</span>
+          <button onclick="document.getElementById('coll-diag-panel').style.display='none'"
+            style="background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:14px;line-height:1">✕</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="coll-diag-content">
+          <div style="color:var(--text-3)">Loading...</div>
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div style="color:var(--text-3);margin-bottom:4px;font-size:9px;letter-spacing:0.1em">SAMPLE CUSTOMER NAMES — COLLECTIONS CACHE (first 5)</div>
+          <div id="coll-diag-names" style="color:var(--text-2)"></div>
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div style="color:var(--text-3);margin-bottom:4px;font-size:9px;letter-spacing:0.1em">SAMPLE CUSTOMER NAMES — CONTACTS CACHE (first 5)</div>
+          <div id="coll-diag-contacts" style="color:var(--text-2)"></div>
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div style="color:var(--text-3);margin-bottom:4px;font-size:9px;letter-spacing:0.1em">REP FILTER ACTIVE</div>
+          <div id="coll-diag-rep" style="color:var(--text-2)"></div>
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div style="color:var(--text-3);margin-bottom:4px;font-size:9px;letter-spacing:0.1em">ACCOUNTS WITH BALANCE > 0 (before rep filter)</div>
+          <div id="coll-diag-unfiltered" style="color:var(--text-2)"></div>
+        </div>
+      </div>
+
       <!-- Filter bar -->
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
         <button class="filter-btn active" onclick="filterCollections('all',this)">ALL</button>
@@ -6196,6 +6224,7 @@ function renderCollectionsView() {
           oninput="filterCollections('search',null)"
           style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);
                  font-family:var(--font-main);font-size:12px;padding:6px 10px;outline:none;margin-left:auto;width:200px">
+        <button onclick="showCollDiag()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">⚙ DIAG</button>
       </div>
 
       <!-- Two-panel layout -->
@@ -6236,6 +6265,61 @@ function renderCollectionsView() {
 
       </div>
     </div>`;
+}
+
+function showCollDiag() {
+  const panel = document.getElementById('coll-diag-panel');
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  if (panel.style.display === 'none') return;
+
+  const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
+  const allColl = Object.keys(state.collectionsCache);
+  const allContacts = Object.keys(state.contactsCache);
+  const allInvoices = Object.keys(state.collectionsInvoicesCache);
+  const withBalance = Object.entries(state.collectionsCache).filter(([,c]) => c.balance > 0);
+  const withBalanceFiltered = repFilter
+    ? withBalance.filter(([name]) => {
+        const acc = state.accounts.find(a => a.name.trim() === name.trim());
+        return acc?.rep === repFilter;
+      })
+    : withBalance;
+
+  const content = document.getElementById('coll-diag-content');
+  content.innerHTML = [
+    ['collectionsCache entries', allColl.length],
+    ['with balance > 0 (total)', withBalance.length],
+    ['with balance > 0 (after rep filter)', withBalanceFiltered.length],
+    ['contactsCache entries', allContacts.length],
+    ['collectionsInvoicesCache entries', allInvoices.length],
+    ['accounts loaded', state.accounts.length],
+    ['cacheLoaded', state.cacheLoaded ? '✅ YES' : '❌ NO'],
+    ['repFilter', repFilter || '(none — admin all)'],
+  ].map(([k,v]) =>
+    '<div style="color:var(--text-3)">' + k + '</div><div style="color:' + (String(v).includes('❌')?'var(--red)':'var(--text)') + '">' + v + '</div>'
+  ).join('');
+
+  const collNames = allColl.slice(0, 5);
+  document.getElementById('coll-diag-names').innerHTML = collNames.length
+    ? collNames.map(n => '<div>' + escHtml(n) + ' → rep: ' + escHtml(state.accounts.find(a=>a.name.trim()===n.trim())?.rep||'NOT FOUND IN ACCOUNTS') + '</div>').join('')
+    : '<div style="color:var(--red)">⚠ Empty — cache not loaded or _COLLECTIONS tab missing</div>';
+
+  const contactKeys = allContacts.slice(0, 5);
+  document.getElementById('coll-diag-contacts').innerHTML = contactKeys.length
+    ? contactKeys.map(n => '<div>' + escHtml(n) + '</div>').join('')
+    : '<div style="color:var(--red)">⚠ Empty — contacts cache not loaded</div>';
+
+  document.getElementById('coll-diag-rep').innerHTML = repFilter
+    ? repFilter + ' — showing only this rep\'s accounts'
+    : '(none) — admin view, showing all reps';
+
+  document.getElementById('coll-diag-unfiltered').innerHTML = withBalance.slice(0, 8).map(([name, c]) => {
+    const acc = state.accounts.find(a => a.name.trim() === name.trim());
+    const repMatch = !repFilter || acc?.rep === repFilter;
+    return '<div style="color:' + (repMatch?'var(--text)':'var(--text-3)') + '">' +
+      (repMatch?'✓':'✕') + ' ' + escHtml(name) + ' — $' + formatNum(c.balance) + ' — rep: ' + escHtml(acc?.rep||'?') +
+    '</div>';
+  }).join('') + (withBalance.length > 8 ? '<div style="color:var(--text-3)">...+' + (withBalance.length-8) + ' more</div>' : '');
 }
 
 function filterCollections(type, btn) {

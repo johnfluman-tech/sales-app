@@ -4135,20 +4135,28 @@ async function denyRemoval(accountName) {
 //  FOLLOW-UP COMMAND CENTER
 // ══════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════
+//  FOLLOW-UP COMMAND CENTER v2
+// ══════════════════════════════════════════════════════════
+
 function renderFollowUpCommandCenter() {
   const el = document.getElementById('main-content');
   if (!el) return;
 
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  const todayStr = today.toISOString().slice(0,10);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const weekFromNow = new Date(today); weekFromNow.setDate(today.getDate() + 7);
 
-  // Get accounts for this rep
+  // Get rep accounts
   let accs = [...state.accounts];
   if (state.isAdmin && state.viewAsRep) accs = accs.filter(a => a.rep === state.viewAsRep);
   else if (!state.isAdmin && state.repId) accs = accs.filter(a => a.rep === state.repId);
 
-  // Parse follow-up dates
+  const repKey = state.viewAsRep || state.repId || 'admin';
+  let removedSet = new Set();
+  let pinnedSet = new Set();
+  try { removedSet = new Set(JSON.parse(localStorage.getItem('fup_removed_' + repKey) || '[]')); } catch(e){}
+  try { pinnedSet = new Set(JSON.parse(localStorage.getItem('fup_pinned_' + repKey) || '[]')); } catch(e){}
+
   function parseFupDate(str) {
     if (!str) return null;
     const p = str.split('/');
@@ -4156,40 +4164,67 @@ function renderFollowUpCommandCenter() {
     return null;
   }
 
-  // Days since last contact (from contact notes cache)
-  function daysSinceContact(accName) {
-    const notes = state.contactNotesCache?.[accName] || [];
+  function daysSinceLastContact(accName) {
+    const notes = (state.contactNotesCache || {})[accName] || [];
     if (!notes.length) return null;
-    const latest = notes.reduce((a,b) => a.date > b.date ? a : b);
+    const latest = notes.reduce((a,b) => (a.date||'') > (b.date||'') ? a : b);
     const d = new Date(latest.date);
     return isNaN(d) ? null : Math.floor((today - d) / 86400000);
   }
 
-  // Categorize accounts
+  function getPrimaryContact(accName) {
+    const contacts = state.contactsCache[accName.trim()] || [];
+    // Prefer purchasing contacts with email
+    const buying = contacts.filter(c => c.type !== 'AP/Collections' && c.email);
+    if (buying.length) return buying[0];
+    const any = contacts.filter(c => c.email);
+    if (any.length) return any[0];
+    return contacts[0] || null;
+  }
+
+  function getTopParts(accName) {
+    const invs = (state.historyCache[accName] || {}).invoices || [];
+    const partTotals = {};
+    invs.forEach(inv => {
+      if (inv.part) {
+        partTotals[inv.part] = (partTotals[inv.part] || 0) + (inv.lineTotal || 0);
+      }
+    });
+    return Object.entries(partTotals)
+      .sort((a,b) => b[1]-a[1])
+      .slice(0,3)
+      .map(([part, total]) => part + ' ($' + formatNum(total) + ')');
+  }
+
+  function getLastInvoiceDate(accName) {
+    const invs = (state.historyCache[accName] || {}).invoices || [];
+    if (!invs.length) return null;
+    const sorted = [...invs].sort((a,b) => (b.date||'') > (a.date||'') ? 1 : -1);
+    return sorted[0].date || null;
+  }
+
+  function contactedTodayCount() {
+    let count = 0;
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    Object.values(state.contactNotesCache || {}).forEach(notes => {
+      if (notes.some(n => { const d = new Date(n.date); return d >= todayStart; })) count++;
+    });
+    return count;
+  }
+
+  // Categorize
   const overdue = [], dueThisWeek = [], top50 = [];
-  const weekFromNow = new Date(today); weekFromNow.setDate(weekFromNow.getDate() + 7);
-
-  // Removed set (stored in localStorage per rep)
-  const repKey = state.viewAsRep || state.repId || 'admin';
-  let removedSet = new Set();
-  try { removedSet = new Set(JSON.parse(localStorage.getItem('fup_removed_' + repKey) || '[]')); } catch(e){}
-
-  // Top 50 pinned accounts
-  let pinnedSet = new Set();
-  try { pinnedSet = new Set(JSON.parse(localStorage.getItem('fup_pinned_' + repKey) || '[]')); } catch(e){}
 
   accs.forEach(a => {
     if (removedSet.has(a.name)) return;
     const fupDate = parseFupDate(a.followUpDate);
-
-    if (fupDate && fupDate <= today) {
+    if (fupDate && fupDate < today) {
       overdue.push({...a, fupDate, daysOverdue: Math.floor((today - fupDate) / 86400000)});
     } else if (fupDate && fupDate <= weekFromNow) {
       dueThisWeek.push({...a, fupDate});
     }
   });
 
-  // Top 50: pinned first, then by total revenue, exclude already in overdue/dueThisWeek
   const overdueNames = new Set(overdue.map(a => a.name));
   const weekNames = new Set(dueThisWeek.map(a => a.name));
   const top50Candidates = accs
@@ -4197,145 +4232,249 @@ function renderFollowUpCommandCenter() {
     .sort((a,b) => {
       if (pinnedSet.has(a.name) && !pinnedSet.has(b.name)) return -1;
       if (!pinnedSet.has(a.name) && pinnedSet.has(b.name)) return 1;
-      return (b.total || 0) - (a.total || 0);
+      return (b.total||0) - (a.total||0);
     })
-    .slice(0, 50);
+    .slice(0,50);
   top50.push(...top50Candidates);
 
-  // Stats
-  const contactedToday = Object.entries(state.contactNotesCache || {}).filter(([,notes]) =>
-    notes.some(n => {
-      const d = new Date(n.date); return d >= today && d < new Date(today.getTime() + 86400000);
-    })
-  ).length;
-
-  function fmtDate(d) {
-    if (!d) return '—';
+  function fmtShortDate(str) {
+    if (!str) return null;
+    const d = new Date(str);
+    if (isNaN(d)) return str;
     return (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
   }
 
-  function daysSinceFmt(acc) {
-    const ds = daysSinceContact(acc.name);
-    if (ds === null) return '<span style="color:var(--text-3)">Never contacted</span>';
-    if (ds === 0) return '<span style="color:var(--green)">Contacted today</span>';
-    if (ds <= 7) return '<span style="color:var(--green)">' + ds + 'd ago</span>';
-    if (ds <= 30) return '<span style="color:var(--gold)">' + ds + 'd ago</span>';
-    return '<span style="color:var(--red)">' + ds + 'd ago</span>';
+  function staleBadge(ds) {
+    if (ds === null) return '<span style="color:var(--text-3);font-size:10px">Never contacted</span>';
+    if (ds === 0) return '<span style="color:var(--green);font-size:10px">✓ Today</span>';
+    if (ds <= 7) return '<span style="color:var(--green);font-size:10px">' + ds + 'd ago</span>';
+    if (ds <= 30) return '<span style="color:var(--gold);font-size:10px">' + ds + 'd ago</span>';
+    return '<span style="color:var(--red);font-size:10px">⚠ ' + ds + 'd ago</span>';
   }
+
+  // Store card data globally to avoid quoting issues in onclick
+  if (!window._fupCards) window._fupCards = {};
 
   function renderCard(acc, zone) {
-    const safeId = 'fup-' + btoa(encodeURIComponent(acc.name)).replace(/[^a-zA-Z0-9]/g,'').slice(0,20);
+    const sid = 'fup' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
     const isPinned = pinnedSet.has(acc.name);
-    const borderClass = zone === 'overdue' ? 'fup-overdue' : zone === 'week' ? 'fup-soon' : 'fup-top50';
-    const daysEl = zone === 'overdue' && acc.daysOverdue > 0
-      ? '<span class="fup-days-badge" style="background:rgba(239,68,68,0.15);color:var(--red)">' + acc.daysOverdue + 'd overdue</span>'
-      : zone === 'week' && acc.fupDate
-      ? '<span class="fup-days-badge" style="background:rgba(245,158,11,0.1);color:var(--gold)">Due ' + fmtDate(acc.fupDate) + '</span>'
-      : '';
+    const ds = daysSinceLastContact(acc.name);
+    const contact = getPrimaryContact(acc.name);
+    const topParts = getTopParts(acc.name);
+    const lastInv = getLastInvoiceDate(acc.name);
+    window._fupCards[sid] = { name: acc.name, zone, acc, _contact: contact||null };
 
-    return '<div class="fup-card ' + borderClass + '" id="' + safeId + '">' +
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px">' +
-        '<div class="fup-card-name" title="' + escHtml(acc.name) + '" onclick="selectAccountByName(\'' + escHtml(acc.name) + '\')" style="flex:1;cursor:pointer;color:var(--blue-bright);text-decoration:underline">' + escHtml(acc.name) + '</div>' +
-        '<button onclick="fupRemove(\'' + escHtml(acc.name) + '\',\'' + safeId + '\')" style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:14px;padding:0 0 0 6px;line-height:1" title="Remove from list">×</button>' +
-      '</div>' +
-      '<div class="fup-card-meta">' +
-        '<span>' + escHtml(acc.rep || '') + '</span>' +
-        '<span style="color:var(--mono)">$' + formatNum(acc.total || 0) + '</span>' +
-        (daysEl ? '<span>' + daysEl + '</span>' : '') +
-        '<span>' + daysSinceFmt(acc) + '</span>' +
-      '</div>' +
-      '<div class="fup-card-actions">' +
-        '<button class="fup-btn green" onclick="fupQuickLog(\'' + escHtml(acc.name) + '\',\'' + safeId + '\',\'Call\')">📞 Call</button>' +
-        '<button class="fup-btn" onclick="fupQuickLog(\'' + escHtml(acc.name) + '\',\'' + safeId + '\',\'Email\')">✉ Email</button>' +
-        '<button class="fup-btn" onclick="fupQuickLog(\'' + escHtml(acc.name) + '\',\'' + safeId + '\',\'Meeting\')">👥 Meeting</button>' +
-        '<button class="fup-btn gold" onclick="fupSnoozeMenu(\'' + escHtml(acc.name) + '\',\'' + safeId + '\')">⏱ Snooze</button>' +
-        (zone === 'top50' ? '<button class="fup-btn" onclick="fupPin(\'' + escHtml(acc.name) + '\',\'' + safeId + '\')" title="' + (isPinned ? 'Unpin' : 'Pin to top') + '">' + (isPinned ? '📌' : '📍') + '</button>' : '') +
-      '</div>' +
-      '<div class="fup-quick-log" id="ql-' + safeId + '">' +
-        '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">' +
-          '<select id="ql-type-' + safeId + '" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:var(--r)">' +
-            '<option>Call</option><option>Email</option><option>Meeting</option><option>Note</option>' +
-          '</select>' +
-          '<span style="font-family:var(--mono);font-size:10px;color:var(--text-3)">' + escHtml(acc.name) + '</span>' +
-        '</div>' +
-        '<textarea id="ql-note-' + safeId + '" rows="2" placeholder="What happened? Next steps..." ' +
-          'style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 8px;border-radius:var(--r);resize:vertical;font-family:var(--font);margin-bottom:6px"></textarea>' +
-        '<div style="display:flex;gap:6px;align-items:center">' +
-          '<button onclick="fupLogAndDismiss(\'' + escHtml(acc.name) + '\',\'' + safeId + '\')" ' +
-            'style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:5px 14px;cursor:pointer;border-radius:var(--r)">LOG & DISMISS</button>' +
-          '<label style="font-family:var(--mono);font-size:10px;color:var(--text-3)">Set follow-up:</label>' +
-          '<input type="date" id="ql-date-' + safeId + '" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 6px;border-radius:var(--r)">' +
-          '<button onclick="fupCancelLog(\'' + safeId + '\')" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r)">CANCEL</button>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
+    const borderColor = zone==='overdue' ? 'var(--red)' : zone==='week' ? 'var(--gold)' : 'var(--blue-b)';
+    const card = document.createElement('div');
+    card.className = 'fup-card';
+    card.id = sid;
+    card.style.borderLeft = '3px solid ' + borderColor;
+
+    // Build HTML safely using DOM
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = acc.name;
+    nameSpan.style.cssText = 'font-size:12px;font-weight:600;color:var(--blue-bright);cursor:pointer;text-decoration:underline';
+    nameSpan.onclick = () => selectAccountByName(acc.name);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '×';
+    closeBtn.title = 'Remove';
+    closeBtn.style.cssText = 'background:none;border:none;color:var(--text-3);cursor:pointer;font-size:16px;padding:0 0 0 8px;line-height:1;flex-shrink:0';
+    closeBtn.onclick = () => fupRemove(acc.name, sid);
+
+    const headerRow = document.createElement('div');
+    headerRow.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px';
+    const nameWrap = document.createElement('div');
+    nameWrap.style.cssText = 'flex:1;min-width:0';
+    nameWrap.appendChild(nameSpan);
+    if (zone==='overdue' && acc.daysOverdue > 0) {
+      const tag = document.createElement('span');
+      tag.textContent = acc.daysOverdue + 'd overdue';
+      tag.style.cssText = 'background:rgba(239,68,68,0.15);color:var(--red);font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:10px;margin-left:6px';
+      nameWrap.appendChild(tag);
+    } else if (zone==='week' && acc.fupDate) {
+      const tag = document.createElement('span');
+      tag.textContent = 'Due ' + fmtShortDate(acc.fupDate.toISOString ? acc.fupDate.toISOString().slice(0,10) : '');
+      tag.style.cssText = 'background:rgba(245,158,11,0.1);color:var(--gold);font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:10px;margin-left:6px';
+      nameWrap.appendChild(tag);
+    }
+    headerRow.appendChild(nameWrap);
+    headerRow.appendChild(closeBtn);
+    card.appendChild(headerRow);
+
+    // Meta row
+    const metaRow = document.createElement('div');
+    metaRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:10px;color:var(--text-3)';
+    metaRow.innerHTML = '<span style="font-family:var(--mono);color:var(--text-2)">$' + formatNum(acc.total||0) + '</span><span>·</span>' + staleBadge(ds) + (lastInv ? '<span>· Last: ' + fmtShortDate(lastInv) + '</span>' : '');
+    card.appendChild(metaRow);
+
+    // Contact row
+    if (contact) {
+      const contactRow = document.createElement('div');
+      contactRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:5px;padding:5px 8px;background:var(--s0);border-radius:var(--r);border:1px solid var(--border)';
+      const nameDiv = document.createElement('div');
+      nameDiv.style.cssText = 'min-width:0;flex:1';
+      const nameLine = document.createElement('div');
+      nameLine.style.cssText = 'font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      nameLine.textContent = contact.name || '';
+      const titleLine = document.createElement('div');
+      titleLine.style.cssText = 'font-size:10px;color:var(--text-3)';
+      titleLine.textContent = (contact.title||'No title') + (contact.email ? ' · ' + contact.email : '');
+      nameDiv.appendChild(nameLine);
+      nameDiv.appendChild(titleLine);
+      contactRow.innerHTML = '<span style="font-size:12px">👤</span>';
+      contactRow.appendChild(nameDiv);
+      card.appendChild(contactRow);
+    } else {
+      const noContact = document.createElement('div');
+      noContact.style.cssText = 'font-size:10px;color:var(--text-3);margin-bottom:5px;padding:4px 8px;background:var(--s0);border-radius:var(--r)';
+      noContact.textContent = 'No contact on file';
+      card.appendChild(noContact);
+    }
+
+    // Top parts
+    if (topParts.length) {
+      const partsDiv = document.createElement('div');
+      partsDiv.style.cssText = 'font-size:10px;color:var(--text-3);margin-bottom:6px';
+      partsDiv.textContent = 'Top parts: ' + topParts.join(', ');
+      card.appendChild(partsDiv);
+    }
+
+    // Action buttons
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px';
+    const mkBtn = (label, cls, fn) => {
+      const b = document.createElement('button');
+      b.className = 'fup-btn' + (cls ? ' ' + cls : '');
+      b.innerHTML = label;
+      b.onclick = fn;
+      return b;
+    };
+    btnRow.appendChild(mkBtn('📞 Call', 'green', () => fupQuickLog(acc.name, sid, 'Call')));
+    btnRow.appendChild(mkBtn('✉ Email', '', () => fupQuickLog(acc.name, sid, 'Email')));
+    btnRow.appendChild(mkBtn('👥 Meeting', '', () => fupQuickLog(acc.name, sid, 'Meeting')));
+    btnRow.appendChild(mkBtn('⏱ Snooze', 'gold', () => fupSnoozeMenu(acc.name, sid)));
+    btnRow.appendChild(mkBtn('✦ Prep', '', () => fupGetAIPrep(acc.name, sid)));
+    if (zone === 'top50') {
+      const pinBtn = mkBtn(isPinned ? '📌' : '📍', isPinned ? 'gold' : '', () => fupPin(acc.name, sid));
+      if (isPinned) pinBtn.style.borderColor = 'rgba(245,158,11,0.4)';
+      btnRow.appendChild(pinBtn);
+    }
+    card.appendChild(btnRow);
+
+    // AI prep div (hidden)
+    const prepDiv = document.createElement('div');
+    prepDiv.id = 'prep-' + sid;
+    prepDiv.style.cssText = 'display:none;background:rgba(59,130,246,0.06);border:1px solid var(--blue);border-radius:var(--r);padding:8px 10px;font-size:11px;line-height:1.5;color:var(--text);margin-bottom:4px';
+    card.appendChild(prepDiv);
+
+    // Quick log panel
+    const ql = document.createElement('div');
+    ql.className = 'fup-quick-log';
+    ql.id = 'ql-' + sid;
+    const typeSelect = document.createElement('select');
+    typeSelect.id = 'ql-type-' + sid;
+    typeSelect.style.cssText = 'background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:var(--r)';
+    ['Call','Email','Meeting','Note'].forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; typeSelect.appendChild(o); });
+    const qlHeader = document.createElement('div');
+    qlHeader.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center;flex-wrap:wrap';
+    qlHeader.appendChild(typeSelect);
+    if (contact) {
+      const ct = document.createElement('span');
+      ct.style.cssText = 'font-size:10px;color:var(--blue-bright)';
+      ct.textContent = '→ ' + (contact.name||'');
+      qlHeader.appendChild(ct);
+    }
+    const noteArea = document.createElement('textarea');
+    noteArea.id = 'ql-note-' + sid;
+    noteArea.rows = 2;
+    noteArea.placeholder = 'What happened? Outcome, next steps...';
+    noteArea.style.cssText = 'width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 8px;border-radius:var(--r);resize:vertical;font-family:var(--font);margin-bottom:6px';
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.id = 'ql-date-' + sid;
+    dateInput.style.cssText = 'background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 6px;border-radius:var(--r)';
+    const logBtn = document.createElement('button');
+    logBtn.textContent = 'LOG & DISMISS';
+    logBtn.style.cssText = 'background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:5px 14px;cursor:pointer;border-radius:var(--r)';
+    logBtn.onclick = () => fupLogAndDismiss(acc.name, sid, contact?.name||'');
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'CANCEL';
+    cancelBtn.style.cssText = 'background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r)';
+    cancelBtn.onclick = () => fupCancelLog(sid);
+    const qlFooter = document.createElement('div');
+    qlFooter.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap';
+    qlFooter.appendChild(logBtn);
+    const lbl = document.createElement('label');
+    lbl.textContent = 'Next follow-up:';
+    lbl.style.cssText = 'font-family:var(--mono);font-size:10px;color:var(--text-3)';
+    qlFooter.appendChild(lbl);
+    qlFooter.appendChild(dateInput);
+    qlFooter.appendChild(cancelBtn);
+    ql.appendChild(qlHeader);
+    ql.appendChild(noteArea);
+    ql.appendChild(qlFooter);
+    card.appendChild(ql);
+
+    return card;
   }
 
-  el.innerHTML = '<div class="fup-page">' +
+  // ── BUILD PAGE USING DOM ──────────────────────────────────
+  window._fupCards = {};
+  el.innerHTML = '';
 
-    // Stats bar
-    '<div class="fup-stats-bar">' +
-      '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--red)">' + overdue.length + '</div><div class="fup-stat-label">OVERDUE</div></div>' +
-      '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--gold)">' + dueThisWeek.length + '</div><div class="fup-stat-label">DUE THIS WEEK</div></div>' +
-      '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--green)">' + contactedToday + '</div><div class="fup-stat-label">CONTACTED TODAY</div></div>' +
-      '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--blue-bright)">' + top50.length + '</div><div class="fup-stat-label">IN YOUR TOP 50</div></div>' +
-      '<div class="fup-stat" style="flex:2;display:flex;align-items:center;justify-content:center;gap:8px">' +
-        '<input id="fup-search" type="text" placeholder="Search accounts..." oninput="fupFilter()" ' +
-          'style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;padding:6px 10px;border-radius:var(--r);width:200px;outline:none">' +
-        '<button onclick="fupAddAccount()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r)">+ ADD</button>' +
-      '</div>' +
-    '</div>' +
+  const page = document.createElement('div');
+  page.className = 'fup-page';
 
-    // Three column body
-    '<div class="fup-body">' +
+  // Stats bar
+  const statsBar = document.createElement('div');
+  statsBar.className = 'fup-stats-bar';
+  statsBar.innerHTML =
+    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--red)">' + overdue.length + '</div><div class="fup-stat-label">OVERDUE</div></div>' +
+    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--gold)">' + dueThisWeek.length + '</div><div class="fup-stat-label">DUE THIS WEEK</div></div>' +
+    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--green)">' + contactedTodayCount() + '</div><div class="fup-stat-label">CONTACTED TODAY</div></div>' +
+    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--blue-bright)">' + top50.length + '</div><div class="fup-stat-label">YOUR TOP 50</div></div>' +
+    '<div class="fup-stat" style="flex:2;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding-right:16px">' +
+      '<input id="fup-search" type="text" placeholder="Search..." oninput="fupFilter()" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:var(--r);width:180px;outline:none;font-family:var(--font)">' +
+      '<button onclick="fupAddAccount()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">+ ADD</button>' +
+    '</div>';
+  page.appendChild(statsBar);
 
-      // Column 1: Overdue
-      '<div class="fup-col">' +
-        '<div class="fup-col-header">' +
-          '<span style="color:var(--red);font-size:14px">🔴</span>' +
-          '<span class="fup-col-title" style="color:var(--red)">ACTION REQUIRED</span>' +
-          '<span class="fup-col-count">' + overdue.length + ' accounts</span>' +
-        '</div>' +
-        '<div class="fup-col-body" id="fup-col-overdue">' +
-          (overdue.length ? overdue.sort((a,b) => b.daysOverdue - a.daysOverdue).map(a => renderCard(a,'overdue')).join('') :
-            '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:12px">🎉 All clear!<br>No overdue follow-ups</div>') +
-        '</div>' +
-      '</div>' +
+  // 3-column body
+  const body = document.createElement('div');
+  body.className = 'fup-body';
 
-      // Column 2: Due this week
-      '<div class="fup-col">' +
-        '<div class="fup-col-header">' +
-          '<span style="color:var(--gold);font-size:14px">🟡</span>' +
-          '<span class="fup-col-title" style="color:var(--gold)">DUE THIS WEEK</span>' +
-          '<span class="fup-col-count">' + dueThisWeek.length + ' accounts</span>' +
-        '</div>' +
-        '<div class="fup-col-body" id="fup-col-week">' +
-          (dueThisWeek.length ? dueThisWeek.sort((a,b) => a.fupDate - b.fupDate).map(a => renderCard(a,'week')).join('') :
-            '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:12px">Nothing due this week</div>') +
-        '</div>' +
-      '</div>' +
+  function makeCol(icon, label, color, accs2, zone2) {
+    const col = document.createElement('div');
+    col.className = 'fup-col';
+    const hdr = document.createElement('div');
+    hdr.className = 'fup-col-header';
+    hdr.innerHTML = '<span style="font-size:14px">' + icon + '</span><span class="fup-col-title" style="color:' + color + '">' + label + '</span><span class="fup-col-count">' + accs2.length + ' accounts</span>';
+    col.appendChild(hdr);
+    const colBody = document.createElement('div');
+    colBody.className = 'fup-col-body';
+    colBody.id = 'fup-col-' + zone2;
+    if (!accs2.length) {
+      colBody.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--text-3);font-size:12px">' +
+        (zone2 === 'overdue' ? '<div style="font-size:28px;margin-bottom:8px">🎉</div>All clear!<br>No overdue follow-ups' : 'Nothing here') + '</div>';
+    } else {
+      accs2.forEach(a => colBody.appendChild(renderCard(a, zone2)));
+    }
+    col.appendChild(colBody);
+    return col;
+  }
 
-      // Column 3: Top 50
-      '<div class="fup-col">' +
-        '<div class="fup-col-header">' +
-          '<span style="color:var(--blue-bright);font-size:14px">⭐</span>' +
-          '<span class="fup-col-title" style="color:var(--blue-bright)">MY TOP 50</span>' +
-          '<span class="fup-col-count">' + top50.length + ' accounts</span>' +
-        '</div>' +
-        '<div class="fup-col-body" id="fup-col-top50">' +
-          (top50.length ? top50.map(a => renderCard(a,'top50')).join('') :
-            '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:12px">No accounts yet</div>') +
-        '</div>' +
-      '</div>' +
+  body.appendChild(makeCol('🔴', 'ACTION REQUIRED', 'var(--red)',
+    overdue.sort((a,b) => b.daysOverdue - a.daysOverdue), 'overdue'));
+  body.appendChild(makeCol('🟡', 'DUE THIS WEEK', 'var(--gold)',
+    dueThisWeek.sort((a,b) => a.fupDate - b.fupDate), 'week'));
+  body.appendChild(makeCol('⭐', 'MY TOP 50', 'var(--blue-bright)', top50, 'top50'));
 
-    '</div>' +
-  '</div>';
+  page.appendChild(body);
+  el.appendChild(page);
 }
 
-// ── FOLLOW-UP COMMAND CENTER ACTIONS ────────────────────────
-
 function fupQuickLog(accName, safeId, type) {
-  // Close any other open quick log panels
   document.querySelectorAll('.fup-quick-log.open').forEach(el => {
     if (el.id !== 'ql-' + safeId) el.classList.remove('open');
   });
@@ -4345,7 +4484,7 @@ function fupQuickLog(accName, safeId, type) {
   if (ql.classList.contains('open')) {
     const typeEl = document.getElementById('ql-type-' + safeId);
     if (typeEl) typeEl.value = type;
-    document.getElementById('ql-note-' + safeId)?.focus();
+    setTimeout(() => document.getElementById('ql-note-' + safeId)?.focus(), 50);
   }
 }
 
@@ -4353,96 +4492,81 @@ function fupCancelLog(safeId) {
   document.getElementById('ql-' + safeId)?.classList.remove('open');
 }
 
-async function fupLogAndDismiss(accName, safeId) {
+async function fupLogAndDismiss(accName, safeId, contactName) {
   const typeEl = document.getElementById('ql-type-' + safeId);
   const noteEl = document.getElementById('ql-note-' + safeId);
   const dateEl = document.getElementById('ql-date-' + safeId);
   const type = typeEl?.value || 'Note';
   const note = noteEl?.value.trim() || '';
   const newDate = dateEl?.value || '';
-
   if (!note) { showToast('Enter a note first', 'error'); return; }
 
   const now = new Date();
-  const dateStr = now.toLocaleDateString('en-US', { month:'2-digit', day:'2-digit', year:'numeric' }) +
-                  ' ' + now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+  const dateStr = now.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'}) + ' ' +
+                  now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
   const rep = state.user?.email || 'unknown';
 
   try {
-    // Save contact note
-    await sheetsAppend("'_CONTACT_NOTES'!A1", [[accName, '', type, note, dateStr, rep]]);
+    await sheetsAppend("'_CONTACT_NOTES'!A1", [[accName, contactName||'', type, note, dateStr, rep]]);
 
-    // Update follow-up date if set
     if (newDate) {
       const acc = state.accounts.find(a => a.name === accName);
       if (acc) {
-        const d = new Date(newDate + 'T00:00:00');
-        const fmtDate = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
-        acc.followUpDate = fmtDate;
-        await saveAccountNote(acc, acc.repNote || '', fmtDate, acc.repStatus || '');
+        const d = new Date(newDate + 'T12:00:00');
+        const fmt = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
+        acc.followUpDate = fmt;
+        await saveAccountNote(acc, acc.repNote||'', fmt, acc.repStatus||'');
       }
     }
 
-    // Update local cache
     if (!state.contactNotesCache) state.contactNotesCache = {};
     if (!state.contactNotesCache[accName]) state.contactNotesCache[accName] = [];
-    state.contactNotesCache[accName].push({ contact: '', type, note, date: dateStr, rep });
+    state.contactNotesCache[accName].push({contact: contactName||'', type, note, date: dateStr, rep});
 
     showToast('Logged ✓', 'success');
-
-    // Remove card from view
     const card = document.getElementById(safeId);
-    if (card) {
-      card.style.transition = 'all 0.3s';
-      card.style.opacity = '0';
-      card.style.height = '0';
-      card.style.padding = '0';
-      card.style.margin = '0';
-      setTimeout(() => card.remove(), 300);
-    }
-
-    // Update stats
+    if (card) { card.style.transition='all 0.3s'; card.style.opacity='0'; card.style.maxHeight=card.offsetHeight+'px'; setTimeout(()=>{card.style.maxHeight='0';card.style.padding='0';card.style.margin='0';setTimeout(()=>card.remove(),300);},50); }
     updateBadges();
   } catch(e) {
-    showToast('Error saving: ' + e.message, 'error');
+    showToast('Error: ' + e.message, 'error');
   }
 }
 
 function fupSnoozeMenu(accName, safeId) {
   const existing = document.getElementById('snooze-' + safeId);
   if (existing) { existing.remove(); return; }
-
   const card = document.getElementById(safeId);
   if (!card) return;
-
-  const snoozeDiv = document.createElement('div');
-  snoozeDiv.id = 'snooze-' + safeId;
-  snoozeDiv.style.cssText = 'display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;align-items:center';
-  snoozeDiv.innerHTML =
-    '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">SNOOZE:</span>' +
-    ['1 day','3 days','1 week','2 weeks','1 month'].map(label => {
-      const days = label === '1 day' ? 1 : label === '3 days' ? 3 : label === '1 week' ? 7 : label === '2 weeks' ? 14 : 30;
-      return '<button class="fup-btn" onclick="fupSnooze(\'' + escHtml(accName) + '\',\'' + safeId + '\',' + days + ')">' + label + '</button>';
-    }).join('');
-  card.appendChild(snoozeDiv);
+  const div = document.createElement('div');
+  div.id = 'snooze-' + safeId;
+  div.style.cssText = 'display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;align-items:center;padding:6px 0';
+  const lbl = document.createElement('span');
+  lbl.style.cssText = 'font-family:var(--mono);font-size:9px;color:var(--text-3)';
+  lbl.textContent = 'SNOOZE:';
+  div.appendChild(lbl);
+  [['1d',1],['3d',3],['1wk',7],['2wk',14],['1mo',30]].forEach(([label, days]) => {
+    const btn = document.createElement('button');
+    btn.className = 'fup-btn';
+    btn.textContent = label;
+    btn.onclick = () => fupSnooze(accName, safeId, days);
+    div.appendChild(btn);
+  });
+  card.appendChild(div);
 }
 
 async function fupSnooze(accName, safeId, days) {
   const acc = state.accounts.find(a => a.name === accName);
   if (!acc) return;
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  const fmtDate = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
-  acc.followUpDate = fmtDate;
+  const d = new Date(); d.setDate(d.getDate() + days);
+  const fmt = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
+  acc.followUpDate = fmt;
   try {
-    await saveAccountNote(acc, acc.repNote || '', fmtDate, acc.repStatus || '');
-    showToast('Snoozed until ' + fmtDate, 'success');
+    await saveAccountNote(acc, acc.repNote||'', fmt, acc.repStatus||'');
+    showToast('Snoozed → ' + fmt, 'success');
     const card = document.getElementById(safeId);
-    if (card) { card.style.opacity='0'; card.style.transition='opacity 0.3s'; setTimeout(()=>card.remove(),300); }
+    if (card) { card.style.transition='opacity 0.3s'; card.style.opacity='0'; setTimeout(()=>card.remove(),300); }
     updateBadges();
-  } catch(e) {
-    showToast('Error: ' + e.message, 'error');
-  }
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 function fupRemove(accName, safeId) {
@@ -4452,7 +4576,7 @@ function fupRemove(accName, safeId) {
   removedSet.add(accName);
   localStorage.setItem('fup_removed_' + repKey, JSON.stringify([...removedSet]));
   const card = document.getElementById(safeId);
-  if (card) { card.style.opacity='0'; card.style.transition='opacity 0.3s'; setTimeout(()=>card.remove(),300); }
+  if (card) { card.style.transition='opacity 0.3s'; card.style.opacity='0'; setTimeout(()=>card.remove(),300); }
   showToast('Removed from list', 'success');
 }
 
@@ -4467,12 +4591,12 @@ function fupPin(accName, safeId) {
 }
 
 function fupAddAccount() {
-  const search = prompt('Search for account to add to your Top 50:');
+  const search = prompt('Search account name to add to Top 50:');
   if (!search) return;
   const repKey = state.viewAsRep || state.repId || 'admin';
   let pinnedSet = new Set();
-  try { pinnedSet = new Set(JSON.parse(localStorage.getItem('fup_pinned_' + repKey) || '[]')); } catch(e){}
   let removedSet = new Set();
+  try { pinnedSet = new Set(JSON.parse(localStorage.getItem('fup_pinned_' + repKey) || '[]')); } catch(e){}
   try { removedSet = new Set(JSON.parse(localStorage.getItem('fup_removed_' + repKey) || '[]')); } catch(e){}
 
   let accs = [...state.accounts];
@@ -4480,12 +4604,9 @@ function fupAddAccount() {
   else if (!state.isAdmin && state.repId) accs = accs.filter(a => a.rep === state.repId);
 
   const matches = accs.filter(a => a.name.toLowerCase().includes(search.toLowerCase())).slice(0,5);
-  if (!matches.length) { showToast('No accounts found matching "' + search + '"', 'error'); return; }
-
-  const name = matches.length === 1 ? matches[0].name : matches[prompt(
-    'Multiple matches:\n' + matches.map((a,i) => (i+1)+'. '+a.name).join('\n') + '\n\nEnter number:') - 1]?.name;
+  if (!matches.length) { showToast('No matches for "' + search + '"', 'error'); return; }
+  const name = matches.length === 1 ? matches[0].name : matches[parseInt(prompt(matches.map((a,i)=>(i+1)+'. '+a.name).join('\n')+'\n\nEnter number:')||'1')-1]?.name;
   if (!name) return;
-
   removedSet.delete(name);
   pinnedSet.add(name);
   localStorage.setItem('fup_removed_' + repKey, JSON.stringify([...removedSet]));
@@ -4495,17 +4616,66 @@ function fupAddAccount() {
 }
 
 function fupFilter() {
-  const q = document.getElementById('fup-search')?.value.toLowerCase() || '';
+  const q = (document.getElementById('fup-search')?.value || '').toLowerCase();
   document.querySelectorAll('.fup-card').forEach(card => {
-    const name = card.querySelector('.fup-card-name')?.textContent.toLowerCase() || '';
+    const name = card.querySelector('span[onclick]')?.textContent.toLowerCase() || '';
     card.style.display = name.includes(q) ? '' : 'none';
   });
 }
 
 function selectAccountByName(name) {
   const acc = state.accounts.find(a => a.name === name);
-  if (acc) { switchView('accounts'); setTimeout(() => selectAccount(acc), 300); }
+  if (acc) { switchView('accounts'); setTimeout(() => selectAccount(acc), 400); }
 }
+
+async function fupGetAIPrep(accName, safeId) {
+  const prepDiv = document.getElementById('prep-' + safeId);
+  if (!prepDiv) return;
+
+  if (prepDiv.style.display !== 'none' && prepDiv.innerHTML) {
+    prepDiv.style.display = 'none';
+    return;
+  }
+
+  prepDiv.style.display = 'block';
+  prepDiv.innerHTML = '<span style="color:var(--text-3);font-family:var(--mono);font-size:10px">✦ Generating call prep...</span>';
+
+  const acc = state.accounts.find(a => a.name === accName);
+  if (!acc) return;
+
+  const contacts = state.contactsCache[accName.trim()] || [];
+  const primaryContact = contacts.find(c => c.type !== 'AP/Collections' && c.email) || contacts[0];
+  const topParts = Object.entries(
+    ((state.historyCache[accName]||{}).invoices||[]).reduce((m,inv) => {
+      if (inv.part) m[inv.part] = (m[inv.part]||0) + (inv.lineTotal||0);
+      return m;
+    }, {})
+  ).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([p,t])=>p+' ($'+formatNum(t)+')');
+
+  const reqs = ((state.historyCache[accName]||{}).reqs||[]).slice(0,3).map(r=>r.part||'').filter(Boolean);
+  const notes = (state.contactNotesCache||{})[accName]||[];
+  const lastNote = notes.length ? notes[notes.length-1] : null;
+
+  const prompt = 'You are helping a sales rep prepare for a call with ' + accName + '. ' +
+    'Contact: ' + (primaryContact ? primaryContact.name + ' (' + (primaryContact.title||'buyer') + ')' : 'unknown contact') + '. ' +
+    'Account status: ' + (acc.status||'unknown') + '. ' +
+    'Days inactive: ' + (acc.daysInactive||0) + '. ' +
+    'Total revenue: $' + formatNum(acc.total||0) + '. ' +
+    'Top purchased parts: ' + (topParts.join(', ') || 'none on record') + '. ' +
+    'Recent RFQs: ' + (reqs.join(', ') || 'none') + '. ' +
+    (lastNote ? 'Last note (' + lastNote.date + '): ' + lastNote.note + '. ' : '') +
+    'Write a SHORT 3-4 line call prep note: what to mention, what to ask about, and one specific upsell angle based on their purchase history. Be specific and actionable. No bullet points — just a natural briefing.';
+
+  try {
+    const data = await callAI({ model: 'claude-sonnet-4-5', max_tokens: 200, messages: [{ role: 'user', content: prompt }] });
+    const text = data.content?.[0]?.text || 'No prep generated';
+    prepDiv.innerHTML = '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono);margin-bottom:4px">✦ AI CALL PREP</div>' +
+      '<div style="font-size:11px;line-height:1.6;color:var(--text)">' + escHtml(text) + '</div>';
+  } catch(e) {
+    prepDiv.innerHTML = '<span style="color:var(--red);font-size:10px">Error: ' + escHtml(e.message) + '</span>';
+  }
+}
+
 
 
 function renderDashboard() {

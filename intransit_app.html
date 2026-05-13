@@ -1368,7 +1368,7 @@ async function loadSupplementalData() {
 
     // Load orders history (dated orders for booked calc)
     try {
-      const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A1:H32000");
+      const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A1:H15000");
       if (ordHistRows.length > 1) {
         const hdrs = ordHistRows[0];
         state.ordersHistoryCache = ordHistRows.slice(1).map(r => {
@@ -1380,22 +1380,29 @@ async function loadSupplementalData() {
       }
     } catch(e) { console.error('Orders history load failed:', e.message); }
 
-    // Load GP data — ~22K rows, columns A:I only, trim SQL CHAR padding
+    // Load GP data — fetched in 5000-row chunks to stay under Worker timeout
     state.gpLoadError = null;
     try {
-      const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:I25000");
-      if (gpRows.length > 1) {
-        const hdrs = gpRows[0].map(h => (h||'').trim());
-        state.gpCache = gpRows.slice(1).map(r => {
+      const hdrRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:I1");
+      if (!hdrRows.length) throw new Error('Could not read _GP headers');
+      const hdrs = hdrRows[0].map(h => (h||'').trim());
+      let allGP = [];
+      const CHUNK = 5000;
+      for (let start = 2; start < 30000; start += CHUNK) {
+        const end = start + CHUNK - 1;
+        const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID,
+          "'_GP'!A" + start + ":I" + end);
+        if (!rows || rows.length === 0) break;
+        for (const r of rows) {
           const obj = {};
           hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
-          return obj;
-        });
-        console.log('GP cache loaded:', state.gpCache.length, 'rows');
-      } else {
-        state.gpLoadError = '_GP returned ' + gpRows.length + ' rows';
-        console.warn(state.gpLoadError);
+          allGP.push(obj);
+        }
+        if (rows.length < CHUNK) break; // last chunk
       }
+      state.gpCache = allGP;
+      console.log('GP cache loaded:', state.gpCache.length, 'rows');
+      if (allGP.length === 0) state.gpLoadError = '_GP returned 0 data rows';
     } catch(e) {
       state.gpLoadError = 'GP load error: ' + e.message;
       console.error(state.gpLoadError);
@@ -5261,7 +5268,7 @@ function renderDashboard() {
           <span style="color:#c9a84c;font-size:10px;letter-spacing:0.1em">⚙ DASHBOARD DIAGNOSTIC</span>
           <button onclick="document.getElementById('dash-diag-panel').style.display='none'" style="background:transparent;border:none;color:#666;cursor:pointer;font-size:14px">✕</button>
         </div>
-        <div id="dash-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:5px;color:#888">Loading...</div>
+        <div id="dash-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:5px;color:#888">Refresh to populate.</div>
       </div>
 
       <!-- Diagnostics (shown when data issues detected) -->
@@ -5368,15 +5375,15 @@ async function refreshDashboard() {
   if (_dc && _dp && _dp.style.display !== 'none') {
     const s0 = state.gpCache[0];
     const inRange = state.gpCache.filter(r => { const d=normDate(r[gpDateCol]||''); return d>=from&&d<=to; }).length;
-    const uReps = [...new Set(state.gpCache.slice(0,200).map(r=>(r[gpSalesRepCol]||'').trim()).filter(Boolean))];
+    const uReps = [...new Set(state.gpCache.slice(0,500).map(r=>(r[gpSalesRepCol]||'').trim()).filter(Boolean))];
     const rows = [
       ['gpCache total rows', state.gpCache.length],
       ['gpLoadError', state.gpLoadError || '(none)'],
       ['rows in date range', inRange],
       ['gpFiltered (rep+date)', gpFiltered.length],
       ['repFilter', repFilter || '(none)'],
-      ['sample SALES_REP', s0 ? '"' + s0[gpSalesRepCol] + '"' : '(empty)'],
-      ['sample EXTENDED_PRICE', s0 ? '"' + s0[gpInvTotalCol] + '"' : '(empty)'],
+      ['sample SALES_REP', s0 ? '"'+s0[gpSalesRepCol]+'"' : '(empty)'],
+      ['sample EXTENDED_PRICE', s0 ? '"'+s0[gpInvTotalCol]+'"' : '(empty)'],
       ['unique SALES_REP values', uReps.join(', ') || '(none)'],
     ];
     _dc.innerHTML = rows.map(([k,v]) => {

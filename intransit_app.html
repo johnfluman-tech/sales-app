@@ -117,7 +117,9 @@ body::before {
 
 /* ── SIDEBAR ───────────────────────────── */
 .sidebar {
-  width: var(--sidebar-w, 240px); min-width: var(--sidebar-w, 240px);
+  width: var(--sidebar-w, 220px); min-width: var(--sidebar-w, 220px);
+  max-width: var(--sidebar-w, 220px);
+  flex-shrink: 0; flex-grow: 0;
   background: var(--s0); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
 }
@@ -594,39 +596,26 @@ body::before {
 .apk-pool-cards .apk-card { flex-shrink: 0; width: 155px; }
 #apk-pool.drag-over { background: rgba(59,130,246,0.05); }
 
-/* ── FOLLOW-UP COMMAND CENTER ───────────── */
+/* ── PIPELINE INTELLIGENCE (Follow-Up Center) ── */
 .fup-page { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--s0); }
-.fup-stats-bar {
-  display: flex; gap: 0; border-bottom: 1px solid var(--border);
-  background: var(--s1); flex-shrink: 0;
-}
-.fup-stat {
-  flex: 1; padding: 12px 16px; border-right: 1px solid var(--border);
-  text-align: center;
-}
+.fup-stats-bar { display: flex; border-bottom: 1px solid var(--border); background: var(--s1); flex-shrink: 0; }
+.fup-stat { flex: 1; padding: 10px 16px; border-right: 1px solid var(--border); text-align: center; }
 .fup-stat:last-child { border-right: none; }
-.fup-stat-num { font-family: var(--mono); font-size: 22px; font-weight: 700; }
-.fup-stat-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.15em; color: var(--text-3); margin-top: 2px; }
+.fup-stat-num { font-family: var(--mono); font-size: 20px; font-weight: 700; }
+.fup-stat-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; color: var(--text-3); margin-top: 2px; }
 .fup-body { flex: 1; display: flex; overflow: hidden; min-height: 0; }
 .fup-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
 .fup-col:last-child { border-right: none; }
-.fup-col-header {
-  padding: 10px 14px; border-bottom: 1px solid var(--border);
-  background: var(--s1); flex-shrink: 0;
-  display: flex; align-items: center; gap: 8px;
-}
+.fup-col-header { padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--s1); flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
 .fup-col-title { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; }
 .fup-col-count { font-family: var(--mono); font-size: 10px; color: var(--text-3); margin-left: auto; }
 .fup-col-body { flex: 1; overflow-y: auto; padding: 8px; }
 .fup-card {
   background: var(--s1); border: 1px solid var(--border);
   border-radius: var(--r); padding: 10px 12px; margin-bottom: 6px;
-  cursor: pointer; transition: all 0.15s; position: relative;
+  transition: all 0.15s; position: relative;
 }
 .fup-card:hover { background: var(--s2); border-color: var(--blue-b); }
-.fup-card-name { font-size: 12px; font-weight: 600; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fup-card-meta { font-size: 11px; color: var(--text-3); display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-.fup-card-actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .fup-btn {
   font-family: var(--mono); font-size: 9px; padding: 3px 8px;
   border: 1px solid var(--border); background: var(--s2);
@@ -635,30 +624,13 @@ body::before {
 }
 .fup-btn:hover { border-color: var(--blue-b); color: var(--blue-b); }
 .fup-btn.green { border-color: rgba(34,197,94,0.4); color: var(--green); }
-.fup-btn.green:hover { background: rgba(34,197,94,0.1); }
-.fup-btn.red { border-color: rgba(239,68,68,0.4); color: var(--red); }
 .fup-btn.gold { border-color: rgba(245,158,11,0.4); color: var(--gold); }
-.fup-snooze-bar { display: flex; gap: 4px; margin-top: 6px; align-items: center; }
-.fup-snooze-label { font-family: var(--mono); font-size: 9px; color: var(--text-3); }
-.fup-days-badge {
-  font-family: var(--mono); font-size: 9px; padding: 2px 6px;
-  border-radius: 10px; font-weight: 600;
-}
-.fup-overdue { border-left: 3px solid var(--red); }
-.fup-soon { border-left: 3px solid var(--gold); }
-.fup-top50 { border-left: 3px solid var(--blue-b); }
-.fup-quick-log {
-  background: var(--s0); border: 1px solid var(--border);
-  border-top: 2px solid var(--blue-b);
-  padding: 10px 12px; margin-top: 4px; border-radius: var(--r);
-  display: none;
-}
+.fup-btn.blue { border-color: rgba(59,130,246,0.4); color: var(--blue-bright); }
+.fup-quick-log { background: var(--s0); border: 1px solid var(--border); border-top: 2px solid var(--blue-b); padding: 10px 12px; margin-top: 6px; border-radius: var(--r); display: none; }
 .fup-quick-log.open { display: block; }
-.fup-filter-bar {
-  display: flex; gap: 6px; align-items: center;
-  padding: 8px 14px; border-bottom: 1px solid var(--border);
-  background: var(--s0); flex-shrink: 0; flex-wrap: wrap;
-}
+.fup-contact-chip { display:flex; align-items:center; gap:6px; padding:5px 8px; background:var(--s0); border:1px solid var(--border); border-radius:var(--r); margin-bottom:5px; }
+.fup-value-bar { height:3px; background:rgba(59,130,246,0.15); border-radius:2px; margin:4px 0; }
+.fup-value-fill { height:100%; border-radius:2px; background:var(--blue-b); transition:width 0.5s; }
 
 /* ── SETTINGS ──────────────────────────── */
 .settings-section {
@@ -4136,213 +4108,203 @@ async function denyRemoval(accountName) {
 // ══════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════
-//  FOLLOW-UP COMMAND CENTER v2
+//  PIPELINE INTELLIGENCE — Follow the Money
+//  Contact-first sales pipeline based on invoice value
 // ══════════════════════════════════════════════════════════
+
+// Global card registry (avoids inline string quoting issues)
+window._pipCards = {};
 
 function renderFollowUpCommandCenter() {
   const el = document.getElementById('main-content');
   if (!el) return;
 
   const today = new Date(); today.setHours(0,0,0,0);
-  const weekFromNow = new Date(today); weekFromNow.setDate(today.getDate() + 7);
 
   // Get rep accounts
-  let accs = [...state.accounts];
-  if (state.isAdmin && state.viewAsRep) accs = accs.filter(a => a.rep === state.viewAsRep);
-  else if (!state.isAdmin && state.repId) accs = accs.filter(a => a.rep === state.repId);
+  let repAccounts = [...state.accounts];
+  if (state.isAdmin && state.viewAsRep) repAccounts = repAccounts.filter(a => a.rep === state.viewAsRep);
+  else if (!state.isAdmin && state.repId) repAccounts = repAccounts.filter(a => a.rep === state.repId);
 
-  const repKey = state.viewAsRep || state.repId || 'admin';
-  let removedSet = new Set();
-  let pinnedSet = new Set();
-  try { removedSet = new Set(JSON.parse(localStorage.getItem('fup_removed_' + repKey) || '[]')); } catch(e){}
-  try { pinnedSet = new Set(JSON.parse(localStorage.getItem('fup_pinned_' + repKey) || '[]')); } catch(e){}
+  const repAccountNames = new Set(repAccounts.map(a => a.name.trim()));
 
-  function parseFupDate(str) {
-    if (!str) return null;
-    const p = str.split('/');
-    if (p.length === 3) return new Date(parseInt(p[2]), parseInt(p[0])-1, parseInt(p[1]));
-    return null;
-  }
+  // ── BUILD CONTACT UNIVERSE ────────────────────────────────
+  // For each contact, aggregate their account's invoice data
+  const contactMap = {}; // key = contactEmail or contactName+account
 
-  function daysSinceLastContact(accName) {
-    const notes = (state.contactNotesCache || {})[accName] || [];
-    if (!notes.length) return null;
-    const latest = notes.reduce((a,b) => (a.date||'') > (b.date||'') ? a : b);
-    const d = new Date(latest.date);
-    return isNaN(d) ? null : Math.floor((today - d) / 86400000);
-  }
-
-  function getPrimaryContact(accName) {
-    const contacts = state.contactsCache[accName.trim()] || [];
-    // Prefer purchasing contacts with email
-    const buying = contacts.filter(c => c.type !== 'AP/Collections' && c.email);
-    if (buying.length) return buying[0];
-    const any = contacts.filter(c => c.email);
-    if (any.length) return any[0];
-    return contacts[0] || null;
-  }
-
-  function getTopParts(accName) {
+  repAccountNames.forEach(accName => {
+    const contacts = (state.contactsCache[accName] || []).filter(c => c.type !== 'AP/Collections');
     const invs = (state.historyCache[accName] || {}).invoices || [];
+    const acc = repAccounts.find(a => a.name === accName);
+    if (!acc) return;
+
+    // Account-level stats
+    const totalRevenue = invs.reduce((s, inv) => s + (inv.total || inv.lineTotal || 0), 0) || (acc.total || 0);
+    const dates = invs.map(inv => inv.date).filter(Boolean).sort().reverse();
+    const lastOrderDate = dates[0] || acc.lastSale || null;
+    const daysSince = lastOrderDate ? Math.floor((today - new Date(lastOrderDate)) / 86400000) : 999;
+
+    // Top parts by $
     const partTotals = {};
     invs.forEach(inv => {
-      if (inv.part) {
-        partTotals[inv.part] = (partTotals[inv.part] || 0) + (inv.lineTotal || 0);
-      }
+      if (inv.part) partTotals[inv.part] = (partTotals[inv.part] || 0) + (inv.lineTotal || 0);
     });
-    return Object.entries(partTotals)
-      .sort((a,b) => b[1]-a[1])
-      .slice(0,3)
-      .map(([part, total]) => part + ' ($' + formatNum(total) + ')');
-  }
+    const topParts = Object.entries(partTotals).sort((a,b) => b[1]-a[1]).slice(0,3);
 
-  function getLastInvoiceDate(accName) {
-    const invs = (state.historyCache[accName] || {}).invoices || [];
-    if (!invs.length) return null;
-    const sorted = [...invs].sort((a,b) => (b.date||'') > (a.date||'') ? 1 : -1);
-    return sorted[0].date || null;
-  }
+    // Last contact note
+    const notes = (state.contactNotesCache || {})[accName] || [];
+    const lastNote = notes.length ? notes[notes.length-1] : null;
+    const daysSinceContact = lastNote ? Math.floor((today - new Date(lastNote.date)) / 86400000) : null;
 
-  function contactedTodayCount() {
-    let count = 0;
-    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
-    Object.values(state.contactNotesCache || {}).forEach(notes => {
-      if (notes.some(n => { const d = new Date(n.date); return d >= todayStart; })) count++;
-    });
-    return count;
-  }
-
-  // Categorize
-  const overdue = [], dueThisWeek = [], top50 = [];
-
-  accs.forEach(a => {
-    if (removedSet.has(a.name)) return;
-    const fupDate = parseFupDate(a.followUpDate);
-    if (fupDate && fupDate < today) {
-      overdue.push({...a, fupDate, daysOverdue: Math.floor((today - fupDate) / 86400000)});
-    } else if (fupDate && fupDate <= weekFromNow) {
-      dueThisWeek.push({...a, fupDate});
+    if (contacts.length === 0) {
+      // No contact — create account-level entry
+      const key = 'acc:' + accName;
+      contactMap[key] = {
+        key, accName, acc,
+        contactName: null, contactTitle: null, contactEmail: null, contactPhone: null,
+        totalRevenue, daysSince, topParts, lastNote, daysSinceContact,
+        orderCount: invs.length
+      };
+    } else {
+      contacts.forEach(c => {
+        const key = (c.email || c.name + ':' + accName);
+        if (!contactMap[key] || (contactMap[key].totalRevenue || 0) < totalRevenue) {
+          contactMap[key] = {
+            key, accName, acc,
+            contactName: c.name, contactTitle: c.title, contactEmail: c.email,
+            contactPhone: c.phone || c.mobile,
+            totalRevenue, daysSince, topParts, lastNote, daysSinceContact,
+            orderCount: invs.length
+          };
+        }
+      });
     }
   });
 
-  const overdueNames = new Set(overdue.map(a => a.name));
-  const weekNames = new Set(dueThisWeek.map(a => a.name));
-  const top50Candidates = accs
-    .filter(a => !overdueNames.has(a.name) && !weekNames.has(a.name) && !removedSet.has(a.name))
-    .sort((a,b) => {
-      if (pinnedSet.has(a.name) && !pinnedSet.has(b.name)) return -1;
-      if (!pinnedSet.has(a.name) && pinnedSet.has(b.name)) return 1;
-      return (b.total||0) - (a.total||0);
-    })
-    .slice(0,50);
-  top50.push(...top50Candidates);
+  const allContacts = Object.values(contactMap)
+    .filter(c => c.totalRevenue > 0 || c.acc)
+    .sort((a,b) => (b.totalRevenue||0) - (a.totalRevenue||0));
 
-  function fmtShortDate(str) {
-    if (!str) return null;
-    const d = new Date(str);
-    if (isNaN(d)) return str;
-    return (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
-  }
+  const maxRevenue = allContacts[0]?.totalRevenue || 1;
 
-  function staleBadge(ds) {
-    if (ds === null) return '<span style="color:var(--text-3);font-size:10px">Never contacted</span>';
-    if (ds === 0) return '<span style="color:var(--green);font-size:10px">✓ Today</span>';
-    if (ds <= 7) return '<span style="color:var(--green);font-size:10px">' + ds + 'd ago</span>';
-    if (ds <= 30) return '<span style="color:var(--gold);font-size:10px">' + ds + 'd ago</span>';
-    return '<span style="color:var(--red);font-size:10px">⚠ ' + ds + 'd ago</span>';
-  }
+  // ── CATEGORIZE ────────────────────────────────────────────
+  const hot = [], reengage = [], winback = [];
 
-  // Store card data globally to avoid quoting issues in onclick
-  if (!window._fupCards) window._fupCards = {};
+  allContacts.forEach(c => {
+    const ds = c.daysSince;
+    if (ds <= 60) hot.push(c);
+    else if (ds <= 180) reengage.push(c);
+    else winback.push(c);
+  });
 
-  function renderCard(acc, zone) {
-    const sid = 'fup' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-    const isPinned = pinnedSet.has(acc.name);
-    const ds = daysSinceLastContact(acc.name);
-    const contact = getPrimaryContact(acc.name);
-    const topParts = getTopParts(acc.name);
-    const lastInv = getLastInvoiceDate(acc.name);
-    window._fupCards[sid] = { name: acc.name, zone, acc, _contact: contact||null };
+  // Stats
+  const totalValue = allContacts.reduce((s,c) => s + (c.totalRevenue||0), 0);
+  const contacted24h = allContacts.filter(c =>
+    c.daysSinceContact !== null && c.daysSinceContact === 0
+  ).length;
 
-    const borderColor = zone==='overdue' ? 'var(--red)' : zone==='week' ? 'var(--gold)' : 'var(--blue-b)';
+  // ── RENDER CARD (DOM-based, no string quoting) ────────────
+  window._pipCards = {};
+
+  function renderCard(c) {
+    const sid = 'pip' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+    window._pipCards[sid] = c;
+
     const card = document.createElement('div');
     card.className = 'fup-card';
     card.id = sid;
-    card.style.borderLeft = '3px solid ' + borderColor;
 
-    // Build HTML safely using DOM
-    const nameSpan = document.createElement('span');
-    nameSpan.textContent = acc.name;
-    nameSpan.style.cssText = 'font-size:12px;font-weight:600;color:var(--blue-bright);cursor:pointer;text-decoration:underline';
-    nameSpan.onclick = () => selectAccountByName(acc.name);
+    // Value bar (shows relative value vs top contact)
+    const pct = Math.min(100, Math.round((c.totalRevenue / maxRevenue) * 100));
+    const barColor = pct > 66 ? 'var(--green)' : pct > 33 ? 'var(--gold)' : 'var(--blue-b)';
 
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '×';
-    closeBtn.title = 'Remove';
-    closeBtn.style.cssText = 'background:none;border:none;color:var(--text-3);cursor:pointer;font-size:16px;padding:0 0 0 8px;line-height:1;flex-shrink:0';
-    closeBtn.onclick = () => fupRemove(acc.name, sid);
+    // Header: contact name + account
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'margin-bottom:4px';
 
-    const headerRow = document.createElement('div');
-    headerRow.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px';
-    const nameWrap = document.createElement('div');
-    nameWrap.style.cssText = 'flex:1;min-width:0';
-    nameWrap.appendChild(nameSpan);
-    if (zone==='overdue' && acc.daysOverdue > 0) {
-      const tag = document.createElement('span');
-      tag.textContent = acc.daysOverdue + 'd overdue';
-      tag.style.cssText = 'background:rgba(239,68,68,0.15);color:var(--red);font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:10px;margin-left:6px';
-      nameWrap.appendChild(tag);
-    } else if (zone==='week' && acc.fupDate) {
-      const tag = document.createElement('span');
-      tag.textContent = 'Due ' + fmtShortDate(acc.fupDate.toISOString ? acc.fupDate.toISOString().slice(0,10) : '');
-      tag.style.cssText = 'background:rgba(245,158,11,0.1);color:var(--gold);font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:10px;margin-left:6px';
-      nameWrap.appendChild(tag);
+    if (c.contactName) {
+      const nameEl = document.createElement('div');
+      nameEl.style.cssText = 'font-size:12px;font-weight:600;color:var(--text);margin-bottom:1px';
+      nameEl.textContent = c.contactName;
+      hdr.appendChild(nameEl);
+      if (c.contactTitle) {
+        const titleEl = document.createElement('div');
+        titleEl.style.cssText = 'font-size:10px;color:var(--text-3)';
+        titleEl.textContent = c.contactTitle;
+        hdr.appendChild(titleEl);
+      }
     }
-    headerRow.appendChild(nameWrap);
-    headerRow.appendChild(closeBtn);
-    card.appendChild(headerRow);
 
-    // Meta row
-    const metaRow = document.createElement('div');
-    metaRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:10px;color:var(--text-3)';
-    metaRow.innerHTML = '<span style="font-family:var(--mono);color:var(--text-2)">$' + formatNum(acc.total||0) + '</span><span>·</span>' + staleBadge(ds) + (lastInv ? '<span>· Last: ' + fmtShortDate(lastInv) + '</span>' : '');
-    card.appendChild(metaRow);
+    // Account name (clickable)
+    const accEl = document.createElement('div');
+    accEl.style.cssText = 'font-size:11px;color:var(--blue-bright);cursor:pointer;text-decoration:underline;margin-top:1px';
+    accEl.textContent = c.accName;
+    accEl.onclick = () => pipGoToAccount(sid);
+    hdr.appendChild(accEl);
+    card.appendChild(hdr);
 
-    // Contact row
-    if (contact) {
-      const contactRow = document.createElement('div');
-      contactRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:5px;padding:5px 8px;background:var(--s0);border-radius:var(--r);border:1px solid var(--border)';
-      const nameDiv = document.createElement('div');
-      nameDiv.style.cssText = 'min-width:0;flex:1';
-      const nameLine = document.createElement('div');
-      nameLine.style.cssText = 'font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
-      nameLine.textContent = contact.name || '';
-      const titleLine = document.createElement('div');
-      titleLine.style.cssText = 'font-size:10px;color:var(--text-3)';
-      titleLine.textContent = (contact.title||'No title') + (contact.email ? ' · ' + contact.email : '');
-      nameDiv.appendChild(nameLine);
-      nameDiv.appendChild(titleLine);
-      contactRow.innerHTML = '<span style="font-size:12px">👤</span>';
-      contactRow.appendChild(nameDiv);
-      card.appendChild(contactRow);
-    } else {
-      const noContact = document.createElement('div');
-      noContact.style.cssText = 'font-size:10px;color:var(--text-3);margin-bottom:5px;padding:4px 8px;background:var(--s0);border-radius:var(--r)';
-      noContact.textContent = 'No contact on file';
-      card.appendChild(noContact);
+    // Value bar
+    const barWrap = document.createElement('div');
+    barWrap.className = 'fup-value-bar';
+    const barFill = document.createElement('div');
+    barFill.className = 'fup-value-fill';
+    barFill.style.cssText = 'width:' + pct + '%;background:' + barColor;
+    barWrap.appendChild(barFill);
+    card.appendChild(barWrap);
+
+    // Stats row
+    const statsRow = document.createElement('div');
+    statsRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin:5px 0;font-size:10px;flex-wrap:wrap';
+    statsRow.innerHTML =
+      '<span style="font-family:var(--mono);font-weight:600;color:' + barColor + '">$' + formatNum(c.totalRevenue||0) + '</span>' +
+      '<span style="color:var(--text-3)">·</span>' +
+      '<span style="color:var(--text-3)">' + (c.orderCount||0) + ' orders</span>' +
+      '<span style="color:var(--text-3)">·</span>' +
+      _pipStaleBadge(c.daysSince) +
+      (c.daysSinceContact !== null
+        ? '<span style="color:var(--text-3)">·</span><span style="font-size:9px;color:var(--text-3)">📞 ' + (c.daysSinceContact === 0 ? 'today' : c.daysSinceContact + 'd ago') + '</span>'
+        : '');
+    card.appendChild(statsRow);
+
+    // Contact info chip (if has email/phone)
+    if (c.contactEmail || c.contactPhone) {
+      const chip = document.createElement('div');
+      chip.className = 'fup-contact-chip';
+      chip.style.marginBottom = '5px';
+      if (c.contactEmail) {
+        const emailEl = document.createElement('span');
+        emailEl.style.cssText = 'font-size:10px;color:var(--blue-bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1';
+        emailEl.textContent = '✉ ' + c.contactEmail;
+        chip.appendChild(emailEl);
+      }
+      if (c.contactPhone) {
+        const phoneEl = document.createElement('span');
+        phoneEl.style.cssText = 'font-size:10px;color:var(--text-3);white-space:nowrap;flex-shrink:0';
+        phoneEl.textContent = '📞 ' + c.contactPhone;
+        chip.appendChild(phoneEl);
+      }
+      card.appendChild(chip);
     }
 
     // Top parts
-    if (topParts.length) {
-      const partsDiv = document.createElement('div');
-      partsDiv.style.cssText = 'font-size:10px;color:var(--text-3);margin-bottom:6px';
-      partsDiv.textContent = 'Top parts: ' + topParts.join(', ');
-      card.appendChild(partsDiv);
+    if (c.topParts && c.topParts.length) {
+      const partsEl = document.createElement('div');
+      partsEl.style.cssText = 'font-size:10px;color:var(--text-3);margin-bottom:5px;line-height:1.4';
+      partsEl.textContent = '🔩 ' + c.topParts.map(([p,t]) => p + ' ($' + formatNum(t) + ')').join('  ·  ');
+      card.appendChild(partsEl);
+    }
+
+    // Last note snippet
+    if (c.lastNote) {
+      const noteEl = document.createElement('div');
+      noteEl.style.cssText = 'font-size:10px;color:var(--text-3);margin-bottom:5px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      noteEl.textContent = '💬 ' + c.lastNote.note.slice(0,60) + (c.lastNote.note.length > 60 ? '…' : '');
+      card.appendChild(noteEl);
     }
 
     // Action buttons
     const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px';
+    btnRow.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap';
     const mkBtn = (label, cls, fn) => {
       const b = document.createElement('button');
       b.className = 'fup-btn' + (cls ? ' ' + cls : '');
@@ -4350,68 +4312,74 @@ function renderFollowUpCommandCenter() {
       b.onclick = fn;
       return b;
     };
-    btnRow.appendChild(mkBtn('📞 Call', 'green', () => fupQuickLog(acc.name, sid, 'Call')));
-    btnRow.appendChild(mkBtn('✉ Email', '', () => fupQuickLog(acc.name, sid, 'Email')));
-    btnRow.appendChild(mkBtn('👥 Meeting', '', () => fupQuickLog(acc.name, sid, 'Meeting')));
-    btnRow.appendChild(mkBtn('⏱ Snooze', 'gold', () => fupSnoozeMenu(acc.name, sid)));
-    btnRow.appendChild(mkBtn('✦ Prep', '', () => fupGetAIPrep(acc.name, sid)));
-    if (zone === 'top50') {
-      const pinBtn = mkBtn(isPinned ? '📌' : '📍', isPinned ? 'gold' : '', () => fupPin(acc.name, sid));
-      if (isPinned) pinBtn.style.borderColor = 'rgba(245,158,11,0.4)';
-      btnRow.appendChild(pinBtn);
-    }
+    btnRow.appendChild(mkBtn('📞 Call', 'green', () => pipQuickLog(sid, 'Call')));
+    btnRow.appendChild(mkBtn('✉ Email', '', () => pipQuickLog(sid, 'Email')));
+    btnRow.appendChild(mkBtn('👥 Meeting', '', () => pipQuickLog(sid, 'Meeting')));
+    btnRow.appendChild(mkBtn('⏱ Snooze', 'gold', () => pipSnoozeMenu(sid)));
+    btnRow.appendChild(mkBtn('✦ Prep', 'blue', () => pipAIPrep(sid)));
     card.appendChild(btnRow);
 
-    // AI prep div (hidden)
+    // AI prep div
     const prepDiv = document.createElement('div');
-    prepDiv.id = 'prep-' + sid;
-    prepDiv.style.cssText = 'display:none;background:rgba(59,130,246,0.06);border:1px solid var(--blue);border-radius:var(--r);padding:8px 10px;font-size:11px;line-height:1.5;color:var(--text);margin-bottom:4px';
+    prepDiv.id = 'pip-prep-' + sid;
+    prepDiv.style.cssText = 'display:none;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.3);border-radius:var(--r);padding:8px 10px;font-size:11px;line-height:1.6;color:var(--text);margin-top:6px';
     card.appendChild(prepDiv);
 
     // Quick log panel
     const ql = document.createElement('div');
     ql.className = 'fup-quick-log';
-    ql.id = 'ql-' + sid;
+    ql.id = 'pip-ql-' + sid;
+
+    const qlHdr = document.createElement('div');
+    qlHdr.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center;flex-wrap:wrap';
     const typeSelect = document.createElement('select');
-    typeSelect.id = 'ql-type-' + sid;
+    typeSelect.id = 'pip-type-' + sid;
     typeSelect.style.cssText = 'background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:var(--r)';
-    ['Call','Email','Meeting','Note'].forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; typeSelect.appendChild(o); });
-    const qlHeader = document.createElement('div');
-    qlHeader.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center;flex-wrap:wrap';
-    qlHeader.appendChild(typeSelect);
-    if (contact) {
+    ['Call','Email','Meeting','Note'].forEach(t => {
+      const o = document.createElement('option'); o.value = t; o.textContent = t;
+      typeSelect.appendChild(o);
+    });
+    qlHdr.appendChild(typeSelect);
+    if (c.contactName) {
       const ct = document.createElement('span');
       ct.style.cssText = 'font-size:10px;color:var(--blue-bright)';
-      ct.textContent = '→ ' + (contact.name||'');
-      qlHeader.appendChild(ct);
+      ct.textContent = '→ ' + c.contactName;
+      qlHdr.appendChild(ct);
     }
+
     const noteArea = document.createElement('textarea');
-    noteArea.id = 'ql-note-' + sid;
+    noteArea.id = 'pip-note-' + sid;
     noteArea.rows = 2;
     noteArea.placeholder = 'What happened? Outcome, next steps...';
     noteArea.style.cssText = 'width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 8px;border-radius:var(--r);resize:vertical;font-family:var(--font);margin-bottom:6px';
-    const dateInput = document.createElement('input');
-    dateInput.type = 'date';
-    dateInput.id = 'ql-date-' + sid;
-    dateInput.style.cssText = 'background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 6px;border-radius:var(--r)';
+
+    const qlFooter = document.createElement('div');
+    qlFooter.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap';
+
     const logBtn = document.createElement('button');
     logBtn.textContent = 'LOG & DISMISS';
     logBtn.style.cssText = 'background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:5px 14px;cursor:pointer;border-radius:var(--r)';
-    logBtn.onclick = () => fupLogAndDismiss(acc.name, sid, contact?.name||'');
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = 'CANCEL';
-    cancelBtn.style.cssText = 'background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r)';
-    cancelBtn.onclick = () => fupCancelLog(sid);
-    const qlFooter = document.createElement('div');
-    qlFooter.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap';
-    qlFooter.appendChild(logBtn);
+    logBtn.onclick = () => pipLogAndDismiss(sid);
+
     const lbl = document.createElement('label');
     lbl.textContent = 'Next follow-up:';
     lbl.style.cssText = 'font-family:var(--mono);font-size:10px;color:var(--text-3)';
+
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.id = 'pip-date-' + sid;
+    dateInput.style.cssText = 'background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 6px;border-radius:var(--r)';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'CANCEL';
+    cancelBtn.style.cssText = 'background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r)';
+    cancelBtn.onclick = () => { ql.classList.remove('open'); };
+
+    qlFooter.appendChild(logBtn);
     qlFooter.appendChild(lbl);
     qlFooter.appendChild(dateInput);
     qlFooter.appendChild(cancelBtn);
-    ql.appendChild(qlHeader);
+    ql.appendChild(qlHdr);
     ql.appendChild(noteArea);
     ql.appendChild(qlFooter);
     card.appendChild(ql);
@@ -4419,10 +4387,8 @@ function renderFollowUpCommandCenter() {
     return card;
   }
 
-  // ── BUILD PAGE USING DOM ──────────────────────────────────
-  window._fupCards = {};
+  // ── BUILD PAGE ────────────────────────────────────────────
   el.innerHTML = '';
-
   const page = document.createElement('div');
   page.className = 'fup-page';
 
@@ -4430,72 +4396,87 @@ function renderFollowUpCommandCenter() {
   const statsBar = document.createElement('div');
   statsBar.className = 'fup-stats-bar';
   statsBar.innerHTML =
-    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--red)">' + overdue.length + '</div><div class="fup-stat-label">OVERDUE</div></div>' +
-    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--gold)">' + dueThisWeek.length + '</div><div class="fup-stat-label">DUE THIS WEEK</div></div>' +
-    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--green)">' + contactedTodayCount() + '</div><div class="fup-stat-label">CONTACTED TODAY</div></div>' +
-    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--blue-bright)">' + top50.length + '</div><div class="fup-stat-label">YOUR TOP 50</div></div>' +
+    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--green)">' + hot.length + '</div><div class="fup-stat-label">🔥 HOT</div></div>' +
+    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--gold)">' + reengage.length + '</div><div class="fup-stat-label">⏰ RE-ENGAGE</div></div>' +
+    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--red)">' + winback.length + '</div><div class="fup-stat-label">💎 WIN BACK</div></div>' +
+    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--blue-bright)">$' + formatNum(totalValue) + '</div><div class="fup-stat-label">TOTAL PIPELINE</div></div>' +
     '<div class="fup-stat" style="flex:2;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding-right:16px">' +
-      '<input id="fup-search" type="text" placeholder="Search..." oninput="fupFilter()" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:var(--r);width:180px;outline:none;font-family:var(--font)">' +
-      '<button onclick="fupAddAccount()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">+ ADD</button>' +
+      '<input id="pip-search" type="text" placeholder="Search contacts..." oninput="pipFilter()" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:var(--r);width:200px;outline:none;font-family:var(--font)">' +
     '</div>';
   page.appendChild(statsBar);
 
-  // 3-column body
+  // 3 columns
   const body = document.createElement('div');
   body.className = 'fup-body';
 
-  function makeCol(icon, label, color, accs2, zone2) {
+  function makeCol(emoji, label, color, contacts2, subtitle) {
     const col = document.createElement('div');
     col.className = 'fup-col';
     const hdr = document.createElement('div');
     hdr.className = 'fup-col-header';
-    hdr.innerHTML = '<span style="font-size:14px">' + icon + '</span><span class="fup-col-title" style="color:' + color + '">' + label + '</span><span class="fup-col-count">' + accs2.length + ' accounts</span>';
+    hdr.innerHTML =
+      '<span style="font-size:14px">' + emoji + '</span>' +
+      '<div><div class="fup-col-title" style="color:' + color + '">' + label + '</div>' +
+      '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono)">' + subtitle + '</div></div>' +
+      '<span class="fup-col-count">' + contacts2.length + '</span>';
     col.appendChild(hdr);
     const colBody = document.createElement('div');
     colBody.className = 'fup-col-body';
-    colBody.id = 'fup-col-' + zone2;
-    if (!accs2.length) {
-      colBody.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--text-3);font-size:12px">' +
-        (zone2 === 'overdue' ? '<div style="font-size:28px;margin-bottom:8px">🎉</div>All clear!<br>No overdue follow-ups' : 'Nothing here') + '</div>';
+    if (!contacts2.length) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'text-align:center;padding:40px 20px;color:var(--text-3);font-size:12px';
+      empty.textContent = 'No contacts here';
+      colBody.appendChild(empty);
     } else {
-      accs2.forEach(a => colBody.appendChild(renderCard(a, zone2)));
+      contacts2.forEach(c => colBody.appendChild(renderCard(c)));
     }
     col.appendChild(colBody);
     return col;
   }
 
-  body.appendChild(makeCol('🔴', 'ACTION REQUIRED', 'var(--red)',
-    overdue.sort((a,b) => b.daysOverdue - a.daysOverdue), 'overdue'));
-  body.appendChild(makeCol('🟡', 'DUE THIS WEEK', 'var(--gold)',
-    dueThisWeek.sort((a,b) => a.fupDate - b.fupDate), 'week'));
-  body.appendChild(makeCol('⭐', 'MY TOP 50', 'var(--blue-bright)', top50, 'top50'));
+  body.appendChild(makeCol('🔥', 'HOT', 'var(--green)', hot, 'Active — ordered within 60 days'));
+  body.appendChild(makeCol('⏰', 'RE-ENGAGE', 'var(--gold)', reengage, 'Going cold — 60 to 180 days'));
+  body.appendChild(makeCol('💎', 'WIN BACK', 'var(--red)', winback, 'Lost — no orders in 180+ days'));
 
   page.appendChild(body);
   el.appendChild(page);
 }
 
-function fupQuickLog(accName, safeId, type) {
+function _pipStaleBadge(ds) {
+  if (ds === null || ds === undefined || ds >= 999) return '<span style="color:var(--text-3);font-size:10px">No orders</span>';
+  if (ds === 0) return '<span style="color:var(--green);font-size:10px">Today</span>';
+  if (ds <= 30) return '<span style="color:var(--green);font-size:10px">' + ds + 'd</span>';
+  if (ds <= 90) return '<span style="color:var(--gold);font-size:10px">' + ds + 'd</span>';
+  return '<span style="color:var(--red);font-size:10px">' + ds + 'd</span>';
+}
+
+function pipGoToAccount(sid) {
+  const c = window._pipCards[sid];
+  if (!c) return;
+  const acc = state.accounts.find(a => a.name === c.accName);
+  if (acc) { switchView('accounts'); setTimeout(() => selectAccount(acc), 400); }
+}
+
+function pipQuickLog(sid, type) {
   document.querySelectorAll('.fup-quick-log.open').forEach(el => {
-    if (el.id !== 'ql-' + safeId) el.classList.remove('open');
+    if (el.id !== 'pip-ql-' + sid) el.classList.remove('open');
   });
-  const ql = document.getElementById('ql-' + safeId);
+  const ql = document.getElementById('pip-ql-' + sid);
   if (!ql) return;
   ql.classList.toggle('open');
   if (ql.classList.contains('open')) {
-    const typeEl = document.getElementById('ql-type-' + safeId);
+    const typeEl = document.getElementById('pip-type-' + sid);
     if (typeEl) typeEl.value = type;
-    setTimeout(() => document.getElementById('ql-note-' + safeId)?.focus(), 50);
+    setTimeout(() => document.getElementById('pip-note-' + sid)?.focus(), 50);
   }
 }
 
-function fupCancelLog(safeId) {
-  document.getElementById('ql-' + safeId)?.classList.remove('open');
-}
-
-async function fupLogAndDismiss(accName, safeId, contactName) {
-  const typeEl = document.getElementById('ql-type-' + safeId);
-  const noteEl = document.getElementById('ql-note-' + safeId);
-  const dateEl = document.getElementById('ql-date-' + safeId);
+async function pipLogAndDismiss(sid) {
+  const c = window._pipCards[sid];
+  if (!c) return;
+  const typeEl = document.getElementById('pip-type-' + sid);
+  const noteEl = document.getElementById('pip-note-' + sid);
+  const dateEl = document.getElementById('pip-date-' + sid);
   const type = typeEl?.value || 'Note';
   const note = noteEl?.value.trim() || '';
   const newDate = dateEl?.value || '';
@@ -4507,10 +4488,10 @@ async function fupLogAndDismiss(accName, safeId, contactName) {
   const rep = state.user?.email || 'unknown';
 
   try {
-    await sheetsAppend("'_CONTACT_NOTES'!A1", [[accName, contactName||'', type, note, dateStr, rep]]);
+    await sheetsAppend("'_CONTACT_NOTES'!A1", [[c.accName, c.contactName||'', type, note, dateStr, rep]]);
 
     if (newDate) {
-      const acc = state.accounts.find(a => a.name === accName);
+      const acc = state.accounts.find(a => a.name === c.accName);
       if (acc) {
         const d = new Date(newDate + 'T12:00:00');
         const fmt = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
@@ -4520,116 +4501,65 @@ async function fupLogAndDismiss(accName, safeId, contactName) {
     }
 
     if (!state.contactNotesCache) state.contactNotesCache = {};
-    if (!state.contactNotesCache[accName]) state.contactNotesCache[accName] = [];
-    state.contactNotesCache[accName].push({contact: contactName||'', type, note, date: dateStr, rep});
+    if (!state.contactNotesCache[c.accName]) state.contactNotesCache[c.accName] = [];
+    state.contactNotesCache[c.accName].push({contact: c.contactName||'', type, note, date: dateStr, rep});
 
     showToast('Logged ✓', 'success');
-    const card = document.getElementById(safeId);
-    if (card) { card.style.transition='all 0.3s'; card.style.opacity='0'; card.style.maxHeight=card.offsetHeight+'px'; setTimeout(()=>{card.style.maxHeight='0';card.style.padding='0';card.style.margin='0';setTimeout(()=>card.remove(),300);},50); }
+    const card = document.getElementById(sid);
+    if (card) {
+      card.style.transition = 'all 0.3s';
+      card.style.opacity = '0';
+      setTimeout(() => { card.style.maxHeight = '0'; card.style.padding = '0'; card.style.margin = '0'; setTimeout(() => card.remove(), 300); }, 50);
+    }
     updateBadges();
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   }
 }
 
-function fupSnoozeMenu(accName, safeId) {
-  const existing = document.getElementById('snooze-' + safeId);
+function pipSnoozeMenu(sid) {
+  const existing = document.getElementById('pip-snooze-' + sid);
   if (existing) { existing.remove(); return; }
-  const card = document.getElementById(safeId);
+  const card = document.getElementById(sid);
   if (!card) return;
   const div = document.createElement('div');
-  div.id = 'snooze-' + safeId;
-  div.style.cssText = 'display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;align-items:center;padding:6px 0';
+  div.id = 'pip-snooze-' + sid;
+  div.style.cssText = 'display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;align-items:center;padding:4px 0';
   const lbl = document.createElement('span');
   lbl.style.cssText = 'font-family:var(--mono);font-size:9px;color:var(--text-3)';
-  lbl.textContent = 'SNOOZE:';
+  lbl.textContent = 'REMIND IN:';
   div.appendChild(lbl);
-  [['1d',1],['3d',3],['1wk',7],['2wk',14],['1mo',30]].forEach(([label, days]) => {
+  [['3d',3],['1wk',7],['2wk',14],['1mo',30]].forEach(([label, days]) => {
     const btn = document.createElement('button');
     btn.className = 'fup-btn';
     btn.textContent = label;
-    btn.onclick = () => fupSnooze(accName, safeId, days);
+    btn.onclick = () => pipSnooze(sid, days);
     div.appendChild(btn);
   });
   card.appendChild(div);
 }
 
-async function fupSnooze(accName, safeId, days) {
-  const acc = state.accounts.find(a => a.name === accName);
-  if (!acc) return;
-  const d = new Date(); d.setDate(d.getDate() + days);
-  const fmt = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
-  acc.followUpDate = fmt;
-  try {
-    await saveAccountNote(acc, acc.repNote||'', fmt, acc.repStatus||'');
-    showToast('Snoozed → ' + fmt, 'success');
-    const card = document.getElementById(safeId);
-    if (card) { card.style.transition='opacity 0.3s'; card.style.opacity='0'; setTimeout(()=>card.remove(),300); }
-    updateBadges();
-  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+async function pipSnooze(sid, days) {
+  const c = window._pipCards[sid];
+  if (!c) return;
+  const acc = state.accounts.find(a => a.name === c.accName);
+  if (acc) {
+    const d = new Date(); d.setDate(d.getDate() + days);
+    const fmt = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
+    acc.followUpDate = fmt;
+    try {
+      await saveAccountNote(acc, acc.repNote||'', fmt, acc.repStatus||'');
+      showToast('Snoozed → ' + fmt, 'success');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+  }
+  const card = document.getElementById(sid);
+  if (card) { card.style.transition = 'opacity 0.3s'; card.style.opacity = '0'; setTimeout(() => card.remove(), 300); }
 }
 
-function fupRemove(accName, safeId) {
-  const repKey = state.viewAsRep || state.repId || 'admin';
-  let removedSet = new Set();
-  try { removedSet = new Set(JSON.parse(localStorage.getItem('fup_removed_' + repKey) || '[]')); } catch(e){}
-  removedSet.add(accName);
-  localStorage.setItem('fup_removed_' + repKey, JSON.stringify([...removedSet]));
-  const card = document.getElementById(safeId);
-  if (card) { card.style.transition='opacity 0.3s'; card.style.opacity='0'; setTimeout(()=>card.remove(),300); }
-  showToast('Removed from list', 'success');
-}
-
-function fupPin(accName, safeId) {
-  const repKey = state.viewAsRep || state.repId || 'admin';
-  let pinnedSet = new Set();
-  try { pinnedSet = new Set(JSON.parse(localStorage.getItem('fup_pinned_' + repKey) || '[]')); } catch(e){}
-  if (pinnedSet.has(accName)) { pinnedSet.delete(accName); showToast('Unpinned', 'success'); }
-  else { pinnedSet.add(accName); showToast('Pinned to top ✓', 'success'); }
-  localStorage.setItem('fup_pinned_' + repKey, JSON.stringify([...pinnedSet]));
-  renderFollowUpCommandCenter();
-}
-
-function fupAddAccount() {
-  const search = prompt('Search account name to add to Top 50:');
-  if (!search) return;
-  const repKey = state.viewAsRep || state.repId || 'admin';
-  let pinnedSet = new Set();
-  let removedSet = new Set();
-  try { pinnedSet = new Set(JSON.parse(localStorage.getItem('fup_pinned_' + repKey) || '[]')); } catch(e){}
-  try { removedSet = new Set(JSON.parse(localStorage.getItem('fup_removed_' + repKey) || '[]')); } catch(e){}
-
-  let accs = [...state.accounts];
-  if (state.isAdmin && state.viewAsRep) accs = accs.filter(a => a.rep === state.viewAsRep);
-  else if (!state.isAdmin && state.repId) accs = accs.filter(a => a.rep === state.repId);
-
-  const matches = accs.filter(a => a.name.toLowerCase().includes(search.toLowerCase())).slice(0,5);
-  if (!matches.length) { showToast('No matches for "' + search + '"', 'error'); return; }
-  const name = matches.length === 1 ? matches[0].name : matches[parseInt(prompt(matches.map((a,i)=>(i+1)+'. '+a.name).join('\n')+'\n\nEnter number:')||'1')-1]?.name;
-  if (!name) return;
-  removedSet.delete(name);
-  pinnedSet.add(name);
-  localStorage.setItem('fup_removed_' + repKey, JSON.stringify([...removedSet]));
-  localStorage.setItem('fup_pinned_' + repKey, JSON.stringify([...pinnedSet]));
-  showToast(name + ' added & pinned ✓', 'success');
-  renderFollowUpCommandCenter();
-}
-
-function fupFilter() {
-  const q = (document.getElementById('fup-search')?.value || '').toLowerCase();
-  document.querySelectorAll('.fup-card').forEach(card => {
-    const name = card.querySelector('span[onclick]')?.textContent.toLowerCase() || '';
-    card.style.display = name.includes(q) ? '' : 'none';
-  });
-}
-
-function selectAccountByName(name) {
-  const acc = state.accounts.find(a => a.name === name);
-  if (acc) { switchView('accounts'); setTimeout(() => selectAccount(acc), 400); }
-}
-
-async function fupGetAIPrep(accName, safeId) {
-  const prepDiv = document.getElementById('prep-' + safeId);
+async function pipAIPrep(sid) {
+  const c = window._pipCards[sid];
+  if (!c) return;
+  const prepDiv = document.getElementById('pip-prep-' + sid);
   if (!prepDiv) return;
 
   if (prepDiv.style.display !== 'none' && prepDiv.innerHTML) {
@@ -4640,43 +4570,57 @@ async function fupGetAIPrep(accName, safeId) {
   prepDiv.style.display = 'block';
   prepDiv.innerHTML = '<span style="color:var(--text-3);font-family:var(--mono);font-size:10px">✦ Generating call prep...</span>';
 
-  const acc = state.accounts.find(a => a.name === accName);
-  if (!acc) return;
-
-  const contacts = state.contactsCache[accName.trim()] || [];
-  const primaryContact = contacts.find(c => c.type !== 'AP/Collections' && c.email) || contacts[0];
-  const topParts = Object.entries(
-    ((state.historyCache[accName]||{}).invoices||[]).reduce((m,inv) => {
-      if (inv.part) m[inv.part] = (m[inv.part]||0) + (inv.lineTotal||0);
-      return m;
-    }, {})
-  ).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([p,t])=>p+' ($'+formatNum(t)+')');
-
-  const reqs = ((state.historyCache[accName]||{}).reqs||[]).slice(0,3).map(r=>r.part||'').filter(Boolean);
-  const notes = (state.contactNotesCache||{})[accName]||[];
-  const lastNote = notes.length ? notes[notes.length-1] : null;
-
-  const prompt = 'You are helping a sales rep prepare for a call with ' + accName + '. ' +
-    'Contact: ' + (primaryContact ? primaryContact.name + ' (' + (primaryContact.title||'buyer') + ')' : 'unknown contact') + '. ' +
-    'Account status: ' + (acc.status||'unknown') + '. ' +
-    'Days inactive: ' + (acc.daysInactive||0) + '. ' +
-    'Total revenue: $' + formatNum(acc.total||0) + '. ' +
-    'Top purchased parts: ' + (topParts.join(', ') || 'none on record') + '. ' +
+  const reqs = ((state.historyCache[c.accName]||{}).reqs||[]).slice(0,3).map(r => r.part||'').filter(Boolean);
+  const parts = (c.topParts||[]).map(([p,t]) => p + ' ($' + formatNum(t) + ')');
+  const prompt =
+    'You are a sales intelligence assistant helping a rep prepare for a call. ' +
+    'Contact: ' + (c.contactName ? c.contactName + (c.contactTitle ? ', ' + c.contactTitle : '') : 'unknown buyer') + '. ' +
+    'Company: ' + c.accName + '. ' +
+    'Total purchased: $' + formatNum(c.totalRevenue||0) + ' over ' + (c.orderCount||0) + ' orders. ' +
+    'Days since last order: ' + (c.daysSince < 999 ? c.daysSince : 'unknown') + '. ' +
+    'Top purchased parts: ' + (parts.join(', ') || 'none on record') + '. ' +
     'Recent RFQs: ' + (reqs.join(', ') || 'none') + '. ' +
-    (lastNote ? 'Last note (' + lastNote.date + '): ' + lastNote.note + '. ' : '') +
-    'Write a SHORT 3-4 line call prep note: what to mention, what to ask about, and one specific upsell angle based on their purchase history. Be specific and actionable. No bullet points — just a natural briefing.';
+    (c.lastNote ? 'Last contact note: ' + c.lastNote.note + '. ' : '') +
+    'Account status: ' + (c.acc?.status || 'unknown') + '. ' +
+    'Write a SPECIFIC 3-sentence call prep: (1) what to open with based on their history, (2) what to ask about based on parts they buy, (3) one concrete upsell angle. Be direct and actionable. No generic advice.';
 
   try {
-    const data = await callAI({ model: 'claude-sonnet-4-5', max_tokens: 200, messages: [{ role: 'user', content: prompt }] });
+    const data = await callAI({ model: 'claude-sonnet-4-5', max_tokens: 250, messages: [{ role: 'user', content: prompt }] });
     const text = data.content?.[0]?.text || 'No prep generated';
-    prepDiv.innerHTML = '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono);margin-bottom:4px">✦ AI CALL PREP</div>' +
-      '<div style="font-size:11px;line-height:1.6;color:var(--text)">' + escHtml(text) + '</div>';
+    prepDiv.innerHTML =
+      '<div style="font-size:9px;color:var(--blue-bright);font-family:var(--mono);margin-bottom:5px;letter-spacing:0.1em">✦ AI CALL PREP</div>' +
+      '<div style="font-size:11px;line-height:1.7;color:var(--text)">' + escHtml(text) + '</div>';
   } catch(e) {
     prepDiv.innerHTML = '<span style="color:var(--red);font-size:10px">Error: ' + escHtml(e.message) + '</span>';
   }
 }
 
+function pipFilter() {
+  const q = (document.getElementById('pip-search')?.value || '').toLowerCase();
+  document.querySelectorAll('.fup-card').forEach(card => {
+    const sid = card.id;
+    const c = window._pipCards[sid];
+    if (!c) return;
+    const searchStr = ((c.contactName||'') + ' ' + c.accName + ' ' + (c.contactTitle||'')).toLowerCase();
+    card.style.display = searchStr.includes(q) ? '' : 'none';
+  });
+}
 
+// Keep old function names as aliases for compatibility
+function fupQuickLog(accName, safeId, type) { pipQuickLog(safeId, type); }
+function fupCancelLog(safeId) {
+  const ql = document.getElementById('pip-ql-' + safeId) || document.getElementById('ql-' + safeId);
+  if (ql) ql.classList.remove('open');
+}
+function fupRemove(accName, safeId) { const card = document.getElementById(safeId); if (card) { card.style.opacity='0'; card.style.transition='opacity 0.3s'; setTimeout(()=>card.remove(),300); } }
+function fupPin() {}
+function fupAddAccount() {}
+function fupFilter() { pipFilter(); }
+function selectAccountByName(name) { const acc = state.accounts.find(a=>a.name===name); if(acc){switchView('accounts');setTimeout(()=>selectAccount(acc),400);} }
+function fupLogAndDismiss(accName, safeId) { pipLogAndDismiss(safeId); }
+function fupSnoozeMenu(accName, safeId) { pipSnoozeMenu(safeId); }
+function fupSnooze(accName, safeId, days) { pipSnooze(safeId, days); }
+function fupGetAIPrep(accName, safeId) { pipAIPrep(safeId); }
 
 function renderDashboard() {
   // Determine which rep we are showing

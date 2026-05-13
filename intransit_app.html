@@ -1390,6 +1390,11 @@ async function loadSupplementalData() {
 
     state.cacheLoaded = true;
 
+    // Auto-render Daily Mission if it's the active view waiting for data
+    if (state.activeView === 'followup') {
+      setTimeout(() => renderFollowUpCommandCenter(), 100);
+    }
+
     // Load contact notes (_CONTACT_NOTES tab — app-managed, may not exist yet)
     try {
       const cnRows = await sheetsGet("'_CONTACT_NOTES'!A1:F50000");
@@ -2570,13 +2575,21 @@ function switchView(view) {
     contacts:    () => renderContactsView(),
     attack:      () => renderAttackPlan(),
     followup:    () => {
-      // Show loading state immediately
-      const el = document.getElementById('main-content');
-      if (el) el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-3);font-family:var(--mono);font-size:11px;flex-direction:column;gap:12px"><div style="font-size:24px">📅</div><div>LOADING INTELLIGENCE...</div></div>';
-      // Wait for cache then render
-      ensureCacheLoaded().then(() => {
-        if (state.activeView === 'followup') renderFollowUpCommandCenter();
-      });
+      if (state.cacheLoaded && state.accounts && state.accounts.length > 0) {
+        // Data already ready — render immediately
+        renderFollowUpCommandCenter();
+      } else {
+        // Show loading state — will auto-render when cache finishes
+        renderFollowUpCommandCenter();
+        // Also set a safety net timer in case the hook misses
+        const safety = setInterval(() => {
+          if (state.activeView !== 'followup') { clearInterval(safety); return; }
+          if (state.cacheLoaded && state.accounts && state.accounts.length > 0) {
+            clearInterval(safety);
+            renderFollowUpCommandCenter();
+          }
+        }, 2000);
+      }
     },
   };
   if (view === 'settings') {

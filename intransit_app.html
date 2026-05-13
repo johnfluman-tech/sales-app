@@ -596,41 +596,80 @@ body::before {
 .apk-pool-cards .apk-card { flex-shrink: 0; width: 155px; }
 #apk-pool.drag-over { background: rgba(59,130,246,0.05); }
 
-/* ── PIPELINE INTELLIGENCE (Follow-Up Center) ── */
-.fup-page { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--s0); }
-.fup-stats-bar { display: flex; border-bottom: 1px solid var(--border); background: var(--s1); flex-shrink: 0; }
-.fup-stat { flex: 1; padding: 10px 16px; border-right: 1px solid var(--border); text-align: center; }
-.fup-stat:last-child { border-right: none; }
-.fup-stat-num { font-family: var(--mono); font-size: 20px; font-weight: 700; }
-.fup-stat-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; color: var(--text-3); margin-top: 2px; }
-.fup-body { flex: 1; display: flex; overflow: hidden; min-height: 0; }
-.fup-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
-.fup-col:last-child { border-right: none; }
-.fup-col-header { padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--s1); flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
-.fup-col-title { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; }
-.fup-col-count { font-family: var(--mono); font-size: 10px; color: var(--text-3); margin-left: auto; }
-.fup-col-body { flex: 1; overflow-y: auto; padding: 8px; }
-.fup-card {
-  background: var(--s1); border: 1px solid var(--border);
-  border-radius: var(--r); padding: 10px 12px; margin-bottom: 6px;
-  transition: all 0.15s; position: relative;
-}
-.fup-card:hover { background: var(--s2); border-color: var(--blue-b); }
-.fup-btn {
-  font-family: var(--mono); font-size: 9px; padding: 3px 8px;
-  border: 1px solid var(--border); background: var(--s2);
-  color: var(--text-2); cursor: pointer; border-radius: var(--r);
-  transition: all 0.12s; white-space: nowrap;
-}
-.fup-btn:hover { border-color: var(--blue-b); color: var(--blue-b); }
-.fup-btn.green { border-color: rgba(34,197,94,0.4); color: var(--green); }
-.fup-btn.gold { border-color: rgba(245,158,11,0.4); color: var(--gold); }
-.fup-btn.blue { border-color: rgba(59,130,246,0.4); color: var(--blue-bright); }
-.fup-quick-log { background: var(--s0); border: 1px solid var(--border); border-top: 2px solid var(--blue-b); padding: 10px 12px; margin-top: 6px; border-radius: var(--r); display: none; }
-.fup-quick-log.open { display: block; }
-.fup-contact-chip { display:flex; align-items:center; gap:6px; padding:5px 8px; background:var(--s0); border:1px solid var(--border); border-radius:var(--r); margin-bottom:5px; }
-.fup-value-bar { height:3px; background:rgba(59,130,246,0.15); border-radius:2px; margin:4px 0; }
-.fup-value-fill { height:100%; border-radius:2px; background:var(--blue-b); transition:width 0.5s; }
+/* ── INTRANSIT IQ — DAILY MISSION + CALENDAR ── */
+.iq-page{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--s0)}
+.iq-topbar{display:flex;align-items:stretch;border-bottom:1px solid var(--border);background:var(--s1);flex-shrink:0}
+.iq-kpi{flex:1;padding:9px 14px;border-right:1px solid var(--border);text-align:center}
+.iq-kpi:last-child{border-right:none}
+.iq-kpi-num{font-family:var(--mono);font-size:18px;font-weight:700}
+.iq-kpi-label{font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);margin-top:1px}
+.iq-body{flex:1;display:flex;overflow:hidden;min-height:0}
+.iq-cal{width:250px;min-width:180px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.iq-cal-hdr{padding:9px 12px;border-bottom:1px solid var(--border);background:var(--s1);flex-shrink:0;display:flex;align-items:center;justify-content:space-between}
+.iq-cal-nav{background:none;border:1px solid var(--border);color:var(--text-2);cursor:pointer;font-size:11px;padding:2px 8px;border-radius:var(--r)}
+.iq-cal-nav:hover{border-color:var(--blue-b);color:var(--blue-b)}
+.iq-cal-body{flex:1;overflow-y:auto}
+.iq-cal-day{border-bottom:1px solid rgba(82,130,190,0.07)}
+.iq-cal-dhdr{padding:4px 10px;font-family:var(--mono);font-size:9px;color:var(--text-3);background:var(--s0);display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:background 0.1s}
+.iq-cal-dhdr:hover{background:var(--s2)}
+.iq-cal-dhdr.today{color:var(--blue-bright);background:rgba(59,130,246,0.06);font-weight:700}
+.iq-cal-item{padding:4px 10px 4px 18px;cursor:pointer;border-bottom:1px solid rgba(82,130,190,0.04);display:flex;align-items:flex-start;gap:5px;transition:background 0.1s}
+.iq-cal-item:hover{background:var(--s2)}
+.iq-cal-time{font-family:var(--mono);font-size:9px;color:var(--blue-bright);flex-shrink:0;margin-top:1px;min-width:36px}
+.iq-cal-iname{font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.iq-cal-isub{font-size:9px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iq-main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.iq-shdr{padding:8px 14px;border-bottom:1px solid var(--border);background:var(--s1);flex-shrink:0;display:flex;align-items:center;gap:8px}
+.iq-stitle{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.12em}
+.iq-panels{flex:1;display:flex;overflow:hidden;min-height:0}
+.iq-today{flex:1;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)}
+.iq-ai{width:320px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden}
+.iq-list{flex:1;overflow-y:auto}
+.iq-row{display:flex;align-items:stretch;border-bottom:1px solid var(--border);transition:background 0.1s}
+.iq-row:hover{background:rgba(59,130,246,0.03)}
+.iq-row-left{width:52px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;border-right:1px solid var(--border);padding:6px 2px;background:var(--s1)}
+.iq-row-type{font-size:14px}
+.iq-row-time{font-family:var(--mono);font-size:9px;color:var(--text-3);margin-top:2px}
+.iq-row-body{flex:1;padding:8px 12px;min-width:0}
+.iq-row-contact{font-size:12px;font-weight:600;margin-bottom:1px}
+.iq-row-account{font-size:11px;color:var(--blue-bright);cursor:pointer;text-decoration:underline;margin-bottom:3px}
+.iq-row-note{font-size:10px;color:var(--text-3);margin-bottom:4px;font-style:italic}
+.iq-row-btns{display:flex;gap:4px;flex-wrap:wrap}
+.iq-row-meta{width:120px;flex-shrink:0;padding:8px 10px;border-left:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;gap:2px}
+.iq-meta-val{font-family:var(--mono);font-size:11px;font-weight:600}
+.iq-meta-lbl{font-family:var(--mono);font-size:9px;color:var(--text-3)}
+.iq-btn{font-family:var(--mono);font-size:9px;padding:3px 8px;border:1px solid var(--border);background:var(--s2);color:var(--text-2);cursor:pointer;border-radius:var(--r);transition:all 0.12s;white-space:nowrap}
+.iq-btn:hover{border-color:var(--blue-b);color:var(--blue-b)}
+.iq-btn.green{border-color:rgba(34,197,94,0.4);color:var(--green)}
+.iq-btn.gold{border-color:rgba(245,158,11,0.4);color:var(--gold)}
+.iq-btn.blue{border-color:rgba(59,130,246,0.4);color:var(--blue-bright)}
+.iq-btn.red{border-color:rgba(239,68,68,0.4);color:var(--red)}
+.iq-ai-row{padding:10px 12px;border-bottom:1px solid var(--border);transition:background 0.1s;cursor:pointer}
+.iq-ai-row:hover{background:var(--s2)}
+.iq-ai-score{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 6px;border-radius:10px;flex-shrink:0}
+.iq-ai-name{font-size:11px;font-weight:600;margin-bottom:1px}
+.iq-ai-contact{font-size:10px;color:var(--text-3);margin-bottom:3px}
+.iq-ai-reason{font-size:10px;color:var(--text-2);line-height:1.4;margin-bottom:4px}
+.iq-ai-parts{font-size:9px;color:var(--text-3);margin-bottom:4px}
+.iq-log-panel{padding:10px 12px;border-top:2px solid var(--blue-b);background:var(--s0);display:none}
+.iq-log-panel.open{display:block}
+/* Schedule modal */
+.sched-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center}
+.sched-box{background:var(--navy-mid);border:1px solid var(--border);border-radius:var(--r2);padding:24px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.5)}
+.sched-title{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:0.1em;margin-bottom:16px;color:var(--text)}
+.sched-field{margin-bottom:12px}
+.sched-label{font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);margin-bottom:4px}
+.sched-input{width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;padding:8px 10px;border-radius:var(--r);outline:none}
+.sched-input:focus{border-color:var(--blue-b)}
+.sched-row{display:flex;gap:8px}
+.sched-row .sched-field{flex:1}
+/* Compat aliases */
+.fup-btn{font-family:var(--mono);font-size:9px;padding:3px 8px;border:1px solid var(--border);background:var(--s2);color:var(--text-2);cursor:pointer;border-radius:var(--r);transition:all 0.12s;white-space:nowrap}
+.fup-btn:hover{border-color:var(--blue-b);color:var(--blue-b)}
+.fup-btn.green{border-color:rgba(34,197,94,0.4);color:var(--green)}
+.fup-btn.gold{border-color:rgba(245,158,11,0.4);color:var(--gold)}
+.fup-quick-log{background:var(--s0);border:1px solid var(--border);border-top:2px solid var(--blue-b);padding:10px 12px;margin-top:6px;border-radius:var(--r);display:none}
+.fup-quick-log.open{display:block}
 
 /* ── SETTINGS ──────────────────────────── */
 .settings-section {
@@ -892,7 +931,7 @@ body::before {
       </div>
       <div class="nav-item" data-view="followup" onclick="switchView('followup')">
         <div class="nav-item-inner">
-          <span class="nav-icon">⚡</span> Follow-Up Center
+          <span class="nav-icon">📅</span> Daily Mission
           <span class="nav-badge orange" id="badge-followup">—</span>
         </div>
       </div>
@@ -1427,6 +1466,7 @@ function renderContactsTab(acc) {
             placeholder="Log a call, email, or note for ${escHtml(contactName)}..."></textarea>
         </div>
         <button class="cnote-save-btn" onclick="saveContactNote('${escHtml(accountName)}','${escHtml(contactName)}','${safeId}')">SAVE NOTE</button>
+        <button onclick="openScheduleModal('${escHtml(accountName)}','${escHtml(contactName)}','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r);margin-left:6px;white-space:nowrap">📅 SCHEDULE</button>
       </div>`;
   };
 
@@ -2520,7 +2560,7 @@ function switchView(view) {
     removals:    '🗑 Requests & Approvals',
     access:      '🛡 Access Activity Log',
     all:         'All Accounts — All Reps',
-    followup:    '⚡ Follow-Up Command Center',
+    followup:    '📅 Daily Mission & Calendar',
   };
   document.getElementById('topbar-title').textContent = titles[view] || view;
 
@@ -2951,6 +2991,7 @@ function renderNoteInput(acc) {
         <input type="date" class="note-date-input" id="note-followup-date"
           value="${toInputDate(acc.followUpDate || '')}">
         <button class="save-note-btn" onclick="saveNote()">SAVE &amp; LOCK</button>
+        <button onclick="openScheduleModal('${escHtml(acc.name)}','','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
       </div>
       ${johnApproveHtml}
       ${repRequestsHtml}
@@ -4111,516 +4152,719 @@ async function denyRemoval(accountName) {
 //  PIPELINE INTELLIGENCE — Follow the Money
 //  Contact-first sales pipeline based on invoice value
 // ══════════════════════════════════════════════════════════
+//  INTRANSIT IQ — DAILY MISSION + CALENDAR + AI AGENT
+// ══════════════════════════════════════════════════════════
 
-// Global card registry (avoids inline string quoting issues)
-window._pipCards = {};
+// ── SCHEDULE STORAGE ─────────────────────────────────────
+// Stored in localStorage as JSON array of events
+// Each: { id, type, accName, contactName, contactEmail, date, time, note, rep, done }
 
+function schedGetAll() {
+  try { return JSON.parse(localStorage.getItem('iq_schedule') || '[]'); } catch(e) { return []; }
+}
+function schedSave(events) {
+  localStorage.setItem('iq_schedule', JSON.stringify(events));
+  // Also async-push to Sheets for cross-device sync
+  schedPushToSheets(events).catch(()=>{});
+}
+async function schedPushToSheets(events) {
+  try {
+    const rows = [['ID','TYPE','ACCOUNT','CONTACT','EMAIL','DATE','TIME','NOTE','REP','DONE']];
+    events.forEach(e => rows.push([e.id||'',e.type||'',e.accName||'',e.contactName||'',e.contactEmail||'',e.date||'',e.time||'',e.note||'',e.rep||'',e.done?'YES':'']));
+    await sheetsUpdate("'_SCHEDULE'!A1", rows, CONFIG.SPREADSHEET_ID);
+  } catch(e) { /* silent */ }
+}
+async function schedLoadFromSheets() {
+  try {
+    const rows = await sheetsGet("'_SCHEDULE'!A1:J5000");
+    if (rows.length < 2) return;
+    const hdrs = rows[0];
+    const iId=hdrs.indexOf('ID'), iType=hdrs.indexOf('TYPE'), iAcc=hdrs.indexOf('ACCOUNT'),
+          iCon=hdrs.indexOf('CONTACT'), iEmail=hdrs.indexOf('EMAIL'), iDate=hdrs.indexOf('DATE'),
+          iTime=hdrs.indexOf('TIME'), iNote=hdrs.indexOf('NOTE'), iRep=hdrs.indexOf('REP'),
+          iDone=hdrs.indexOf('DONE');
+    const events = rows.slice(1).map(r => ({
+      id: r[iId]||'', type: r[iType]||'Call', accName: r[iAcc]||'',
+      contactName: r[iCon]||'', contactEmail: r[iEmail]||'',
+      date: r[iDate]||'', time: r[iTime]||'', note: r[iNote]||'',
+      rep: r[iRep]||'', done: r[iDone]==='YES'
+    })).filter(e => e.date && e.accName);
+    localStorage.setItem('iq_schedule', JSON.stringify(events));
+  } catch(e) { /* silent */ }
+}
+function schedAdd(ev) {
+  const events = schedGetAll();
+  ev.id = 'sch' + Date.now().toString(36);
+  ev.rep = state.user?.email || '';
+  events.push(ev);
+  schedSave(events);
+}
+function schedMarkDone(id) {
+  const events = schedGetAll();
+  const ev = events.find(e => e.id === id);
+  if (ev) { ev.done = true; schedSave(events); }
+}
+function schedDelete(id) {
+  const events = schedGetAll().filter(e => e.id !== id);
+  schedSave(events);
+}
+
+// ── SCHEDULE MODAL ────────────────────────────────────────
+function openScheduleModal(accName, contactName, contactEmail) {
+  const existing = document.getElementById('sched-modal');
+  if (existing) existing.remove();
+
+  const today = new Date().toISOString().slice(0,10);
+  const modal = document.createElement('div');
+  modal.className = 'sched-modal';
+  modal.id = 'sched-modal';
+
+  const contacts = (state.contactsCache[accName] || []).filter(c => c.type !== 'AP/Collections');
+  const contactOptions = contacts.map(c =>
+    '<option value="' + escHtml(c.name) + '" data-email="' + escHtml(c.email||'') + '"' +
+    (c.name === contactName ? ' selected' : '') + '>' + escHtml(c.name) + (c.title ? ' — ' + escHtml(c.title) : '') + '</option>'
+  ).join('');
+
+  modal.innerHTML = '<div class="sched-box">' +
+    '<div class="sched-title">📅 SCHEDULE ACTIVITY</div>' +
+    '<div class="sched-field"><div class="sched-label">ACCOUNT</div>' +
+      '<div style="font-size:13px;font-weight:600;color:var(--blue-bright)">' + escHtml(accName) + '</div>' +
+    '</div>' +
+    '<div class="sched-field"><div class="sched-label">CONTACT</div>' +
+      '<select id="sched-contact" class="sched-input" onchange="schedContactChange()">' +
+        '<option value="">— No specific contact —</option>' +
+        contactOptions +
+      '</select>' +
+    '</div>' +
+    '<div class="sched-field"><div class="sched-label">TYPE</div>' +
+      '<div style="display:flex;gap:8px">' +
+        ['📞 Call','✉ Email','👥 Meeting'].map(t => {
+          const val = t.replace(/^.+ /,'');
+          return '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px">' +
+            '<input type="radio" name="sched-type" value="' + val + '"' + (val==='Call' ? ' checked' : '') + '> ' + t + '</label>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+    '<div class="sched-row">' +
+      '<div class="sched-field"><div class="sched-label">DATE</div>' +
+        '<input type="date" id="sched-date" class="sched-input" value="' + today + '">' +
+      '</div>' +
+      '<div class="sched-field"><div class="sched-label">TIME</div>' +
+        '<input type="time" id="sched-time" class="sched-input" value="09:00">' +
+      '</div>' +
+    '</div>' +
+    '<div class="sched-field"><div class="sched-label">NOTE / AGENDA</div>' +
+      '<textarea id="sched-note" class="sched-input" rows="2" placeholder="What do you want to discuss or follow up on?"></textarea>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
+      '<button onclick="document.getElementById(\'sched-modal\').remove()" ' +
+        'style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:11px;padding:8px 18px;cursor:pointer;border-radius:var(--r)">CANCEL</button>' +
+      '<button onclick="schedConfirm(\'' + escHtml(accName) + '\')" ' +
+        'style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;padding:8px 20px;cursor:pointer;border-radius:var(--r)">SCHEDULE ✓</button>' +
+    '</div>' +
+  '</div>';
+
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+function schedContactChange() {
+  const sel = document.getElementById('sched-contact');
+  // Could auto-fill email in future
+}
+
+function schedConfirm(accName) {
+  const contactSel = document.getElementById('sched-contact');
+  const contactName = contactSel?.value || '';
+  const contactEmail = contactSel?.options[contactSel.selectedIndex]?.getAttribute('data-email') || '';
+  const type = document.querySelector('input[name="sched-type"]:checked')?.value || 'Call';
+  const date = document.getElementById('sched-date')?.value || '';
+  const time = document.getElementById('sched-time')?.value || '';
+  const note = document.getElementById('sched-note')?.value.trim() || '';
+  if (!date) { showToast('Please pick a date', 'error'); return; }
+  schedAdd({ type, accName, contactName, contactEmail, date, time, note });
+  document.getElementById('sched-modal')?.remove();
+  showToast('Scheduled ✓', 'success');
+  updateBadges();
+  if (state.activeView === 'followup') renderFollowUpCommandCenter();
+}
+
+// ── SCORING ENGINE ────────────────────────────────────────
+function iqScore(c) {
+  let score = 0;
+  const ds = c.daysSince || 999;
+  const dc = c.daysSinceContact;
+  const rev = c.totalRevenue || 0;
+
+  // Revenue (0-35 pts)
+  if (rev > 500000) score += 35;
+  else if (rev > 100000) score += 28;
+  else if (rev > 50000) score += 20;
+  else if (rev > 10000) score += 12;
+  else score += 4;
+
+  // Recency (0-30 pts) — sweet spot is 60-120 days (re-engage)
+  if (ds <= 30) score += 8;
+  else if (ds <= 60) score += 18;
+  else if (ds <= 120) score += 30;
+  else if (ds <= 180) score += 24;
+  else if (ds <= 365) score += 15;
+  else score += 6;
+
+  // Open RFQs (0-15 pts)
+  const reqs = (c.reqs || []).filter(r => !r.closed);
+  score += Math.min(15, reqs.length * 5);
+
+  // Never contacted (0-12 pts)
+  if (dc === null) score += 12;
+  else if (dc > 60) score += 10;
+  else if (dc > 30) score += 6;
+  else if (dc > 14) score += 2;
+
+  // Account status (0-8 pts)
+  const st = (c.acc?.status || '').toLowerCase();
+  if (st.includes('stalled') || st.includes('severe')) score += 8;
+  else if (st.includes('decline') || st.includes('at risk')) score += 5;
+
+  return Math.min(99, score);
+}
+
+function iqScoreColor(s) {
+  if (s >= 70) return 'var(--red)';
+  if (s >= 50) return 'var(--gold)';
+  if (s >= 30) return 'var(--blue-bright)';
+  return 'var(--text-3)';
+}
+
+function iqReason(c) {
+  const parts = [];
+  const ds = c.daysSince || 999;
+  const rev = c.totalRevenue || 0;
+  if (rev > 50000) parts.push('$' + formatNum(rev) + ' buyer');
+  if (ds > 180) parts.push('no order in ' + ds + 'd');
+  else if (ds > 60) parts.push('going cold — ' + ds + 'd since last order');
+  else if (ds <= 60) parts.push('active — keep warm');
+  const reqs = (c.reqs || []).filter(r => !r.closed);
+  if (reqs.length) parts.push(reqs.length + ' open RFQ' + (reqs.length > 1 ? 's' : ''));
+  if (c.daysSinceContact === null) parts.push('never contacted');
+  else if (c.daysSinceContact > 30) parts.push('no contact in ' + c.daysSinceContact + 'd');
+  const st = c.acc?.status || '';
+  if (st.includes('Stalled')) parts.push('stalled account');
+  else if (st.includes('Severe')) parts.push('severe decline');
+  else if (st.includes('Declining')) parts.push('declining');
+  return parts.join(' · ') || 'review account';
+}
+
+// ── MAIN RENDER ───────────────────────────────────────────
 function renderFollowUpCommandCenter() {
   const el = document.getElementById('main-content');
   if (!el) return;
 
   const today = new Date(); today.setHours(0,0,0,0);
+  const todayStr = today.toISOString().slice(0,10);
 
-  // Get rep accounts
+  // Load schedule from sheets async (non-blocking)
+  schedLoadFromSheets().catch(()=>{});
+
+  let events = schedGetAll();
+  // Filter by rep
+  const repEmail = state.user?.email || '';
+  const isAdmin = state.isAdmin;
+  const viewAsRep = state.viewAsRep;
+  if (!isAdmin) events = events.filter(e => e.rep === repEmail);
+  else if (viewAsRep) {
+    // Admin viewing as rep — show that rep's events
+    const repEmailMap = { CKaren:'kmancebo@intransittech.com', BillP:'bill.pratt@intransittech.com',
+      PIan:'ian.pitman@intransittech.com', RMauricio:'mrangel@intransittech.com',
+      LMancera:'lmancera@intransittech.com', bcastor:'brandonar@intransittech.com',
+      FJohn:'john.fluman@intransittech.com', Anolan:'anolan@intransittech.com' };
+    const filterEmail = repEmailMap[viewAsRep] || '';
+    if (filterEmail) events = events.filter(e => e.rep === filterEmail);
+  }
+
+  const pending = events.filter(e => !e.done).sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
+  const todayEvents = pending.filter(e => e.date === todayStr);
+  const overdueEvents = pending.filter(e => e.date < todayStr);
+  const upcomingEvents = pending.filter(e => e.date > todayStr);
+
+  // Build contact intelligence for AI recommendations
   let repAccounts = [...state.accounts];
-  if (state.isAdmin && state.viewAsRep) repAccounts = repAccounts.filter(a => a.rep === state.viewAsRep);
-  else if (!state.isAdmin && state.repId) repAccounts = repAccounts.filter(a => a.rep === state.repId);
+  if (isAdmin && viewAsRep) repAccounts = repAccounts.filter(a => a.rep === viewAsRep);
+  else if (!isAdmin) repAccounts = repAccounts.filter(a => a.rep === state.repId);
 
-  const repAccountNames = new Set(repAccounts.map(a => a.name.trim()));
-
-  // ── BUILD CONTACT UNIVERSE ────────────────────────────────
-  // For each contact, aggregate their account's invoice data
-  const contactMap = {}; // key = contactEmail or contactName+account
-
-  repAccountNames.forEach(accName => {
-    const contacts = (state.contactsCache[accName] || []).filter(c => c.type !== 'AP/Collections');
-    const invs = (state.historyCache[accName] || {}).invoices || [];
-    const acc = repAccounts.find(a => a.name === accName);
-    if (!acc) return;
-
-    // Account-level stats
-    const totalRevenue = invs.reduce((s, inv) => s + (inv.total || inv.lineTotal || 0), 0) || (acc.total || 0);
-    const dates = invs.map(inv => inv.date).filter(Boolean).sort().reverse();
+  // Build scored contact list
+  const contactList = [];
+  repAccounts.forEach(acc => {
+    const contacts = (state.contactsCache[acc.name.trim()] || []).filter(c => c.type !== 'AP/Collections');
+    const invs = (state.historyCache[acc.name.trim()] || {}).invoices || [];
+    const reqs = (state.historyCache[acc.name.trim()] || {}).reqs || [];
+    const totalRevenue = acc.total || invs.reduce((s,i) => s + (i.lineTotal||0), 0);
+    const dates = invs.map(i => i.date).filter(Boolean).sort().reverse();
     const lastOrderDate = dates[0] || acc.lastSale || null;
     const daysSince = lastOrderDate ? Math.floor((today - new Date(lastOrderDate)) / 86400000) : 999;
-
-    // Top parts by $
     const partTotals = {};
-    invs.forEach(inv => {
-      if (inv.part) partTotals[inv.part] = (partTotals[inv.part] || 0) + (inv.lineTotal || 0);
-    });
-    const topParts = Object.entries(partTotals).sort((a,b) => b[1]-a[1]).slice(0,3);
-
-    // Last contact note
-    const notes = (state.contactNotesCache || {})[accName] || [];
+    invs.forEach(inv => { if (inv.part) partTotals[inv.part] = (partTotals[inv.part]||0) + (inv.lineTotal||0); });
+    const topParts = Object.entries(partTotals).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    const notes = (state.contactNotesCache||{})[acc.name] || [];
     const lastNote = notes.length ? notes[notes.length-1] : null;
     const daysSinceContact = lastNote ? Math.floor((today - new Date(lastNote.date)) / 86400000) : null;
 
-    if (contacts.length === 0) {
-      // No contact — create account-level entry
-      const key = 'acc:' + accName;
-      contactMap[key] = {
-        key, accName, acc,
-        contactName: null, contactTitle: null, contactEmail: null, contactPhone: null,
-        totalRevenue, daysSince, topParts, lastNote, daysSinceContact,
-        orderCount: invs.length
-      };
+    const entry = { acc, accName: acc.name, totalRevenue, daysSince, topParts, reqs, lastNote, daysSinceContact };
+    if (contacts.length) {
+      contacts.forEach(c => contactList.push({ ...entry, contactName: c.name, contactTitle: c.title, contactEmail: c.email, contactPhone: c.phone||c.mobile }));
     } else {
-      contacts.forEach(c => {
-        const key = (c.email || c.name + ':' + accName);
-        if (!contactMap[key] || (contactMap[key].totalRevenue || 0) < totalRevenue) {
-          contactMap[key] = {
-            key, accName, acc,
-            contactName: c.name, contactTitle: c.title, contactEmail: c.email,
-            contactPhone: c.phone || c.mobile,
-            totalRevenue, daysSince, topParts, lastNote, daysSinceContact,
-            orderCount: invs.length
-          };
-        }
-      });
+      contactList.push({ ...entry, contactName: null, contactTitle: null, contactEmail: null, contactPhone: null });
     }
   });
 
-  const allContacts = Object.values(contactMap)
-    .filter(c => c.totalRevenue > 0 || c.acc)
-    .sort((a,b) => (b.totalRevenue||0) - (a.totalRevenue||0));
+  // Score and rank
+  contactList.forEach(c => { c.score = iqScore(c); });
+  const aiPicks = contactList
+    .filter(c => c.score >= 20)
+    .sort((a,b) => b.score - a.score)
+    .slice(0, 25);
 
-  const maxRevenue = allContacts[0]?.totalRevenue || 1;
-
-  // ── CATEGORIZE ────────────────────────────────────────────
-  const hot = [], reengage = [], winback = [];
-
-  allContacts.forEach(c => {
-    const ds = c.daysSince;
-    if (ds <= 60) hot.push(c);
-    else if (ds <= 180) reengage.push(c);
-    else winback.push(c);
-  });
-
-  // Stats
-  const totalValue = allContacts.reduce((s,c) => s + (c.totalRevenue||0), 0);
-  const contacted24h = allContacts.filter(c =>
-    c.daysSinceContact !== null && c.daysSinceContact === 0
-  ).length;
-
-  // ── RENDER CARD (DOM-based, no string quoting) ────────────
-  window._pipCards = {};
-
-  function renderCard(c) {
-    const sid = 'pip' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-    window._pipCards[sid] = c;
-
-    const card = document.createElement('div');
-    card.className = 'fup-card';
-    card.id = sid;
-
-    // Value bar (shows relative value vs top contact)
-    const pct = Math.min(100, Math.round((c.totalRevenue / maxRevenue) * 100));
-    const barColor = pct > 66 ? 'var(--green)' : pct > 33 ? 'var(--gold)' : 'var(--blue-b)';
-
-    // Header: contact name + account
-    const hdr = document.createElement('div');
-    hdr.style.cssText = 'margin-bottom:4px';
-
-    if (c.contactName) {
-      const nameEl = document.createElement('div');
-      nameEl.style.cssText = 'font-size:12px;font-weight:600;color:var(--text);margin-bottom:1px';
-      nameEl.textContent = c.contactName;
-      hdr.appendChild(nameEl);
-      if (c.contactTitle) {
-        const titleEl = document.createElement('div');
-        titleEl.style.cssText = 'font-size:10px;color:var(--text-3)';
-        titleEl.textContent = c.contactTitle;
-        hdr.appendChild(titleEl);
-      }
-    }
-
-    // Account name (clickable)
-    const accEl = document.createElement('div');
-    accEl.style.cssText = 'font-size:11px;color:var(--blue-bright);cursor:pointer;text-decoration:underline;margin-top:1px';
-    accEl.textContent = c.accName;
-    accEl.onclick = () => pipGoToAccount(sid);
-    hdr.appendChild(accEl);
-    card.appendChild(hdr);
-
-    // Value bar
-    const barWrap = document.createElement('div');
-    barWrap.className = 'fup-value-bar';
-    const barFill = document.createElement('div');
-    barFill.className = 'fup-value-fill';
-    barFill.style.cssText = 'width:' + pct + '%;background:' + barColor;
-    barWrap.appendChild(barFill);
-    card.appendChild(barWrap);
-
-    // Stats row
-    const statsRow = document.createElement('div');
-    statsRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin:5px 0;font-size:10px;flex-wrap:wrap';
-    statsRow.innerHTML =
-      '<span style="font-family:var(--mono);font-weight:600;color:' + barColor + '">$' + formatNum(c.totalRevenue||0) + '</span>' +
-      '<span style="color:var(--text-3)">·</span>' +
-      '<span style="color:var(--text-3)">' + (c.orderCount||0) + ' orders</span>' +
-      '<span style="color:var(--text-3)">·</span>' +
-      _pipStaleBadge(c.daysSince) +
-      (c.daysSinceContact !== null
-        ? '<span style="color:var(--text-3)">·</span><span style="font-size:9px;color:var(--text-3)">📞 ' + (c.daysSinceContact === 0 ? 'today' : c.daysSinceContact + 'd ago') + '</span>'
-        : '');
-    card.appendChild(statsRow);
-
-    // Contact info chip (if has email/phone)
-    if (c.contactEmail || c.contactPhone) {
-      const chip = document.createElement('div');
-      chip.className = 'fup-contact-chip';
-      chip.style.marginBottom = '5px';
-      if (c.contactEmail) {
-        const emailEl = document.createElement('span');
-        emailEl.style.cssText = 'font-size:10px;color:var(--blue-bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1';
-        emailEl.textContent = '✉ ' + c.contactEmail;
-        chip.appendChild(emailEl);
-      }
-      if (c.contactPhone) {
-        const phoneEl = document.createElement('span');
-        phoneEl.style.cssText = 'font-size:10px;color:var(--text-3);white-space:nowrap;flex-shrink:0';
-        phoneEl.textContent = '📞 ' + c.contactPhone;
-        chip.appendChild(phoneEl);
-      }
-      card.appendChild(chip);
-    }
-
-    // Top parts
-    if (c.topParts && c.topParts.length) {
-      const partsEl = document.createElement('div');
-      partsEl.style.cssText = 'font-size:10px;color:var(--text-3);margin-bottom:5px;line-height:1.4';
-      partsEl.textContent = '🔩 ' + c.topParts.map(([p,t]) => p + ' ($' + formatNum(t) + ')').join('  ·  ');
-      card.appendChild(partsEl);
-    }
-
-    // Last note snippet
-    if (c.lastNote) {
-      const noteEl = document.createElement('div');
-      noteEl.style.cssText = 'font-size:10px;color:var(--text-3);margin-bottom:5px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
-      noteEl.textContent = '💬 ' + c.lastNote.note.slice(0,60) + (c.lastNote.note.length > 60 ? '…' : '');
-      card.appendChild(noteEl);
-    }
-
-    // Action buttons
-    const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap';
-    const mkBtn = (label, cls, fn) => {
-      const b = document.createElement('button');
-      b.className = 'fup-btn' + (cls ? ' ' + cls : '');
-      b.innerHTML = label;
-      b.onclick = fn;
-      return b;
-    };
-    btnRow.appendChild(mkBtn('📞 Call', 'green', () => pipQuickLog(sid, 'Call')));
-    btnRow.appendChild(mkBtn('✉ Email', '', () => pipQuickLog(sid, 'Email')));
-    btnRow.appendChild(mkBtn('👥 Meeting', '', () => pipQuickLog(sid, 'Meeting')));
-    btnRow.appendChild(mkBtn('⏱ Snooze', 'gold', () => pipSnoozeMenu(sid)));
-    btnRow.appendChild(mkBtn('✦ Prep', 'blue', () => pipAIPrep(sid)));
-    card.appendChild(btnRow);
-
-    // AI prep div
-    const prepDiv = document.createElement('div');
-    prepDiv.id = 'pip-prep-' + sid;
-    prepDiv.style.cssText = 'display:none;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.3);border-radius:var(--r);padding:8px 10px;font-size:11px;line-height:1.6;color:var(--text);margin-top:6px';
-    card.appendChild(prepDiv);
-
-    // Quick log panel
-    const ql = document.createElement('div');
-    ql.className = 'fup-quick-log';
-    ql.id = 'pip-ql-' + sid;
-
-    const qlHdr = document.createElement('div');
-    qlHdr.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center;flex-wrap:wrap';
-    const typeSelect = document.createElement('select');
-    typeSelect.id = 'pip-type-' + sid;
-    typeSelect.style.cssText = 'background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:var(--r)';
-    ['Call','Email','Meeting','Note'].forEach(t => {
-      const o = document.createElement('option'); o.value = t; o.textContent = t;
-      typeSelect.appendChild(o);
-    });
-    qlHdr.appendChild(typeSelect);
-    if (c.contactName) {
-      const ct = document.createElement('span');
-      ct.style.cssText = 'font-size:10px;color:var(--blue-bright)';
-      ct.textContent = '→ ' + c.contactName;
-      qlHdr.appendChild(ct);
-    }
-
-    const noteArea = document.createElement('textarea');
-    noteArea.id = 'pip-note-' + sid;
-    noteArea.rows = 2;
-    noteArea.placeholder = 'What happened? Outcome, next steps...';
-    noteArea.style.cssText = 'width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 8px;border-radius:var(--r);resize:vertical;font-family:var(--font);margin-bottom:6px';
-
-    const qlFooter = document.createElement('div');
-    qlFooter.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap';
-
-    const logBtn = document.createElement('button');
-    logBtn.textContent = 'LOG & DISMISS';
-    logBtn.style.cssText = 'background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:5px 14px;cursor:pointer;border-radius:var(--r)';
-    logBtn.onclick = () => pipLogAndDismiss(sid);
-
-    const lbl = document.createElement('label');
-    lbl.textContent = 'Next follow-up:';
-    lbl.style.cssText = 'font-family:var(--mono);font-size:10px;color:var(--text-3)';
-
-    const dateInput = document.createElement('input');
-    dateInput.type = 'date';
-    dateInput.id = 'pip-date-' + sid;
-    dateInput.style.cssText = 'background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 6px;border-radius:var(--r)';
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = 'CANCEL';
-    cancelBtn.style.cssText = 'background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r)';
-    cancelBtn.onclick = () => { ql.classList.remove('open'); };
-
-    qlFooter.appendChild(logBtn);
-    qlFooter.appendChild(lbl);
-    qlFooter.appendChild(dateInput);
-    qlFooter.appendChild(cancelBtn);
-    ql.appendChild(qlHdr);
-    ql.appendChild(noteArea);
-    ql.appendChild(qlFooter);
-    card.appendChild(ql);
-
-    return card;
-  }
-
-  // ── BUILD PAGE ────────────────────────────────────────────
+  // ── BUILD PAGE ──────────────────────────────────────────
   el.innerHTML = '';
   const page = document.createElement('div');
-  page.className = 'fup-page';
+  page.className = 'iq-page';
 
-  // Stats bar
-  const statsBar = document.createElement('div');
-  statsBar.className = 'fup-stats-bar';
-  statsBar.innerHTML =
-    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--green)">' + hot.length + '</div><div class="fup-stat-label">🔥 HOT</div></div>' +
-    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--gold)">' + reengage.length + '</div><div class="fup-stat-label">⏰ RE-ENGAGE</div></div>' +
-    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--red)">' + winback.length + '</div><div class="fup-stat-label">💎 WIN BACK</div></div>' +
-    '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--blue-bright)">$' + formatNum(totalValue) + '</div><div class="fup-stat-label">TOTAL PIPELINE</div></div>' +
-    '<div class="fup-stat" style="flex:2;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding-right:16px">' +
-      '<input id="pip-search" type="text" placeholder="Search contacts..." oninput="pipFilter()" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:var(--r);width:200px;outline:none;font-family:var(--font)">' +
+  // KPI bar
+  const kpiBar = document.createElement('div');
+  kpiBar.className = 'iq-topbar';
+  kpiBar.innerHTML =
+    '<div class="iq-kpi"><div class="iq-kpi-num" style="color:var(--red)">' + (todayEvents.length + overdueEvents.length) + '</div><div class="iq-kpi-label">DUE TODAY</div></div>' +
+    '<div class="iq-kpi"><div class="iq-kpi-num" style="color:var(--gold)">' + upcomingEvents.length + '</div><div class="iq-kpi-label">UPCOMING</div></div>' +
+    '<div class="iq-kpi"><div class="iq-kpi-num" style="color:var(--blue-bright)">' + aiPicks.length + '</div><div class="iq-kpi-label">AI PICKS</div></div>' +
+    '<div class="iq-kpi" style="flex:2;display:flex;align-items:center;justify-content:flex-end;padding-right:16px">' +
+      '<button onclick="openScheduleModal(\'\',\'\',\'\')" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:7px 16px;cursor:pointer;border-radius:var(--r)">+ SCHEDULE ACTIVITY</button>' +
     '</div>';
-  page.appendChild(statsBar);
+  page.appendChild(kpiBar);
 
-  // 3 columns
   const body = document.createElement('div');
-  body.className = 'fup-body';
+  body.className = 'iq-body';
 
-  function makeCol(emoji, label, color, contacts2, subtitle) {
-    const col = document.createElement('div');
-    col.className = 'fup-col';
-    const hdr = document.createElement('div');
-    hdr.className = 'fup-col-header';
-    hdr.innerHTML =
-      '<span style="font-size:14px">' + emoji + '</span>' +
-      '<div><div class="fup-col-title" style="color:' + color + '">' + label + '</div>' +
-      '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono)">' + subtitle + '</div></div>' +
-      '<span class="fup-col-count">' + contacts2.length + '</span>';
-    col.appendChild(hdr);
-    const colBody = document.createElement('div');
-    colBody.className = 'fup-col-body';
-    if (!contacts2.length) {
-      const empty = document.createElement('div');
-      empty.style.cssText = 'text-align:center;padding:40px 20px;color:var(--text-3);font-size:12px';
-      empty.textContent = 'No contacts here';
-      colBody.appendChild(empty);
-    } else {
-      contacts2.forEach(c => colBody.appendChild(renderCard(c)));
+  // ── CALENDAR PANEL ────────────────────────────────────
+  const calPanel = document.createElement('div');
+  calPanel.className = 'iq-cal';
+  calPanel.id = 'iq-cal-panel';
+
+  const calHdr = document.createElement('div');
+  calHdr.className = 'iq-cal-hdr';
+  const calState = { month: today.getMonth(), year: today.getFullYear() };
+  window._iqCalState = calState;
+
+  function renderCalendar() {
+    const calBody = document.getElementById('iq-cal-body');
+    if (!calBody) return;
+    calBody.innerHTML = '';
+    const { month, year } = window._iqCalState;
+    const monthNames = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    document.getElementById('iq-cal-month').textContent = monthNames[month] + ' ' + year;
+
+    // Show 30 days from start of month
+    const startDate = new Date(year, month, 1);
+    const endDate = new Date(year, month+1, 0);
+
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate()+1)) {
+      const dateStr = d.toISOString().slice(0,10);
+      const isToday = dateStr === todayStr;
+      const dayEvents = pending.filter(e => e.date === dateStr);
+      const isPast = dateStr < todayStr;
+
+      const dayEl = document.createElement('div');
+      dayEl.className = 'iq-cal-day';
+
+      const dayHdr = document.createElement('div');
+      dayHdr.className = 'iq-cal-dhdr' + (isToday ? ' today' : '');
+      dayHdr.style.opacity = isPast && !dayEvents.length ? '0.4' : '1';
+      const dayName = ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
+      const dayNum = d.getDate();
+      dayHdr.innerHTML =
+        '<span>' + dayName + ' ' + dayNum + (isToday ? ' ← TODAY' : '') + '</span>' +
+        (dayEvents.length ? '<span style="background:var(--blue-b);color:#fff;font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:10px">' + dayEvents.length + '</span>' : '') +
+        '<span style="color:var(--blue-bright);font-size:10px;cursor:pointer" onclick="openScheduleModal(\'\',\'\',\'\')" title="Add activity">+</span>';
+      dayEl.appendChild(dayHdr);
+
+      dayEvents.forEach(ev => {
+        const item = document.createElement('div');
+        item.className = 'iq-cal-item';
+        const typeIcon = ev.type === 'Call' ? '📞' : ev.type === 'Email' ? '✉' : '👥';
+        item.innerHTML =
+          '<span class="iq-cal-time">' + (ev.time || '--:--') + '</span>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div class="iq-cal-iname">' + typeIcon + ' ' + escHtml(ev.contactName || ev.accName) + '</div>' +
+            '<div class="iq-cal-isub">' + escHtml(ev.accName) + '</div>' +
+          '</div>';
+        item.onclick = () => iqSelectEvent(ev.id);
+        dayEl.appendChild(item);
+      });
+
+      calBody.appendChild(dayEl);
     }
-    col.appendChild(colBody);
-    return col;
   }
 
-  body.appendChild(makeCol('🔥', 'HOT', 'var(--green)', hot, 'Active — ordered within 60 days'));
-  body.appendChild(makeCol('⏰', 'RE-ENGAGE', 'var(--gold)', reengage, 'Going cold — 60 to 180 days'));
-  body.appendChild(makeCol('💎', 'WIN BACK', 'var(--red)', winback, 'Lost — no orders in 180+ days'));
+  calHdr.innerHTML =
+    '<button class="iq-cal-nav" id="iq-cal-prev" onclick="iqCalNav(-1)">‹</button>' +
+    '<span id="iq-cal-month" style="font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.1em"></span>' +
+    '<button class="iq-cal-nav" id="iq-cal-next" onclick="iqCalNav(1)">›</button>';
+  calPanel.appendChild(calHdr);
 
+  const calBody = document.createElement('div');
+  calBody.className = 'iq-cal-body';
+  calBody.id = 'iq-cal-body';
+  calPanel.appendChild(calBody);
+  body.appendChild(calPanel);
+
+  // ── MAIN PANEL ────────────────────────────────────────
+  const mainPanel = document.createElement('div');
+  mainPanel.className = 'iq-main';
+
+  // Section: Today's Schedule
+  const todayHdr = document.createElement('div');
+  todayHdr.className = 'iq-shdr';
+  const todayDate = today.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
+  todayHdr.innerHTML =
+    '<span class="iq-stitle" style="color:var(--blue-bright)">📅 ' + todayDate.toUpperCase() + '</span>' +
+    '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + (todayEvents.length + overdueEvents.length) + ' activities due</span>';
+  mainPanel.appendChild(todayHdr);
+
+  const panels = document.createElement('div');
+  panels.className = 'iq-panels';
+
+  // Left: Today's calls + overdue
+  const todayPanel = document.createElement('div');
+  todayPanel.className = 'iq-today';
+
+  const todayList = document.createElement('div');
+  todayList.className = 'iq-list';
+  todayList.id = 'iq-today-list';
+
+  const allDue = [...overdueEvents.map(e => ({...e, overdue:true})), ...todayEvents];
+
+  if (!allDue.length) {
+    todayList.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--text-3)">' +
+      '<div style="font-size:28px;margin-bottom:8px">✓</div>' +
+      '<div style="font-size:12px">Nothing due today</div>' +
+      '<div style="font-size:10px;margin-top:8px">Schedule an activity or check AI recommendations →</div>' +
+      '</div>';
+  } else {
+    allDue.forEach(ev => {
+      const typeIcon = ev.type === 'Call' ? '📞' : ev.type === 'Email' ? '✉' : '👥';
+      const row = document.createElement('div');
+      row.className = 'iq-row';
+      row.id = 'iq-ev-' + ev.id;
+
+      // Left time column
+      const timeCol = document.createElement('div');
+      timeCol.className = 'iq-row-left';
+      timeCol.innerHTML = '<div class="iq-row-type">' + typeIcon + '</div><div class="iq-row-time">' + (ev.time||'') + '</div>';
+      if (ev.overdue) timeCol.style.borderLeft = '3px solid var(--red)';
+      row.appendChild(timeCol);
+
+      // Body
+      const rowBody = document.createElement('div');
+      rowBody.className = 'iq-row-body';
+
+      const contactEl = document.createElement('div');
+      contactEl.className = 'iq-row-contact';
+      contactEl.textContent = ev.contactName || '(No contact specified)';
+      rowBody.appendChild(contactEl);
+
+      const accEl = document.createElement('div');
+      accEl.className = 'iq-row-account';
+      accEl.textContent = ev.accName;
+      accEl.onclick = () => { const a = state.accounts.find(x=>x.name===ev.accName); if(a){switchView('accounts');setTimeout(()=>selectAccount(a),400);} };
+      rowBody.appendChild(accEl);
+
+      if (ev.overdue) {
+        const overdueTag = document.createElement('div');
+        overdueTag.style.cssText = 'font-family:var(--mono);font-size:9px;color:var(--red);margin-bottom:3px';
+        overdueTag.textContent = '⚠ OVERDUE — was scheduled ' + ev.date;
+        rowBody.appendChild(overdueTag);
+      }
+
+      if (ev.note) {
+        const noteEl = document.createElement('div');
+        noteEl.className = 'iq-row-note';
+        noteEl.textContent = ev.note;
+        rowBody.appendChild(noteEl);
+      }
+
+      if (ev.contactEmail) {
+        const emailEl = document.createElement('div');
+        emailEl.style.cssText = 'font-size:10px;color:var(--blue-bright);margin-bottom:4px';
+        emailEl.textContent = '✉ ' + ev.contactEmail;
+        rowBody.appendChild(emailEl);
+      }
+
+      // Action buttons
+      const btnRow = document.createElement('div');
+      btnRow.className = 'iq-row-btns';
+
+      const doneBtn = document.createElement('button');
+      doneBtn.className = 'iq-btn green';
+      doneBtn.textContent = '✓ Done';
+      doneBtn.onclick = () => iqMarkDone(ev.id);
+      btnRow.appendChild(doneBtn);
+
+      if (ev.type === 'Call' || ev.type === 'Meeting') {
+        const logBtn = document.createElement('button');
+        logBtn.className = 'iq-btn blue';
+        logBtn.textContent = '📝 Log outcome';
+        logBtn.onclick = () => iqLogOutcome(ev.id, row);
+        btnRow.appendChild(logBtn);
+      }
+
+      if (ev.type === 'Email' && ev.contactEmail) {
+        const emailBtn = document.createElement('button');
+        emailBtn.className = 'iq-btn';
+        emailBtn.textContent = '✉ Open email';
+        emailBtn.onclick = () => window.open('mailto:' + ev.contactEmail + '?subject=Follow up from Intransit Technologies');
+        btnRow.appendChild(emailBtn);
+      }
+
+      const snoozeBtn = document.createElement('button');
+      snoozeBtn.className = 'iq-btn gold';
+      snoozeBtn.textContent = '⏱ Snooze 1d';
+      snoozeBtn.onclick = () => iqSnooze(ev.id, 1);
+      btnRow.appendChild(snoozeBtn);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'iq-btn red';
+      delBtn.textContent = '× Delete';
+      delBtn.onclick = () => iqDelete(ev.id, row);
+      btnRow.appendChild(delBtn);
+
+      rowBody.appendChild(btnRow);
+
+      // Log outcome panel (hidden)
+      const logPanel = document.createElement('div');
+      logPanel.className = 'iq-log-panel';
+      logPanel.id = 'iq-log-' + ev.id;
+      const logArea = document.createElement('textarea');
+      logArea.rows = 2;
+      logArea.placeholder = 'What happened? Next steps...';
+      logArea.style.cssText = 'width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 8px;border-radius:var(--r);resize:vertical;font-family:var(--font);margin-bottom:6px';
+      logArea.id = 'iq-log-note-' + ev.id;
+      const saveLogBtn = document.createElement('button');
+      saveLogBtn.style.cssText = 'background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:5px 14px;cursor:pointer;border-radius:var(--r)';
+      saveLogBtn.textContent = 'SAVE & DONE';
+      saveLogBtn.onclick = () => iqSaveLog(ev.id, ev.accName, ev.contactName||'', ev.type);
+      logPanel.appendChild(logArea);
+      logPanel.appendChild(saveLogBtn);
+      rowBody.appendChild(logPanel);
+
+      row.appendChild(rowBody);
+
+      // Meta col
+      const meta = document.createElement('div');
+      meta.className = 'iq-row-meta';
+      const accData = state.accounts.find(a => a.name === ev.accName);
+      if (accData) {
+        meta.innerHTML =
+          '<div class="iq-meta-val" style="color:var(--blue-bright)">$' + formatNum(accData.total||0) + '</div>' +
+          '<div class="iq-meta-lbl">LIFETIME</div>';
+      }
+      row.appendChild(meta);
+
+      todayList.appendChild(row);
+    });
+  }
+
+  todayPanel.appendChild(todayList);
+  panels.appendChild(todayPanel);
+
+  // Right: AI Recommendations
+  const aiPanel = document.createElement('div');
+  aiPanel.className = 'iq-ai';
+
+  const aiHdr = document.createElement('div');
+  aiHdr.className = 'iq-shdr';
+  aiHdr.innerHTML =
+    '<span class="iq-stitle" style="color:var(--gold)">✦ AI RECOMMENDS</span>' +
+    '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">top contacts to reach</span>';
+  aiPanel.appendChild(aiHdr);
+
+  const aiList = document.createElement('div');
+  aiList.className = 'iq-list';
+
+  if (!aiPicks.length) {
+    aiList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:11px">Loading recommendations...<br><span style="font-size:10px">Data loads in background</span></div>';
+  } else {
+    aiPicks.forEach((c, idx) => {
+      const aiRow = document.createElement('div');
+      aiRow.className = 'iq-ai-row';
+
+      const topLine = document.createElement('div');
+      topLine.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:3px';
+      const scoreBadge = document.createElement('span');
+      scoreBadge.className = 'iq-ai-score';
+      scoreBadge.style.cssText = 'background:' + iqScoreColor(c.score) + '22;color:' + iqScoreColor(c.score);
+      scoreBadge.textContent = c.score;
+      const rankEl = document.createElement('span');
+      rankEl.style.cssText = 'font-family:var(--mono);font-size:9px;color:var(--text-3)';
+      rankEl.textContent = '#' + (idx+1);
+      topLine.appendChild(scoreBadge);
+      topLine.appendChild(rankEl);
+      aiRow.appendChild(topLine);
+
+      if (c.contactName) {
+        const nameEl = document.createElement('div');
+        nameEl.className = 'iq-ai-name';
+        nameEl.textContent = c.contactName;
+        aiRow.appendChild(nameEl);
+        const titleEl = document.createElement('div');
+        titleEl.className = 'iq-ai-contact';
+        titleEl.textContent = (c.contactTitle || '') + (c.contactTitle && c.accName ? ' · ' : '') + c.accName;
+        aiRow.appendChild(titleEl);
+      } else {
+        const nameEl = document.createElement('div');
+        nameEl.className = 'iq-ai-name';
+        nameEl.textContent = c.accName;
+        aiRow.appendChild(nameEl);
+        const noContact = document.createElement('div');
+        noContact.className = 'iq-ai-contact';
+        noContact.style.color = 'var(--gold)';
+        noContact.textContent = '⚠ No contact on file';
+        aiRow.appendChild(noContact);
+      }
+
+      const reasonEl = document.createElement('div');
+      reasonEl.className = 'iq-ai-reason';
+      reasonEl.textContent = iqReason(c);
+      aiRow.appendChild(reasonEl);
+
+      if (c.topParts && c.topParts.length) {
+        const partsEl = document.createElement('div');
+        partsEl.className = 'iq-ai-parts';
+        partsEl.textContent = '🔩 ' + c.topParts.slice(0,2).map(([p,t])=>p+'($'+formatNum(t)+')').join(' · ');
+        aiRow.appendChild(partsEl);
+      }
+
+      // Buttons
+      const btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-top:4px';
+      const schedBtn = document.createElement('button');
+      schedBtn.className = 'iq-btn blue';
+      schedBtn.textContent = '📅 Schedule';
+      schedBtn.onclick = () => openScheduleModal(c.accName, c.contactName||'', c.contactEmail||'');
+      btnRow.appendChild(schedBtn);
+      const viewBtn = document.createElement('button');
+      viewBtn.className = 'iq-btn';
+      viewBtn.textContent = '→ View account';
+      viewBtn.onclick = () => { const a = state.accounts.find(x=>x.name===c.accName); if(a){switchView('accounts');setTimeout(()=>selectAccount(a),400);} };
+      btnRow.appendChild(viewBtn);
+      aiRow.appendChild(btnRow);
+
+      aiList.appendChild(aiRow);
+    });
+  }
+
+  aiPanel.appendChild(aiList);
+  panels.appendChild(aiPanel);
+  mainPanel.appendChild(panels);
+  body.appendChild(mainPanel);
   page.appendChild(body);
   el.appendChild(page);
+
+  // Render calendar after DOM is ready
+  setTimeout(renderCalendar, 10);
 }
 
-function _pipStaleBadge(ds) {
-  if (ds === null || ds === undefined || ds >= 999) return '<span style="color:var(--text-3);font-size:10px">No orders</span>';
-  if (ds === 0) return '<span style="color:var(--green);font-size:10px">Today</span>';
-  if (ds <= 30) return '<span style="color:var(--green);font-size:10px">' + ds + 'd</span>';
-  if (ds <= 90) return '<span style="color:var(--gold);font-size:10px">' + ds + 'd</span>';
-  return '<span style="color:var(--red);font-size:10px">' + ds + 'd</span>';
+// ── CALENDAR NAV ──────────────────────────────────────────
+function iqCalNav(dir) {
+  if (!window._iqCalState) return;
+  window._iqCalState.month += dir;
+  if (window._iqCalState.month > 11) { window._iqCalState.month = 0; window._iqCalState.year++; }
+  if (window._iqCalState.month < 0) { window._iqCalState.month = 11; window._iqCalState.year--; }
+  const calBody = document.getElementById('iq-cal-body');
+  if (calBody && window._iqRenderCal) window._iqRenderCal();
+  else renderFollowUpCommandCenter();
 }
 
-function pipGoToAccount(sid) {
-  const c = window._pipCards[sid];
-  if (!c) return;
-  const acc = state.accounts.find(a => a.name === c.accName);
-  if (acc) { switchView('accounts'); setTimeout(() => selectAccount(acc), 400); }
+function iqSelectEvent(id) {
+  const row = document.getElementById('iq-ev-' + id);
+  if (row) row.scrollIntoView({ behavior:'smooth', block:'center' });
 }
 
-function pipQuickLog(sid, type) {
-  document.querySelectorAll('.fup-quick-log.open').forEach(el => {
-    if (el.id !== 'pip-ql-' + sid) el.classList.remove('open');
-  });
-  const ql = document.getElementById('pip-ql-' + sid);
-  if (!ql) return;
-  ql.classList.toggle('open');
-  if (ql.classList.contains('open')) {
-    const typeEl = document.getElementById('pip-type-' + sid);
-    if (typeEl) typeEl.value = type;
-    setTimeout(() => document.getElementById('pip-note-' + sid)?.focus(), 50);
-  }
+// ── EVENT ACTIONS ─────────────────────────────────────────
+function iqMarkDone(id) {
+  schedMarkDone(id);
+  const row = document.getElementById('iq-ev-' + id);
+  if (row) { row.style.transition='all 0.3s'; row.style.opacity='0'; setTimeout(()=>row.remove(),300); }
+  updateBadges();
+  showToast('Done ✓', 'success');
 }
 
-async function pipLogAndDismiss(sid) {
-  const c = window._pipCards[sid];
-  if (!c) return;
-  const typeEl = document.getElementById('pip-type-' + sid);
-  const noteEl = document.getElementById('pip-note-' + sid);
-  const dateEl = document.getElementById('pip-date-' + sid);
-  const type = typeEl?.value || 'Note';
+function iqDelete(id, row) {
+  schedDelete(id);
+  if (row) { row.style.transition='all 0.3s'; row.style.opacity='0'; setTimeout(()=>row.remove(),300); }
+  updateBadges();
+  showToast('Deleted', 'success');
+}
+
+function iqSnooze(id, days) {
+  const events = schedGetAll();
+  const ev = events.find(e => e.id === id);
+  if (!ev) return;
+  const d = new Date(ev.date + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  ev.date = d.toISOString().slice(0,10);
+  schedSave(events);
+  const row = document.getElementById('iq-ev-' + id);
+  if (row) { row.style.opacity='0'; setTimeout(()=>{ if(state.activeView==='followup') renderFollowUpCommandCenter(); },300); }
+  showToast('Snoozed 1 day', 'success');
+}
+
+function iqLogOutcome(id, row) {
+  const logPanel = document.getElementById('iq-log-' + id);
+  if (logPanel) logPanel.classList.toggle('open');
+}
+
+async function iqSaveLog(id, accName, contactName, type) {
+  const noteEl = document.getElementById('iq-log-note-' + id);
   const note = noteEl?.value.trim() || '';
-  const newDate = dateEl?.value || '';
   if (!note) { showToast('Enter a note first', 'error'); return; }
-
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'}) + ' ' +
                   now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-  const rep = state.user?.email || 'unknown';
-
+  const rep = state.user?.email || '';
   try {
-    await sheetsAppend("'_CONTACT_NOTES'!A1", [[c.accName, c.contactName||'', type, note, dateStr, rep]]);
-
-    if (newDate) {
-      const acc = state.accounts.find(a => a.name === c.accName);
-      if (acc) {
-        const d = new Date(newDate + 'T12:00:00');
-        const fmt = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
-        acc.followUpDate = fmt;
-        await saveAccountNote(acc, acc.repNote||'', fmt, acc.repStatus||'');
-      }
-    }
-
+    await sheetsAppend("'_CONTACT_NOTES'!A1", [[accName, contactName, type, note, dateStr, rep]]);
     if (!state.contactNotesCache) state.contactNotesCache = {};
-    if (!state.contactNotesCache[c.accName]) state.contactNotesCache[c.accName] = [];
-    state.contactNotesCache[c.accName].push({contact: c.contactName||'', type, note, date: dateStr, rep});
-
-    showToast('Logged ✓', 'success');
-    const card = document.getElementById(sid);
-    if (card) {
-      card.style.transition = 'all 0.3s';
-      card.style.opacity = '0';
-      setTimeout(() => { card.style.maxHeight = '0'; card.style.padding = '0'; card.style.margin = '0'; setTimeout(() => card.remove(), 300); }, 50);
-    }
+    if (!state.contactNotesCache[accName]) state.contactNotesCache[accName] = [];
+    state.contactNotesCache[accName].push({ contact: contactName, type, note, date: dateStr, rep });
+    schedMarkDone(id);
+    showToast('Logged & done ✓', 'success');
+    const row = document.getElementById('iq-ev-' + id);
+    if (row) { row.style.opacity='0'; setTimeout(()=>{ if(state.activeView==='followup') renderFollowUpCommandCenter(); },300); }
     updateBadges();
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   }
 }
 
-function pipSnoozeMenu(sid) {
-  const existing = document.getElementById('pip-snooze-' + sid);
-  if (existing) { existing.remove(); return; }
-  const card = document.getElementById(sid);
-  if (!card) return;
-  const div = document.createElement('div');
-  div.id = 'pip-snooze-' + sid;
-  div.style.cssText = 'display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;align-items:center;padding:4px 0';
-  const lbl = document.createElement('span');
-  lbl.style.cssText = 'font-family:var(--mono);font-size:9px;color:var(--text-3)';
-  lbl.textContent = 'REMIND IN:';
-  div.appendChild(lbl);
-  [['3d',3],['1wk',7],['2wk',14],['1mo',30]].forEach(([label, days]) => {
-    const btn = document.createElement('button');
-    btn.className = 'fup-btn';
-    btn.textContent = label;
-    btn.onclick = () => pipSnooze(sid, days);
-    div.appendChild(btn);
-  });
-  card.appendChild(div);
-}
-
-async function pipSnooze(sid, days) {
-  const c = window._pipCards[sid];
-  if (!c) return;
-  const acc = state.accounts.find(a => a.name === c.accName);
-  if (acc) {
-    const d = new Date(); d.setDate(d.getDate() + days);
-    const fmt = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
-    acc.followUpDate = fmt;
-    try {
-      await saveAccountNote(acc, acc.repNote||'', fmt, acc.repStatus||'');
-      showToast('Snoozed → ' + fmt, 'success');
-    } catch(e) { showToast('Error: ' + e.message, 'error'); }
-  }
-  const card = document.getElementById(sid);
-  if (card) { card.style.transition = 'opacity 0.3s'; card.style.opacity = '0'; setTimeout(() => card.remove(), 300); }
-}
-
-async function pipAIPrep(sid) {
-  const c = window._pipCards[sid];
-  if (!c) return;
-  const prepDiv = document.getElementById('pip-prep-' + sid);
-  if (!prepDiv) return;
-
-  if (prepDiv.style.display !== 'none' && prepDiv.innerHTML) {
-    prepDiv.style.display = 'none';
-    return;
-  }
-
-  prepDiv.style.display = 'block';
-  prepDiv.innerHTML = '<span style="color:var(--text-3);font-family:var(--mono);font-size:10px">✦ Generating call prep...</span>';
-
-  const reqs = ((state.historyCache[c.accName]||{}).reqs||[]).slice(0,3).map(r => r.part||'').filter(Boolean);
-  const parts = (c.topParts||[]).map(([p,t]) => p + ' ($' + formatNum(t) + ')');
-  const prompt =
-    'You are a sales intelligence assistant helping a rep prepare for a call. ' +
-    'Contact: ' + (c.contactName ? c.contactName + (c.contactTitle ? ', ' + c.contactTitle : '') : 'unknown buyer') + '. ' +
-    'Company: ' + c.accName + '. ' +
-    'Total purchased: $' + formatNum(c.totalRevenue||0) + ' over ' + (c.orderCount||0) + ' orders. ' +
-    'Days since last order: ' + (c.daysSince < 999 ? c.daysSince : 'unknown') + '. ' +
-    'Top purchased parts: ' + (parts.join(', ') || 'none on record') + '. ' +
-    'Recent RFQs: ' + (reqs.join(', ') || 'none') + '. ' +
-    (c.lastNote ? 'Last contact note: ' + c.lastNote.note + '. ' : '') +
-    'Account status: ' + (c.acc?.status || 'unknown') + '. ' +
-    'Write a SPECIFIC 3-sentence call prep: (1) what to open with based on their history, (2) what to ask about based on parts they buy, (3) one concrete upsell angle. Be direct and actionable. No generic advice.';
-
-  try {
-    const data = await callAI({ model: 'claude-sonnet-4-5', max_tokens: 250, messages: [{ role: 'user', content: prompt }] });
-    const text = data.content?.[0]?.text || 'No prep generated';
-    prepDiv.innerHTML =
-      '<div style="font-size:9px;color:var(--blue-bright);font-family:var(--mono);margin-bottom:5px;letter-spacing:0.1em">✦ AI CALL PREP</div>' +
-      '<div style="font-size:11px;line-height:1.7;color:var(--text)">' + escHtml(text) + '</div>';
-  } catch(e) {
-    prepDiv.innerHTML = '<span style="color:var(--red);font-size:10px">Error: ' + escHtml(e.message) + '</span>';
-  }
-}
-
-function pipFilter() {
-  const q = (document.getElementById('pip-search')?.value || '').toLowerCase();
-  document.querySelectorAll('.fup-card').forEach(card => {
-    const sid = card.id;
-    const c = window._pipCards[sid];
-    if (!c) return;
-    const searchStr = ((c.contactName||'') + ' ' + c.accName + ' ' + (c.contactTitle||'')).toLowerCase();
-    card.style.display = searchStr.includes(q) ? '' : 'none';
-  });
-}
-
-// Keep old function names as aliases for compatibility
-function fupQuickLog(accName, safeId, type) { pipQuickLog(safeId, type); }
-function fupCancelLog(safeId) {
-  const ql = document.getElementById('pip-ql-' + safeId) || document.getElementById('ql-' + safeId);
-  if (ql) ql.classList.remove('open');
-}
-function fupRemove(accName, safeId) { const card = document.getElementById(safeId); if (card) { card.style.opacity='0'; card.style.transition='opacity 0.3s'; setTimeout(()=>card.remove(),300); } }
+// ── COMPAT ALIASES ────────────────────────────────────────
+function fupQuickLog(accName, safeId, type) {}
+function fupCancelLog(safeId) {}
+function fupRemove(accName, safeId) {}
 function fupPin() {}
 function fupAddAccount() {}
-function fupFilter() { pipFilter(); }
+function fupFilter() {}
 function selectAccountByName(name) { const acc = state.accounts.find(a=>a.name===name); if(acc){switchView('accounts');setTimeout(()=>selectAccount(acc),400);} }
-function fupLogAndDismiss(accName, safeId) { pipLogAndDismiss(safeId); }
-function fupSnoozeMenu(accName, safeId) { pipSnoozeMenu(safeId); }
-function fupSnooze(accName, safeId, days) { pipSnooze(safeId, days); }
-function fupGetAIPrep(accName, safeId) { pipAIPrep(safeId); }
+function fupLogAndDismiss(accName, safeId) {}
+function fupSnoozeMenu(accName, safeId) {}
+function fupSnooze(accName, safeId, days) {}
+function fupGetAIPrep(accName, safeId) {}
+function pipGoToAccount(sid) {}
+function pipQuickLog(sid,type) {}
+function pipLogAndDismiss(sid) {}
+function pipSnoozeMenu(sid) {}
+function pipSnooze(sid,days) {}
+function pipAIPrep(sid) {}
+function pipFilter() {}
+function _pipStaleBadge(ds) { return ''; }
 
 function renderDashboard() {
   // Determine which rep we are showing
@@ -6786,7 +7030,12 @@ function updateBadges() {
 
   const setB = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
   setB('badge-accounts',    accs.length);
-  setB('badge-followup',    due || '0');
+  // Count scheduled items due today or overdue
+  const todayStr = new Date().toISOString().slice(0,10);
+  const scheduledDue = schedGetAll().filter(e => !e.done && e.date <= todayStr &&
+    (!state.isAdmin ? e.rep === (state.user?.email||'') : true)).length;
+
+  setB('badge-followup', scheduledDue || '0');
   setB('badge-collections', collectionsCount || '—');
   setB('badge-contacts',    contactsCount || '—');
   // Removal requests badge

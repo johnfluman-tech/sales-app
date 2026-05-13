@@ -118,6 +118,8 @@ body::before {
 /* ── SIDEBAR ───────────────────────────── */
 .sidebar {
   width: var(--sidebar-w, 220px); min-width: var(--sidebar-w, 220px);
+  max-width: var(--sidebar-w, 220px);
+  flex-shrink: 0; flex-grow: 0;
   background: var(--s0); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
 }
@@ -752,7 +754,7 @@ body::before {
   if (w) {
     var s = document.createElement('style');
     s.id = '_sb_w';
-    s.textContent = '.sidebar{width:' + w + 'px!important;min-width:' + w + 'px!important}';
+    s.textContent = '.sidebar{width:' + w + 'px!important;min-width:' + w + 'px!important;max-width:' + w + 'px!important}';
     document.head.appendChild(s);
   }
 })();
@@ -7815,7 +7817,7 @@ async function init() {
     document.documentElement.style.setProperty('--sidebar-w', savedSidebar + 'px');
     let _st = document.getElementById('_sb_w');
     if (!_st) { _st = document.createElement('style'); _st.id = '_sb_w'; document.head.appendChild(_st); }
-    _st.textContent = '.sidebar{width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important}';
+    _st.textContent = '.sidebar{width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important;max-width:' + savedSidebar + 'px!important}';
   }
 
   setLoading(true, currentLang==='es' ? 'VERIFICANDO SESIÓN...' : 'CHECKING SESSION...', 10);
@@ -7855,7 +7857,7 @@ function startSplitH(e, leftId, rightId, splitterId) {
       document.documentElement.style.setProperty('--sidebar-w', newW + 'px');
       let _st = document.getElementById('_sb_w');
       if (!_st) { _st = document.createElement('style'); _st.id = '_sb_w'; document.head.appendChild(_st); }
-      _st.textContent = '.sidebar{width:' + newW + 'px!important;min-width:' + newW + 'px!important}';
+      _st.textContent = '.sidebar{width:' + newW + 'px!important;min-width:' + newW + 'px!important;max-width:' + newW + 'px!important}';
       try { localStorage.setItem('it_split_sidebar', newW); } catch(e){}
     }
     function onUp() {
@@ -7938,7 +7940,7 @@ function restoreSplitPositions() {
     document.documentElement.style.setProperty('--sidebar-w', savedSidebar + 'px');
     let _st = document.getElementById('_sb_w');
     if (!_st) { _st = document.createElement('style'); _st.id = '_sb_w'; document.head.appendChild(_st); }
-    _st.textContent = '.sidebar{width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important}';
+    _st.textContent = '.sidebar{width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important;max-width:' + savedSidebar + 'px!important}';
   }
   // Restore panel splitter positions
   const panels = [

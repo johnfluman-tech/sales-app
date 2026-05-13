@@ -4437,7 +4437,10 @@ function renderFollowUpCommandCenter() {
   const today = new Date(); today.setHours(0,0,0,0);
   const todayStr = today.toISOString().slice(0,10);
 
-  // Load schedule from sheets async (non-blocking)
+  // Version tag so we know the right code is running
+  const VERSION = 'v2.1';
+
+  try {
   schedLoadFromSheets().catch(()=>{});
 
   let events = schedGetAll();
@@ -4922,6 +4925,22 @@ function renderFollowUpCommandCenter() {
 
   // Render calendar after DOM is ready
   setTimeout(renderCalendar, 10);
+
+  // Version stamp
+  const versionEl = document.createElement('div');
+  versionEl.style.cssText = 'position:fixed;bottom:4px;right:8px;font-family:var(--mono);font-size:8px;color:var(--text-3);opacity:0.4;z-index:1';
+  versionEl.textContent = 'Daily Mission ' + VERSION;
+  document.body.appendChild(versionEl);
+
+  } catch(err) {
+    // Show error so we can debug
+    el.innerHTML = '<div style="padding:20px;font-family:var(--mono)">' +
+      '<div style="color:var(--red);font-size:11px;margin-bottom:8px">⚠ RENDER ERROR ' + VERSION + '</div>' +
+      '<div style="color:var(--text);font-size:10px;background:var(--s1);padding:12px;border-radius:var(--r);white-space:pre-wrap;word-break:break-all">' +
+      escHtml(err.message + '\n\n' + err.stack) + '</div>' +
+      '<div style="margin-top:12px;font-size:10px;color:var(--text-3)">State: accounts=' + (state.accounts?.length||0) + ' cacheLoaded=' + state.cacheLoaded + ' contactsCache=' + Object.keys(state.contactsCache||{}).length + '</div>' +
+      '</div>';
+  }
 }
 
 // ── CALENDAR NAV ──────────────────────────────────────────

@@ -1368,7 +1368,7 @@ async function loadSupplementalData() {
 
     // Load orders history (dated orders for booked calc)
     try {
-      const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A1:H200000");
+      const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A1:H32000");
       if (ordHistRows.length > 1) {
         const hdrs = ordHistRows[0];
         state.ordersHistoryCache = ordHistRows.slice(1).map(r => {
@@ -1380,10 +1380,10 @@ async function loadSupplementalData() {
       }
     } catch(e) { console.error('Orders history load failed:', e.message); }
 
-    // Load GP data — columns A:I only (confirmed in sheet), trim all values
+    // Load GP data — ~22K rows, columns A:I only, trim SQL CHAR padding
     state.gpLoadError = null;
     try {
-      const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:I300000");
+      const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:I25000");
       if (gpRows.length > 1) {
         const hdrs = gpRows[0].map(h => (h||'').trim());
         state.gpCache = gpRows.slice(1).map(r => {
@@ -1393,7 +1393,7 @@ async function loadSupplementalData() {
         });
         console.log('GP cache loaded:', state.gpCache.length, 'rows');
       } else {
-        state.gpLoadError = '_GP returned ' + gpRows.length + ' rows (empty?)';
+        state.gpLoadError = '_GP returned ' + gpRows.length + ' rows';
         console.warn(state.gpLoadError);
       }
     } catch(e) {
@@ -1439,7 +1439,7 @@ async function loadSupplementalData() {
     }
 
     // Load contact revenue in background (non-blocking — tab may not exist yet)
-    sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_REVENUE'!A1:G200000")
+    sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_REVENUE'!A1:G5000")
       .then(crRows => {
         if (crRows.length > 1) {
           const hdrs = crRows[0];
@@ -5256,20 +5256,12 @@ function renderDashboard() {
         <div style="margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--accent)">${repLabel}</div>
         <button onclick="toggleDashDiag()" style="background:transparent;border:1px solid #c9a84c;color:#c9a84c;font-family:monospace;font-size:9px;padding:4px 10px;cursor:pointer;border-radius:3px;letter-spacing:0.08em;margin-left:8px">⚙ DIAG</button>
       </div>
-
       <div id="dash-diag-panel" style="display:none;background:#0a1628;border:1px solid #c9a84c;border-left:3px solid #c9a84c;border-radius:4px;padding:14px 16px;margin-bottom:16px;font-family:monospace;font-size:11px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span style="font-size:10px;letter-spacing:0.15em;color:#c9a84c">⚙ DASHBOARD DIAGNOSTIC</span>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button onclick="testGPTab()" style="background:transparent;border:1px solid #4fc3f7;color:#4fc3f7;font-family:monospace;font-size:9px;padding:3px 8px;cursor:pointer;border-radius:3px">▶ TEST _GP TAB</button>
-            <button onclick="document.getElementById('dash-diag-panel').style.display='none'" style="background:transparent;border:none;color:#666;cursor:pointer;font-size:14px">✕</button>
-          </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="color:#c9a84c;font-size:10px;letter-spacing:0.1em">⚙ DASHBOARD DIAGNOSTIC</span>
+          <button onclick="document.getElementById('dash-diag-panel').style.display='none'" style="background:transparent;border:none;color:#666;cursor:pointer;font-size:14px">✕</button>
         </div>
-        <div id="dash-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:5px"><div style="color:#666;grid-column:span 2">Refresh dashboard to populate.</div></div>
-        <div id="dash-diag-test" style="margin-top:10px;padding-top:10px;border-top:1px solid #1a3050;display:none">
-          <div style="color:#666;font-size:9px;letter-spacing:0.1em;margin-bottom:6px">▶ _GP TAB RAW RESPONSE</div>
-          <pre id="dash-diag-test-result" style="color:#e0e0e0;font-size:10px;white-space:pre-wrap;word-break:break-all;margin:0;max-height:300px;overflow-y:auto"></pre>
-        </div>
+        <div id="dash-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:5px;color:#888">Loading...</div>
       </div>
 
       <!-- Diagnostics (shown when data issues detected) -->
@@ -5296,20 +5288,6 @@ function toggleDashDiag() {
   if (!p) return;
   p.style.display = p.style.display === 'none' ? 'block' : 'none';
   if (p.style.display === 'block') refreshDashboard();
-}
-
-async function testGPTab() {
-  const testEl = document.getElementById('dash-diag-test');
-  const resEl  = document.getElementById('dash-diag-test-result');
-  if (!testEl || !resEl) return;
-  testEl.style.display = 'block';
-  resEl.textContent = 'Fetching _GP!A1:I5...\n';
-  try {
-    const url = CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + '/values/' + encodeURIComponent("'_GP'!A1:I5");
-    const res  = await fetch(url, { headers: { 'X-Google-Token': state.accessToken } });
-    const text = await res.text();
-    resEl.textContent = 'HTTP ' + res.status + '\nURL: ' + url + '\n\n' + text.slice(0, 3000);
-  } catch(e) { resEl.textContent = 'Error: ' + e.message; }
 }
 
 function setDashPeriod(period, btn) {
@@ -5385,30 +5363,25 @@ async function refreshDashboard() {
   });
 
   const shipped = gpFiltered.reduce((s, r) => s + parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE || 0), 0);
-
-  // Update diagnostic panel if open
   const _dp = document.getElementById('dash-diag-panel');
   const _dc = document.getElementById('dash-diag-content');
   if (_dc && _dp && _dp.style.display !== 'none') {
-    const s0 = state.gpCache[0] || null;
+    const s0 = state.gpCache[0];
     const inRange = state.gpCache.filter(r => { const d=normDate(r[gpDateCol]||''); return d>=from&&d<=to; }).length;
-    const uReps = [...new Set(state.gpCache.slice(0,500).map(r=>(r[gpSalesRepCol]||'').trim()).filter(Boolean))];
+    const uReps = [...new Set(state.gpCache.slice(0,200).map(r=>(r[gpSalesRepCol]||'').trim()).filter(Boolean))];
     const rows = [
-      ['gpCache total rows',           state.gpCache.length],
-      ['gpLoadError',                  state.gpLoadError || '(none)'],
-      ['rows in date range (any rep)', inRange],
-      ['gpFiltered (rep+date)',        gpFiltered.length],
-      ['repFilter',                    repFilter || '(none)'],
-      ['gpSalesRepCol',                gpSalesRepCol],
-      ['gpInvTotalCol',                gpInvTotalCol],
-      ['sample SALES_REP',             s0 ? '"' + (s0[gpSalesRepCol]||'') + '"' : '(cache empty)'],
-      ['sample EXTENDED_PRICE',        s0 ? '"' + (s0[gpInvTotalCol]||'') + '"' : '(cache empty)'],
-      ['unique SALES_REP values',      uReps.join(', ') || '(none)'],
-      ['date range',                   from + ' → ' + to],
+      ['gpCache total rows', state.gpCache.length],
+      ['gpLoadError', state.gpLoadError || '(none)'],
+      ['rows in date range', inRange],
+      ['gpFiltered (rep+date)', gpFiltered.length],
+      ['repFilter', repFilter || '(none)'],
+      ['sample SALES_REP', s0 ? '"' + s0[gpSalesRepCol] + '"' : '(empty)'],
+      ['sample EXTENDED_PRICE', s0 ? '"' + s0[gpInvTotalCol] + '"' : '(empty)'],
+      ['unique SALES_REP values', uReps.join(', ') || '(none)'],
     ];
     _dc.innerHTML = rows.map(([k,v]) => {
-      const bad = v===0 || String(v).includes('(cache empty)') || (k==='gpLoadError'&&v!=='(none)');
-      return '<div style="color:#888">' + k + '</div><div style="color:' + (bad?'#e74c3c':'#ccc') + ';word-break:break-all">' + String(v).replace(/</g,'&lt;') + '</div>';
+      const bad = v===0||String(v).includes('(empty)')||(k==='gpLoadError'&&v!=='(none)');
+      return '<div style="color:#888">'+k+'</div><div style="color:'+(bad?'#e74c3c':'#ccc')+';word-break:break-all">'+String(v).replace(/</g,'&lt;')+'</div>';
     }).join('');
   }
   const gp      = gpFiltered.reduce((s, r) => s + parseMoney(r[gpGPCol] || r.GP || 0), 0);

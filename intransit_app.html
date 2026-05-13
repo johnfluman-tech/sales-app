@@ -4392,37 +4392,71 @@ function renderFollowUpCommandCenter() {
   if (isAdmin && viewAsRep) repAccounts = repAccounts.filter(a => a.rep === viewAsRep);
   else if (!isAdmin) repAccounts = repAccounts.filter(a => a.rep === state.repId);
 
-  // Build scored contact list
+  // Hidden suggestions (stored per rep)
+  const repKey = viewAsRep || state.repId || 'admin';
+  let hiddenSet = new Set();
+  try { hiddenSet = new Set(JSON.parse(localStorage.getItem('iq_hidden_' + repKey) || '[]')); } catch(e){}
+
+  // Build ONE entry per account — best contact ranked by contact-level invoice value
+  // For each account, figure out which contact was on the most invoices
   const contactList = [];
   repAccounts.forEach(acc => {
     const contacts = (state.contactsCache[acc.name.trim()] || []).filter(c => c.type !== 'AP/Collections');
     const invs = (state.historyCache[acc.name.trim()] || {}).invoices || [];
     const reqs = (state.historyCache[acc.name.trim()] || {}).reqs || [];
+
+    // Account-level stats
     const totalRevenue = acc.total || invs.reduce((s,i) => s + (i.lineTotal||0), 0);
     const dates = invs.map(i => i.date).filter(Boolean).sort().reverse();
     const lastOrderDate = dates[0] || acc.lastSale || null;
     const daysSince = lastOrderDate ? Math.floor((today - new Date(lastOrderDate)) / 86400000) : 999;
+
+    // Part totals for account
     const partTotals = {};
     invs.forEach(inv => { if (inv.part) partTotals[inv.part] = (partTotals[inv.part]||0) + (inv.lineTotal||0); });
     const topParts = Object.entries(partTotals).sort((a,b)=>b[1]-a[1]).slice(0,3);
+
     const notes = (state.contactNotesCache||{})[acc.name] || [];
     const lastNote = notes.length ? notes[notes.length-1] : null;
     const daysSinceContact = lastNote ? Math.floor((today - new Date(lastNote.date)) / 86400000) : null;
 
-    const entry = { acc, accName: acc.name, totalRevenue, daysSince, topParts, reqs, lastNote, daysSinceContact };
+    // Pick best contact — prefer the one with most invoice activity
+    // Since we don't have per-contact invoice linking, rank by: has email > title contains buyer/purchasing > first
+    let bestContact = null;
     if (contacts.length) {
-      contacts.forEach(c => contactList.push({ ...entry, contactName: c.name, contactTitle: c.title, contactEmail: c.email, contactPhone: c.phone||c.mobile }));
-    } else {
-      contactList.push({ ...entry, contactName: null, contactTitle: null, contactEmail: null, contactPhone: null });
+      const ranked = [...contacts].sort((a, b) => {
+        const aScore = (a.email ? 10 : 0) + (/buyer|purchas|procurement|commodity|sourcing|material/i.test(a.title||'') ? 5 : 0);
+        const bScore = (b.email ? 10 : 0) + (/buyer|purchas|procurement|commodity|sourcing|material/i.test(b.title||'') ? 5 : 0);
+        return bScore - aScore;
+      });
+      bestContact = ranked[0];
     }
+
+    // All contacts for "anyone else" feature
+    const allContacts = contacts;
+
+    const entry = {
+      acc, accName: acc.name, totalRevenue, daysSince, topParts, reqs, lastNote, daysSinceContact,
+      allContacts,
+      contactName: bestContact?.name || null,
+      contactTitle: bestContact?.title || null,
+      contactEmail: bestContact?.email || null,
+      contactPhone: bestContact?.phone || bestContact?.mobile || null,
+    };
+    contactList.push(entry);
   });
 
-  // Score and rank
+  // Score, filter hidden, rank — ONE per account, top 100
   contactList.forEach(c => { c.score = iqScore(c); });
   const aiPicks = contactList
-    .filter(c => c.score >= 20)
+    .filter(c => c.score >= 15 && !hiddenSet.has(c.accName))
     .sort((a,b) => b.score - a.score)
-    .slice(0, 25);
+    .slice(0, 100);
+
+  // Hidden picks for the hidden tab
+  const hiddenPicks = contactList
+    .filter(c => hiddenSet.has(c.accName))
+    .sort((a,b) => b.score - a.score);
 
   // ── BUILD PAGE ──────────────────────────────────────────
   el.innerHTML = '';
@@ -4679,57 +4713,78 @@ function renderFollowUpCommandCenter() {
   const aiPanel = document.createElement('div');
   aiPanel.className = 'iq-ai';
 
+  // Tab state
+  let iqAiTab = 'picks'; // 'picks' or 'hidden'
+
   const aiHdr = document.createElement('div');
   aiHdr.className = 'iq-shdr';
+  aiHdr.style.gap = '0';
   aiHdr.innerHTML =
-    '<span class="iq-stitle" style="color:var(--gold)">✦ AI RECOMMENDS</span>' +
-    '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">top contacts to reach</span>';
+    '<div style="display:flex;gap:0;flex:1">' +
+      '<button id="iq-tab-picks" onclick="iqSwitchTab(\'picks\')" style="flex:1;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer;letter-spacing:0.08em">✦ AI PICKS (' + aiPicks.length + ')</button>' +
+      '<button id="iq-tab-hidden" onclick="iqSwitchTab(\'hidden\')" style="flex:1;background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer;letter-spacing:0.08em">HIDDEN (' + hiddenPicks.length + ')</button>' +
+    '</div>';
   aiPanel.appendChild(aiHdr);
 
-  const aiList = document.createElement('div');
-  aiList.className = 'iq-list';
-
-  if (!aiPicks.length) {
-    aiList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:11px">Loading recommendations...<br><span style="font-size:10px">Data loads in background</span></div>';
-  } else {
-    aiPicks.forEach((c, idx) => {
-      const aiRow = document.createElement('div');
+  // Render a single AI row
+  function renderAiRow(c, idx, isHidden) {
       aiRow.className = 'iq-ai-row';
 
-      const topLine = document.createElement('div');
-      topLine.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:3px';
-      const scoreBadge = document.createElement('span');
-      scoreBadge.className = 'iq-ai-score';
-      scoreBadge.style.cssText = 'background:' + iqScoreColor(c.score) + '22;color:' + iqScoreColor(c.score);
-      scoreBadge.textContent = c.score;
-      const rankEl = document.createElement('span');
-      rankEl.style.cssText = 'font-family:var(--mono);font-size:9px;color:var(--text-3)';
-      rankEl.textContent = '#' + (idx+1);
-      topLine.appendChild(scoreBadge);
-      topLine.appendChild(rankEl);
-      aiRow.appendChild(topLine);
+    const aiRow = document.createElement('div');
+    aiRow.className = 'iq-ai-row';
 
-      if (c.contactName) {
-        const nameEl = document.createElement('div');
-        nameEl.className = 'iq-ai-name';
-        nameEl.textContent = c.contactName;
-        aiRow.appendChild(nameEl);
-        const titleEl = document.createElement('div');
-        titleEl.className = 'iq-ai-contact';
-        titleEl.textContent = (c.contactTitle || '') + (c.contactTitle && c.accName ? ' · ' : '') + c.accName;
-        aiRow.appendChild(titleEl);
-      } else {
-        const nameEl = document.createElement('div');
-        nameEl.className = 'iq-ai-name';
-        nameEl.textContent = c.accName;
-        aiRow.appendChild(nameEl);
-        const noContact = document.createElement('div');
-        noContact.className = 'iq-ai-contact';
-        noContact.style.color = 'var(--gold)';
-        noContact.textContent = '⚠ No contact on file';
-        aiRow.appendChild(noContact);
-      }
+    const topLine = document.createElement('div');
+    topLine.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:3px';
+    const scoreBadge = document.createElement('span');
+    scoreBadge.className = 'iq-ai-score';
+    scoreBadge.style.cssText = 'background:' + iqScoreColor(c.score) + '22;color:' + iqScoreColor(c.score);
+    scoreBadge.textContent = c.score;
+    const rankEl = document.createElement('span');
+    rankEl.style.cssText = 'font-family:var(--mono);font-size:9px;color:var(--text-3)';
+    rankEl.textContent = isHidden ? 'HIDDEN' : '#' + (idx+1);
+    topLine.appendChild(scoreBadge);
+    topLine.appendChild(rankEl);
+    // Hide / Unhide button
+    const hideBtn = document.createElement('button');
+    hideBtn.className = 'iq-btn';
+    hideBtn.style.marginLeft = 'auto';
+    hideBtn.textContent = isHidden ? '↩ Unhide' : '× Hide';
+    hideBtn.onclick = () => iqToggleHide(c.accName, repKey);
+    topLine.appendChild(hideBtn);
+    aiRow.appendChild(topLine);
 
+    // Contact name + title
+    if (c.contactName) {
+      const nameEl = document.createElement('div');
+      nameEl.className = 'iq-ai-name';
+      nameEl.textContent = c.contactName;
+      aiRow.appendChild(nameEl);
+      const titleEl = document.createElement('div');
+      titleEl.className = 'iq-ai-contact';
+      titleEl.textContent = (c.contactTitle || 'No title') + ' · ' + c.accName;
+      aiRow.appendChild(titleEl);
+    } else {
+      const nameEl = document.createElement('div');
+      nameEl.className = 'iq-ai-name';
+      nameEl.textContent = c.accName;
+      aiRow.appendChild(nameEl);
+      const noContact = document.createElement('div');
+      noContact.className = 'iq-ai-contact';
+      noContact.style.color = 'var(--gold)';
+      noContact.textContent = '⚠ No contact on file';
+      aiRow.appendChild(noContact);
+    }
+
+    // Other contacts at this account
+    const otherContacts = (c.allContacts || []).filter(x => x.name !== c.contactName);
+    if (otherContacts.length > 0 && !isHidden) {
+      const othersEl = document.createElement('div');
+      othersEl.style.cssText = 'font-size:9px;color:var(--text-3);margin-bottom:3px';
+      othersEl.textContent = 'Also: ' + otherContacts.slice(0,3).map(x => x.name + (x.title ? ' (' + x.title + ')' : '')).join(' · ');
+      aiRow.appendChild(othersEl);
+    }
+
+    if (!isHidden) {
       const reasonEl = document.createElement('div');
       reasonEl.className = 'iq-ai-reason';
       reasonEl.textContent = iqReason(c);
@@ -4738,11 +4793,10 @@ function renderFollowUpCommandCenter() {
       if (c.topParts && c.topParts.length) {
         const partsEl = document.createElement('div');
         partsEl.className = 'iq-ai-parts';
-        partsEl.textContent = '🔩 ' + c.topParts.slice(0,2).map(([p,t])=>p+'($'+formatNum(t)+')').join(' · ');
+        partsEl.textContent = '🔩 ' + c.topParts.slice(0,2).map(([p,t])=>p+' ($'+formatNum(t)+')').join(' · ');
         aiRow.appendChild(partsEl);
       }
 
-      // Buttons
       const btnRow = document.createElement('div');
       btnRow.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-top:4px';
       const schedBtn = document.createElement('button');
@@ -4752,14 +4806,38 @@ function renderFollowUpCommandCenter() {
       btnRow.appendChild(schedBtn);
       const viewBtn = document.createElement('button');
       viewBtn.className = 'iq-btn';
-      viewBtn.textContent = '→ View account';
+      viewBtn.textContent = '→ View';
       viewBtn.onclick = () => { const a = state.accounts.find(x=>x.name===c.accName); if(a){switchView('accounts');setTimeout(()=>selectAccount(a),400);} };
       btnRow.appendChild(viewBtn);
       aiRow.appendChild(btnRow);
+    }
 
-      aiList.appendChild(aiRow);
-    });
+    return aiRow;
   }
+
+  const aiList = document.createElement('div');
+  aiList.className = 'iq-list';
+  aiList.id = 'iq-ai-list';
+
+  function showAiTab(tab) {
+    aiList.innerHTML = '';
+    if (tab === 'hidden') {
+      if (!hiddenPicks.length) {
+        aiList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:11px">No hidden suggestions</div>';
+      } else {
+        hiddenPicks.forEach((c, idx) => aiList.appendChild(renderAiRow(c, idx, true)));
+      }
+    } else {
+      if (!aiPicks.length) {
+        aiList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:11px">Loading recommendations...<br><span style="font-size:10px">Data loads in background</span></div>';
+      } else {
+        aiPicks.forEach((c, idx) => aiList.appendChild(renderAiRow(c, idx, false)));
+      }
+    }
+  }
+
+  window._iqShowTab = showAiTab;
+  showAiTab('picks');
 
   aiPanel.appendChild(aiList);
   panels.appendChild(aiPanel);
@@ -4773,6 +4851,31 @@ function renderFollowUpCommandCenter() {
 }
 
 // ── CALENDAR NAV ──────────────────────────────────────────
+function iqSwitchTab(tab) {
+  const picksBtn = document.getElementById('iq-tab-picks');
+  const hiddenBtn = document.getElementById('iq-tab-hidden');
+  if (picksBtn) picksBtn.style.background = tab === 'picks' ? 'var(--blue-b)' : 'transparent';
+  if (picksBtn) picksBtn.style.color = tab === 'picks' ? '#fff' : 'var(--text-3)';
+  if (hiddenBtn) hiddenBtn.style.background = tab === 'hidden' ? 'var(--blue-b)' : 'transparent';
+  if (hiddenBtn) hiddenBtn.style.color = tab === 'hidden' ? '#fff' : 'var(--text-3)';
+  if (window._iqShowTab) window._iqShowTab(tab);
+}
+
+function iqToggleHide(accName, repKey) {
+  let hiddenSet = new Set();
+  try { hiddenSet = new Set(JSON.parse(localStorage.getItem('iq_hidden_' + repKey) || '[]')); } catch(e){}
+  if (hiddenSet.has(accName)) {
+    hiddenSet.delete(accName);
+    showToast('Unhidden ✓', 'success');
+  } else {
+    hiddenSet.add(accName);
+    showToast('Hidden — check Hidden tab to restore', 'success');
+  }
+  localStorage.setItem('iq_hidden_' + repKey, JSON.stringify([...hiddenSet]));
+  // Re-render
+  renderFollowUpCommandCenter();
+}
+
 function iqCalNav(dir) {
   if (!window._iqCalState) return;
   window._iqCalState.month += dir;
@@ -4837,6 +4940,18 @@ async function iqSaveLog(id, accName, contactName, type) {
     state.contactNotesCache[accName].push({ contact: contactName, type, note, date: dateStr, rep });
     schedMarkDone(id);
     showToast('Logged & done ✓', 'success');
+
+    // "Anyone else at this company?" suggestion
+    const otherContacts = (state.contactsCache[accName.trim()] || [])
+      .filter(c => c.type !== 'AP/Collections' && c.name !== contactName && c.email);
+    if (otherContacts.length > 0) {
+      setTimeout(() => {
+        const names = otherContacts.slice(0,3).map(c => c.name + (c.title ? ' (' + c.title + ')' : '')).join(', ');
+        const scheduleMore = confirm('Anyone else to reach at ' + accName + '?\n\n' + names + '\n\nClick OK to schedule a follow-up with one of them.');
+        if (scheduleMore) openScheduleModal(accName, otherContacts[0].name, otherContacts[0].email||'');
+      }, 400);
+    }
+
     const row = document.getElementById('iq-ev-' + id);
     if (row) { row.style.opacity='0'; setTimeout(()=>{ if(state.activeView==='followup') renderFollowUpCommandCenter(); },300); }
     updateBadges();

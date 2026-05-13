@@ -1380,7 +1380,7 @@ async function loadSupplementalData() {
       }
     } catch(e) { console.error('Orders history load failed:', e.message); }
 
-    // Load GP data (critical for dashboard) — paginated to avoid Worker timeout
+    // Load GP data (critical for dashboard) — batched to avoid Worker timeout
     try {
       const GP_BATCH = 10000;
       let gpHdrs = null;
@@ -1388,7 +1388,7 @@ async function loadSupplementalData() {
       let gpStartRow = 1;
       let gpDone = false;
       while (!gpDone) {
-        const endRow = gpStartRow === 1 ? GP_BATCH : gpStartRow + GP_BATCH - 1;
+        const endRow = gpStartRow + GP_BATCH - 1;
         const range = gpStartRow === 1
           ? "'_GP'!A1:Z" + GP_BATCH
           : "'_GP'!A" + gpStartRow + ":Z" + endRow;
@@ -1398,14 +1398,11 @@ async function loadSupplementalData() {
           gpHdrs = batch[0];
           gpAllRows = gpAllRows.concat(batch.slice(1));
         } else {
-          // Skip header row if returned again (shouldn't happen mid-range, but safe)
-          const isHdrRow = batch[0] && batch[0][0] === gpHdrs[0];
-          gpAllRows = gpAllRows.concat(isHdrRow ? batch.slice(1) : batch);
+          gpAllRows = gpAllRows.concat(batch);
         }
-        // If we got fewer rows than batch size we've hit the end
-        if (batch.length < (gpStartRow === 1 ? GP_BATCH : GP_BATCH)) { gpDone = true; }
+        if (batch.length < GP_BATCH) { gpDone = true; }
         gpStartRow += GP_BATCH;
-        if (gpStartRow > 300000) { gpDone = true; } // safety cap
+        if (gpStartRow > 300000) { gpDone = true; }
       }
       if (gpHdrs && gpAllRows.length > 0) {
         state.gpCache = gpAllRows.map(r => {
@@ -1415,8 +1412,8 @@ async function loadSupplementalData() {
         });
         console.log('GP cache loaded:', state.gpCache.length, 'rows');
       } else {
-        console.warn('GP cache: 0 rows returned — check _GP tab exists and has data');
-        state.gpLoadError = 'GP tab returned 0 rows. Check _GP tab in History sheet.';
+        console.warn('GP cache: 0 rows — _GP tab may be missing or empty');
+        state.gpLoadError = '_GP tab returned 0 rows. Tab may not exist or be empty.';
       }
     } catch(e) {
       console.error('GP load failed:', e.message);
@@ -2247,7 +2244,7 @@ let state = {
   ordersCache: [],        // open orders (current backlog)
   ordersHistoryCache: [], // orders placed by date (for booked calc)
   gpCache: [],            // GP records
-  gpLoadError: null,      // set if GP tab fails to load
+  gpLoadError: null,
   reqsCache: [],          // flat reqs for dashboard counting
   collectionsNotes: {},        // keyed by customer name — collections-specific notes
   collectionsInvoicesCache: {}, // keyed by customer name — open invoices
@@ -5276,17 +5273,26 @@ function renderDashboard() {
           style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:6px 8px;outline:none"
           onchange="refreshDashboard()">
         <div style="margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--accent)">${repLabel}</div>
-        <button onclick="toggleDashDiag()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em;margin-left:8px">⚙ DIAG</button>
+        <button onclick="toggleDashDiag()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);font-family:var(--mono,monospace);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:3px;letter-spacing:0.08em;margin-left:8px">⚙ DIAG</button>
       </div>
 
-      <!-- Diagnostics panel -->
-      <div id="dash-diag-panel" style="display:none;background:var(--s1);border:1px solid var(--gold);border-left:3px solid var(--gold);border-radius:var(--r2);padding:14px 16px;margin-bottom:16px;font-family:var(--mono);font-size:11px">
+      <!-- Diagnostic panel -->
+      <div id="dash-diag-panel" style="display:none;background:#0d1b2a;border:1px solid #c9a84c;border-left:3px solid #c9a84c;border-radius:4px;padding:14px 16px;margin-bottom:16px;font-family:monospace;font-size:11px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span style="font-size:10px;letter-spacing:0.15em;color:var(--gold)">⚙ DASHBOARD DIAGNOSTIC</span>
-          <button onclick="document.getElementById('dash-diag-panel').style.display='none'" style="background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:14px">✕</button>
+          <span style="font-size:10px;letter-spacing:0.15em;color:#c9a84c">⚙ DASHBOARD DIAGNOSTIC</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button onclick="testGPTab()" style="background:transparent;border:1px solid #4fc3f7;color:#4fc3f7;font-family:monospace;font-size:9px;padding:3px 8px;cursor:pointer;border-radius:3px">▶ TEST _GP TAB</button>
+            <button onclick="document.getElementById('dash-diag-panel').style.display='none'" style="background:transparent;border:none;color:#666;cursor:pointer;font-size:14px">✕</button>
+          </div>
         </div>
-        <div id="dash-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;color:var(--text-3)">Click DIAG to populate.</div>
+        <div id="dash-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;color:#666">Click DIAG to populate, or ▶ TEST _GP TAB to probe the sheet directly.</div>
+        <div id="dash-diag-test" style="margin-top:10px;padding-top:10px;border-top:1px solid #1e3a5f;display:none">
+          <div style="color:#666;font-size:9px;letter-spacing:0.1em;margin-bottom:6px">_GP TAB RAW RESPONSE</div>
+          <div id="dash-diag-test-result" style="color:#e0e0e0;word-break:break-all;white-space:pre-wrap"></div>
+        </div>
       </div>
+
+      <!-- Diagnostics (shown when data issues detected) -->
 
       <!-- KPI cards -->
       <div id="dash-kpis" class="dashboard-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
@@ -5310,7 +5316,49 @@ function toggleDashDiag() {
   if (!panel) return;
   const showing = panel.style.display !== 'none';
   panel.style.display = showing ? 'none' : 'block';
-  if (!showing) refreshDashboard(); // repopulate diag content immediately
+  if (!showing) refreshDashboard();
+}
+
+async function testGPTab() {
+  const testEl = document.getElementById('dash-diag-test');
+  const resultEl = document.getElementById('dash-diag-test-result');
+  if (!testEl || !resultEl) return;
+  testEl.style.display = 'block';
+  resultEl.textContent = 'Fetching first 5 rows of _GP tab...';
+  try {
+    // Test 1: fetch just header row
+    const url = CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + '/values/' + encodeURIComponent("'_GP'!A1:Z5");
+    const res = await fetch(url, { headers: { 'X-Google-Token': state.accessToken } });
+    const statusText = 'HTTP ' + res.status + ' ' + res.statusText;
+    const raw = await res.text();
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch(e) { parsed = null; }
+    const lines = [
+      'URL: ' + url,
+      'Status: ' + statusText,
+      'Response length: ' + raw.length + ' chars',
+      '',
+      parsed
+        ? ('values: ' + JSON.stringify(parsed.values || parsed, null, 2).slice(0, 2000))
+        : ('Raw (first 500): ' + raw.slice(0, 500)),
+    ];
+
+    // Test 2: list all tabs to see what exists
+    const tabUrl = CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + '/metadata';
+    let tabInfo = '';
+    try {
+      const tabRes = await fetch(tabUrl, { headers: { 'X-Google-Token': state.accessToken } });
+      const tabRaw = await tabRes.json();
+      const sheets = (tabRaw.sheets || []).map(s => s.properties?.title || '?');
+      tabInfo = '\n\nTabs in History sheet:\n' + (sheets.length ? sheets.join(', ') : '(none found or metadata endpoint not supported)');
+    } catch(e) {
+      tabInfo = '\n\nCould not fetch tab list: ' + e.message;
+    }
+
+    resultEl.textContent = lines.join('\n') + tabInfo;
+  } catch(e) {
+    resultEl.textContent = 'Error: ' + e.message;
+  }
 }
 
 function setDashPeriod(period, btn) {
@@ -5389,34 +5437,35 @@ async function refreshDashboard() {
 
   // ── Populate diagnostic panel if open ──
   const diagEl = document.getElementById('dash-diag-content');
-  if (diagEl && document.getElementById('dash-diag-panel')?.style.display !== 'none') {
-    const sampleRep   = state.gpCache.length > 0 ? (state.gpCache[0][gpSalesRepCol] || '(col not found)') : '(cache empty)';
-    const sampleDate  = state.gpCache.length > 0 ? (state.gpCache[0][gpDateCol] || '(col not found)') : '(cache empty)';
-    const samplePrice = state.gpCache.length > 0 ? (state.gpCache[0][gpInvTotalCol] || '(col not found)') : '(cache empty)';
-    const sampleGP    = state.gpCache.length > 0 ? (state.gpCache[0][gpGPCol] || '(col not found)') : '(cache empty)';
-    const inRange     = state.gpCache.filter(r => { const d = normDate(r[gpDateCol]||''); return d >= from && d <= to; }).length;
-    const uniqueReps  = [...new Set(state.gpCache.slice(0,500).map(r => (r[gpSalesRepCol]||'').trim()).filter(Boolean))];
+  const diagPanel = document.getElementById('dash-diag-panel');
+  if (diagEl && diagPanel && diagPanel.style.display !== 'none') {
+    const sampleRep   = state.gpCache.length > 0 ? (state.gpCache[0][gpSalesRepCol] || '(col missing)') : '(cache empty)';
+    const sampleDate  = state.gpCache.length > 0 ? (state.gpCache[0][gpDateCol]     || '(col missing)') : '(cache empty)';
+    const samplePrice = state.gpCache.length > 0 ? (state.gpCache[0][gpInvTotalCol] || '(col missing)') : '(cache empty)';
+    const sampleGP    = state.gpCache.length > 0 ? (state.gpCache[0][gpGPCol]       || '(col missing)') : '(cache empty)';
+    const inRange     = state.gpCache.filter(r => { const d=normDate(r[gpDateCol]||''); return d>=from&&d<=to; }).length;
+    const uniqueReps  = [...new Set(state.gpCache.slice(0,500).map(r=>(r[gpSalesRepCol]||'').trim()).filter(Boolean))];
     const rows = [
-      ['gpCache total rows',                    state.gpCache.length],
-      ['gpLoadError',                           state.gpLoadError || '(none)'],
-      ['gpCache rows in date range (any rep)',  inRange],
-      ['gpFiltered rows (after rep filter)',    gpFiltered.length],
-      ['repFilter active',                      repFilter || '(none — admin all)'],
-      ['gpSalesRepCol detected',                gpSalesRepCol],
-      ['gpDateCol detected',                    gpDateCol],
-      ['gpInvTotalCol detected',                gpInvTotalCol],
-      ['gpGPCol detected',                      gpGPCol],
-      ['sample row[SALES_REP]',                 '"' + sampleRep + '"'],
-      ['sample row[INVOICE_DATE]',              '"' + sampleDate + '"'],
-      ['sample row[EXTENDED_PRICE]',            '"' + samplePrice + '"'],
-      ['sample row[GP]',                        '"' + sampleGP + '"'],
-      ['unique SALES_REP values (first 500r)',  uniqueReps.length ? uniqueReps.join(', ') : '(none found)'],
-      ['date range',                            from + ' → ' + to],
+      ['gpCache total rows',                   state.gpCache.length],
+      ['gpLoadError',                          state.gpLoadError || '(none)'],
+      ['rows in date range (any rep)',         inRange],
+      ['gpFiltered rows (after rep filter)',   gpFiltered.length],
+      ['repFilter',                            repFilter || '(none — all reps)'],
+      ['gpSalesRepCol',                        gpSalesRepCol],
+      ['gpDateCol',                            gpDateCol],
+      ['gpInvTotalCol',                        gpInvTotalCol],
+      ['gpGPCol',                              gpGPCol],
+      ['sample SALES_REP',                     '"' + sampleRep + '"'],
+      ['sample INVOICE_DATE',                  '"' + sampleDate + '"'],
+      ['sample EXTENDED_PRICE',                '"' + samplePrice + '"'],
+      ['sample GP',                            '"' + sampleGP + '"'],
+      ['unique SALES_REP values (first 500r)', uniqueReps.length ? uniqueReps.join(', ') : '(none found)'],
+      ['date range',                           from + ' → ' + to],
     ];
     diagEl.innerHTML = rows.map(([k, v]) => {
-      const bad = v === 0 || String(v).includes('(cache empty)') || String(v).includes('Error') || (k === 'gpLoadError' && v !== '(none)');
-      return '<div style="color:var(--text-3)">' + k + '</div>' +
-             '<div style="color:' + (bad ? 'var(--red)' : 'var(--text)') + ';word-break:break-all">' + escHtml(String(v)) + '</div>';
+      const bad = v === 0 || String(v).includes('(cache empty)') || (k==='gpLoadError' && v!=='(none)') || (k.includes('unique') && v.includes('none'));
+      return '<div style="color:#888">' + k + '</div>' +
+             '<div style="color:' + (bad?'#e74c3c':'#e0e0e0') + ';word-break:break-all">' + String(v).replace(/</g,'&lt;') + '</div>';
     }).join('');
   }
   const gp      = gpFiltered.reduce((s, r) => s + parseMoney(r[gpGPCol] || r.GP || 0), 0);

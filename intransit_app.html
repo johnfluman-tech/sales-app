@@ -6677,7 +6677,7 @@ function apkRender(repAccs, otherAccs, rep) {
 
       <!-- Pool strip -->
       <div class="splitter-v" onmousedown="startSplitV(event,'apk-pool-wrap','apk-splitter-v')" id="apk-splitter-v"></div>
-      <div style="flex:1;border-top:2px solid var(--border);background:var(--s1);display:flex;flex-direction:column;overflow:hidden" id="apk-pool-wrap">
+      <div style="height:220px;min-height:80px;flex-shrink:0;border-top:2px solid var(--border);background:var(--s1);display:flex;flex-direction:column;overflow:hidden" id="apk-pool-wrap">
         <div style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid var(--border);gap:10px">
           <span style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3)" id="apk-pool-count">POOL</span>
           <span style="font-size:11px;color:var(--text-3)">Click zone buttons on a card to assign it · ↑ star to add, ↓ to return to pool</span>
@@ -6688,7 +6688,7 @@ function apkRender(repAccs, otherAccs, rep) {
             <button onclick="apkSaveNow()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:5px 14px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;font-weight:700" id="apk-save-btn">SAVE PLAN</button>
           </div>
         </div>
-        <div id="apk-pool" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;min-height:60px;max-height:160px;overflow-y:auto">
+        <div id="apk-pool" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;min-height:60px;flex:1;overflow-y:auto;align-content:flex-start">
           <!-- pool cards injected by apkRenderPool -->
         </div>
       </div>
@@ -7923,7 +7923,8 @@ function restoreSplitPositions() {
   const panels = [
     { id: 'account-list',       type: 'h' },
     { id: 'coll-list',          type: 'h' },
-    { id: 'contacts-list-panel',type: 'h' }
+    { id: 'contacts-list-panel',type: 'h' },
+    { id: 'apk-pool-wrap',      type: 'v' }
   ];
   panels.forEach(p => {
     const saved = localStorage.getItem('it_split_' + p.id);

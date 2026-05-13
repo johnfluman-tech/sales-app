@@ -117,14 +117,12 @@ body::before {
 
 /* ── SIDEBAR ───────────────────────────── */
 .sidebar {
-  width: var(--sidebar-w, 220px); min-width: var(--sidebar-w, 220px);
-  max-width: var(--sidebar-w, 220px);
-  flex-shrink: 0; flex-grow: 0;
+  width: var(--sidebar-w, 240px); min-width: var(--sidebar-w, 240px);
   background: var(--s0); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
 }
 .sidebar-header {
-  padding: 18px 20px 16px 22px;
+  padding: 18px 20px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--s1);
 }
@@ -138,13 +136,13 @@ body::before {
   background: var(--blue-b); box-shadow: 0 0 7px var(--blue-b); flex-shrink: 0;
 }
 .sidebar-title { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
-.sidebar-user { padding: 10px 20px 10px 22px; border-bottom: 1px solid var(--border); }
+.sidebar-user { padding: 10px 20px; border-bottom: 1px solid var(--border); }
 .sidebar-user-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-user-role { color: var(--text-3); font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; margin-top: 2px; text-transform: uppercase; }
-.sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0 8px 6px; }
+.sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0; }
 .nav-section-label {
   font-family: var(--mono); font-size: 8px; letter-spacing: 0.25em;
-  color: var(--text-3); text-transform: uppercase; padding: 12px 16px 4px 22px;
+  color: var(--text-3); text-transform: uppercase; padding: 12px 16px 4px;
 }
 .nav-item {
   display: flex; align-items: center;
@@ -152,7 +150,7 @@ body::before {
 }
 .nav-item-inner {
   display: flex; align-items: center; gap: 9px;
-  padding: 8px 16px 8px 14px; width: 100%;
+  padding: 8px 20px 8px 16px; width: 100%;
   font-size: 13px; color: var(--text-2); transition: all 0.1s;
 }
 .nav-item:hover .nav-item-inner { background: var(--s2); color: var(--text); }
@@ -596,6 +594,72 @@ body::before {
 .apk-pool-cards .apk-card { flex-shrink: 0; width: 155px; }
 #apk-pool.drag-over { background: rgba(59,130,246,0.05); }
 
+/* ── FOLLOW-UP COMMAND CENTER ───────────── */
+.fup-page { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--s0); }
+.fup-stats-bar {
+  display: flex; gap: 0; border-bottom: 1px solid var(--border);
+  background: var(--s1); flex-shrink: 0;
+}
+.fup-stat {
+  flex: 1; padding: 12px 16px; border-right: 1px solid var(--border);
+  text-align: center;
+}
+.fup-stat:last-child { border-right: none; }
+.fup-stat-num { font-family: var(--mono); font-size: 22px; font-weight: 700; }
+.fup-stat-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.15em; color: var(--text-3); margin-top: 2px; }
+.fup-body { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+.fup-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
+.fup-col:last-child { border-right: none; }
+.fup-col-header {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  background: var(--s1); flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.fup-col-title { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; }
+.fup-col-count { font-family: var(--mono); font-size: 10px; color: var(--text-3); margin-left: auto; }
+.fup-col-body { flex: 1; overflow-y: auto; padding: 8px; }
+.fup-card {
+  background: var(--s1); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 10px 12px; margin-bottom: 6px;
+  cursor: pointer; transition: all 0.15s; position: relative;
+}
+.fup-card:hover { background: var(--s2); border-color: var(--blue-b); }
+.fup-card-name { font-size: 12px; font-weight: 600; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fup-card-meta { font-size: 11px; color: var(--text-3); display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.fup-card-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.fup-btn {
+  font-family: var(--mono); font-size: 9px; padding: 3px 8px;
+  border: 1px solid var(--border); background: var(--s2);
+  color: var(--text-2); cursor: pointer; border-radius: var(--r);
+  transition: all 0.12s; white-space: nowrap;
+}
+.fup-btn:hover { border-color: var(--blue-b); color: var(--blue-b); }
+.fup-btn.green { border-color: rgba(34,197,94,0.4); color: var(--green); }
+.fup-btn.green:hover { background: rgba(34,197,94,0.1); }
+.fup-btn.red { border-color: rgba(239,68,68,0.4); color: var(--red); }
+.fup-btn.gold { border-color: rgba(245,158,11,0.4); color: var(--gold); }
+.fup-snooze-bar { display: flex; gap: 4px; margin-top: 6px; align-items: center; }
+.fup-snooze-label { font-family: var(--mono); font-size: 9px; color: var(--text-3); }
+.fup-days-badge {
+  font-family: var(--mono); font-size: 9px; padding: 2px 6px;
+  border-radius: 10px; font-weight: 600;
+}
+.fup-overdue { border-left: 3px solid var(--red); }
+.fup-soon { border-left: 3px solid var(--gold); }
+.fup-top50 { border-left: 3px solid var(--blue-b); }
+.fup-quick-log {
+  background: var(--s0); border: 1px solid var(--border);
+  border-top: 2px solid var(--blue-b);
+  padding: 10px 12px; margin-top: 4px; border-radius: var(--r);
+  display: none;
+}
+.fup-quick-log.open { display: block; }
+.fup-filter-bar {
+  display: flex; gap: 6px; align-items: center;
+  padding: 8px 14px; border-bottom: 1px solid var(--border);
+  background: var(--s0); flex-shrink: 0; flex-wrap: wrap;
+}
+
 /* ── SETTINGS ──────────────────────────── */
 .settings-section {
   background: var(--s1); border: 1px solid var(--border);
@@ -747,18 +811,6 @@ body::before {
   padding: 32px 36px; box-shadow: 0 24px 64px rgba(0,0,0,0.7);
 }
 </style>
-<script>
-// Run immediately — set sidebar width from localStorage before ANY render
-(function(){
-  var w = localStorage.getItem('it_split_sidebar');
-  if (w) {
-    var s = document.createElement('style');
-    s.id = '_sb_w';
-    s.textContent = '.sidebar{width:' + w + 'px!important;min-width:' + w + 'px!important;max-width:' + w + 'px!important}';
-    document.head.appendChild(s);
-  }
-})();
-</script>
 <script src="https://accounts.google.com/gsi/client" async></script>
 </head>
 <body>
@@ -868,7 +920,7 @@ body::before {
       </div>
       <div class="nav-item" data-view="followup" onclick="switchView('followup')">
         <div class="nav-item-inner">
-          <span class="nav-icon">◎</span> Follow-ups Due
+          <span class="nav-icon">⚡</span> Follow-Up Center
           <span class="nav-badge orange" id="badge-followup">—</span>
         </div>
       </div>
@@ -2496,6 +2548,7 @@ function switchView(view) {
     removals:    '🗑 Requests & Approvals',
     access:      '🛡 Access Activity Log',
     all:         'All Accounts — All Reps',
+    followup:    '⚡ Follow-Up Command Center',
   };
   document.getElementById('topbar-title').textContent = titles[view] || view;
 
@@ -2504,6 +2557,7 @@ function switchView(view) {
     collections: () => renderCollectionsView(),
     contacts:    () => renderContactsView(),
     attack:      () => renderAttackPlan(),
+    followup:    () => renderFollowUpCommandCenter(),
   };
   if (view === 'settings') {
     renderSettingsView();
@@ -4074,6 +4128,383 @@ async function denyRemoval(accountName) {
     showToast(`Removal request denied for ${accountName} ✓`, 'success');
     renderRemovalsView();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  FOLLOW-UP COMMAND CENTER
+// ══════════════════════════════════════════════════════════
+
+function renderFollowUpCommandCenter() {
+  const el = document.getElementById('main-content');
+  if (!el) return;
+
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const todayStr = today.toISOString().slice(0,10);
+
+  // Get accounts for this rep
+  let accs = [...state.accounts];
+  if (state.isAdmin && state.viewAsRep) accs = accs.filter(a => a.rep === state.viewAsRep);
+  else if (!state.isAdmin && state.repId) accs = accs.filter(a => a.rep === state.repId);
+
+  // Parse follow-up dates
+  function parseFupDate(str) {
+    if (!str) return null;
+    const p = str.split('/');
+    if (p.length === 3) return new Date(parseInt(p[2]), parseInt(p[0])-1, parseInt(p[1]));
+    return null;
+  }
+
+  // Days since last contact (from contact notes cache)
+  function daysSinceContact(accName) {
+    const notes = state.contactNotesCache?.[accName] || [];
+    if (!notes.length) return null;
+    const latest = notes.reduce((a,b) => a.date > b.date ? a : b);
+    const d = new Date(latest.date);
+    return isNaN(d) ? null : Math.floor((today - d) / 86400000);
+  }
+
+  // Categorize accounts
+  const overdue = [], dueThisWeek = [], top50 = [];
+  const weekFromNow = new Date(today); weekFromNow.setDate(weekFromNow.getDate() + 7);
+
+  // Removed set (stored in localStorage per rep)
+  const repKey = state.viewAsRep || state.repId || 'admin';
+  let removedSet = new Set();
+  try { removedSet = new Set(JSON.parse(localStorage.getItem('fup_removed_' + repKey) || '[]')); } catch(e){}
+
+  // Top 50 pinned accounts
+  let pinnedSet = new Set();
+  try { pinnedSet = new Set(JSON.parse(localStorage.getItem('fup_pinned_' + repKey) || '[]')); } catch(e){}
+
+  accs.forEach(a => {
+    if (removedSet.has(a.name)) return;
+    const fupDate = parseFupDate(a.followUpDate);
+
+    if (fupDate && fupDate <= today) {
+      overdue.push({...a, fupDate, daysOverdue: Math.floor((today - fupDate) / 86400000)});
+    } else if (fupDate && fupDate <= weekFromNow) {
+      dueThisWeek.push({...a, fupDate});
+    }
+  });
+
+  // Top 50: pinned first, then by total revenue, exclude already in overdue/dueThisWeek
+  const overdueNames = new Set(overdue.map(a => a.name));
+  const weekNames = new Set(dueThisWeek.map(a => a.name));
+  const top50Candidates = accs
+    .filter(a => !overdueNames.has(a.name) && !weekNames.has(a.name) && !removedSet.has(a.name))
+    .sort((a,b) => {
+      if (pinnedSet.has(a.name) && !pinnedSet.has(b.name)) return -1;
+      if (!pinnedSet.has(a.name) && pinnedSet.has(b.name)) return 1;
+      return (b.total || 0) - (a.total || 0);
+    })
+    .slice(0, 50);
+  top50.push(...top50Candidates);
+
+  // Stats
+  const contactedToday = Object.entries(state.contactNotesCache || {}).filter(([,notes]) =>
+    notes.some(n => {
+      const d = new Date(n.date); return d >= today && d < new Date(today.getTime() + 86400000);
+    })
+  ).length;
+
+  function fmtDate(d) {
+    if (!d) return '—';
+    return (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
+  }
+
+  function daysSinceFmt(acc) {
+    const ds = daysSinceContact(acc.name);
+    if (ds === null) return '<span style="color:var(--text-3)">Never contacted</span>';
+    if (ds === 0) return '<span style="color:var(--green)">Contacted today</span>';
+    if (ds <= 7) return '<span style="color:var(--green)">' + ds + 'd ago</span>';
+    if (ds <= 30) return '<span style="color:var(--gold)">' + ds + 'd ago</span>';
+    return '<span style="color:var(--red)">' + ds + 'd ago</span>';
+  }
+
+  function renderCard(acc, zone) {
+    const safeId = 'fup-' + btoa(encodeURIComponent(acc.name)).replace(/[^a-zA-Z0-9]/g,'').slice(0,20);
+    const isPinned = pinnedSet.has(acc.name);
+    const borderClass = zone === 'overdue' ? 'fup-overdue' : zone === 'week' ? 'fup-soon' : 'fup-top50';
+    const daysEl = zone === 'overdue' && acc.daysOverdue > 0
+      ? '<span class="fup-days-badge" style="background:rgba(239,68,68,0.15);color:var(--red)">' + acc.daysOverdue + 'd overdue</span>'
+      : zone === 'week' && acc.fupDate
+      ? '<span class="fup-days-badge" style="background:rgba(245,158,11,0.1);color:var(--gold)">Due ' + fmtDate(acc.fupDate) + '</span>'
+      : '';
+
+    return '<div class="fup-card ' + borderClass + '" id="' + safeId + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px">' +
+        '<div class="fup-card-name" title="' + escHtml(acc.name) + '" onclick="selectAccountByName(\'' + escHtml(acc.name) + '\')" style="flex:1;cursor:pointer;color:var(--blue-bright);text-decoration:underline">' + escHtml(acc.name) + '</div>' +
+        '<button onclick="fupRemove(\'' + escHtml(acc.name) + '\',\'' + safeId + '\')" style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:14px;padding:0 0 0 6px;line-height:1" title="Remove from list">×</button>' +
+      '</div>' +
+      '<div class="fup-card-meta">' +
+        '<span>' + escHtml(acc.rep || '') + '</span>' +
+        '<span style="color:var(--mono)">$' + formatNum(acc.total || 0) + '</span>' +
+        (daysEl ? '<span>' + daysEl + '</span>' : '') +
+        '<span>' + daysSinceFmt(acc) + '</span>' +
+      '</div>' +
+      '<div class="fup-card-actions">' +
+        '<button class="fup-btn green" onclick="fupQuickLog(\'' + escHtml(acc.name) + '\',\'' + safeId + '\',\'Call\')">📞 Call</button>' +
+        '<button class="fup-btn" onclick="fupQuickLog(\'' + escHtml(acc.name) + '\',\'' + safeId + '\',\'Email\')">✉ Email</button>' +
+        '<button class="fup-btn" onclick="fupQuickLog(\'' + escHtml(acc.name) + '\',\'' + safeId + '\',\'Meeting\')">👥 Meeting</button>' +
+        '<button class="fup-btn gold" onclick="fupSnoozeMenu(\'' + escHtml(acc.name) + '\',\'' + safeId + '\')">⏱ Snooze</button>' +
+        (zone === 'top50' ? '<button class="fup-btn" onclick="fupPin(\'' + escHtml(acc.name) + '\',\'' + safeId + '\')" title="' + (isPinned ? 'Unpin' : 'Pin to top') + '">' + (isPinned ? '📌' : '📍') + '</button>' : '') +
+      '</div>' +
+      '<div class="fup-quick-log" id="ql-' + safeId + '">' +
+        '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">' +
+          '<select id="ql-type-' + safeId + '" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:var(--r)">' +
+            '<option>Call</option><option>Email</option><option>Meeting</option><option>Note</option>' +
+          '</select>' +
+          '<span style="font-family:var(--mono);font-size:10px;color:var(--text-3)">' + escHtml(acc.name) + '</span>' +
+        '</div>' +
+        '<textarea id="ql-note-' + safeId + '" rows="2" placeholder="What happened? Next steps..." ' +
+          'style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 8px;border-radius:var(--r);resize:vertical;font-family:var(--font);margin-bottom:6px"></textarea>' +
+        '<div style="display:flex;gap:6px;align-items:center">' +
+          '<button onclick="fupLogAndDismiss(\'' + escHtml(acc.name) + '\',\'' + safeId + '\')" ' +
+            'style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:5px 14px;cursor:pointer;border-radius:var(--r)">LOG & DISMISS</button>' +
+          '<label style="font-family:var(--mono);font-size:10px;color:var(--text-3)">Set follow-up:</label>' +
+          '<input type="date" id="ql-date-' + safeId + '" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 6px;border-radius:var(--r)">' +
+          '<button onclick="fupCancelLog(\'' + safeId + '\')" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r)">CANCEL</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  el.innerHTML = '<div class="fup-page">' +
+
+    // Stats bar
+    '<div class="fup-stats-bar">' +
+      '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--red)">' + overdue.length + '</div><div class="fup-stat-label">OVERDUE</div></div>' +
+      '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--gold)">' + dueThisWeek.length + '</div><div class="fup-stat-label">DUE THIS WEEK</div></div>' +
+      '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--green)">' + contactedToday + '</div><div class="fup-stat-label">CONTACTED TODAY</div></div>' +
+      '<div class="fup-stat"><div class="fup-stat-num" style="color:var(--blue-bright)">' + top50.length + '</div><div class="fup-stat-label">IN YOUR TOP 50</div></div>' +
+      '<div class="fup-stat" style="flex:2;display:flex;align-items:center;justify-content:center;gap:8px">' +
+        '<input id="fup-search" type="text" placeholder="Search accounts..." oninput="fupFilter()" ' +
+          'style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;padding:6px 10px;border-radius:var(--r);width:200px;outline:none">' +
+        '<button onclick="fupAddAccount()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r)">+ ADD</button>' +
+      '</div>' +
+    '</div>' +
+
+    // Three column body
+    '<div class="fup-body">' +
+
+      // Column 1: Overdue
+      '<div class="fup-col">' +
+        '<div class="fup-col-header">' +
+          '<span style="color:var(--red);font-size:14px">🔴</span>' +
+          '<span class="fup-col-title" style="color:var(--red)">ACTION REQUIRED</span>' +
+          '<span class="fup-col-count">' + overdue.length + ' accounts</span>' +
+        '</div>' +
+        '<div class="fup-col-body" id="fup-col-overdue">' +
+          (overdue.length ? overdue.sort((a,b) => b.daysOverdue - a.daysOverdue).map(a => renderCard(a,'overdue')).join('') :
+            '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:12px">🎉 All clear!<br>No overdue follow-ups</div>') +
+        '</div>' +
+      '</div>' +
+
+      // Column 2: Due this week
+      '<div class="fup-col">' +
+        '<div class="fup-col-header">' +
+          '<span style="color:var(--gold);font-size:14px">🟡</span>' +
+          '<span class="fup-col-title" style="color:var(--gold)">DUE THIS WEEK</span>' +
+          '<span class="fup-col-count">' + dueThisWeek.length + ' accounts</span>' +
+        '</div>' +
+        '<div class="fup-col-body" id="fup-col-week">' +
+          (dueThisWeek.length ? dueThisWeek.sort((a,b) => a.fupDate - b.fupDate).map(a => renderCard(a,'week')).join('') :
+            '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:12px">Nothing due this week</div>') +
+        '</div>' +
+      '</div>' +
+
+      // Column 3: Top 50
+      '<div class="fup-col">' +
+        '<div class="fup-col-header">' +
+          '<span style="color:var(--blue-bright);font-size:14px">⭐</span>' +
+          '<span class="fup-col-title" style="color:var(--blue-bright)">MY TOP 50</span>' +
+          '<span class="fup-col-count">' + top50.length + ' accounts</span>' +
+        '</div>' +
+        '<div class="fup-col-body" id="fup-col-top50">' +
+          (top50.length ? top50.map(a => renderCard(a,'top50')).join('') :
+            '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:12px">No accounts yet</div>') +
+        '</div>' +
+      '</div>' +
+
+    '</div>' +
+  '</div>';
+}
+
+// ── FOLLOW-UP COMMAND CENTER ACTIONS ────────────────────────
+
+function fupQuickLog(accName, safeId, type) {
+  // Close any other open quick log panels
+  document.querySelectorAll('.fup-quick-log.open').forEach(el => {
+    if (el.id !== 'ql-' + safeId) el.classList.remove('open');
+  });
+  const ql = document.getElementById('ql-' + safeId);
+  if (!ql) return;
+  ql.classList.toggle('open');
+  if (ql.classList.contains('open')) {
+    const typeEl = document.getElementById('ql-type-' + safeId);
+    if (typeEl) typeEl.value = type;
+    document.getElementById('ql-note-' + safeId)?.focus();
+  }
+}
+
+function fupCancelLog(safeId) {
+  document.getElementById('ql-' + safeId)?.classList.remove('open');
+}
+
+async function fupLogAndDismiss(accName, safeId) {
+  const typeEl = document.getElementById('ql-type-' + safeId);
+  const noteEl = document.getElementById('ql-note-' + safeId);
+  const dateEl = document.getElementById('ql-date-' + safeId);
+  const type = typeEl?.value || 'Note';
+  const note = noteEl?.value.trim() || '';
+  const newDate = dateEl?.value || '';
+
+  if (!note) { showToast('Enter a note first', 'error'); return; }
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { month:'2-digit', day:'2-digit', year:'numeric' }) +
+                  ' ' + now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+  const rep = state.user?.email || 'unknown';
+
+  try {
+    // Save contact note
+    await sheetsAppend("'_CONTACT_NOTES'!A1", [[accName, '', type, note, dateStr, rep]]);
+
+    // Update follow-up date if set
+    if (newDate) {
+      const acc = state.accounts.find(a => a.name === accName);
+      if (acc) {
+        const d = new Date(newDate + 'T00:00:00');
+        const fmtDate = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
+        acc.followUpDate = fmtDate;
+        await saveAccountNote(acc, acc.repNote || '', fmtDate, acc.repStatus || '');
+      }
+    }
+
+    // Update local cache
+    if (!state.contactNotesCache) state.contactNotesCache = {};
+    if (!state.contactNotesCache[accName]) state.contactNotesCache[accName] = [];
+    state.contactNotesCache[accName].push({ contact: '', type, note, date: dateStr, rep });
+
+    showToast('Logged ✓', 'success');
+
+    // Remove card from view
+    const card = document.getElementById(safeId);
+    if (card) {
+      card.style.transition = 'all 0.3s';
+      card.style.opacity = '0';
+      card.style.height = '0';
+      card.style.padding = '0';
+      card.style.margin = '0';
+      setTimeout(() => card.remove(), 300);
+    }
+
+    // Update stats
+    updateBadges();
+  } catch(e) {
+    showToast('Error saving: ' + e.message, 'error');
+  }
+}
+
+function fupSnoozeMenu(accName, safeId) {
+  const existing = document.getElementById('snooze-' + safeId);
+  if (existing) { existing.remove(); return; }
+
+  const card = document.getElementById(safeId);
+  if (!card) return;
+
+  const snoozeDiv = document.createElement('div');
+  snoozeDiv.id = 'snooze-' + safeId;
+  snoozeDiv.style.cssText = 'display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;align-items:center';
+  snoozeDiv.innerHTML =
+    '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">SNOOZE:</span>' +
+    ['1 day','3 days','1 week','2 weeks','1 month'].map(label => {
+      const days = label === '1 day' ? 1 : label === '3 days' ? 3 : label === '1 week' ? 7 : label === '2 weeks' ? 14 : 30;
+      return '<button class="fup-btn" onclick="fupSnooze(\'' + escHtml(accName) + '\',\'' + safeId + '\',' + days + ')">' + label + '</button>';
+    }).join('');
+  card.appendChild(snoozeDiv);
+}
+
+async function fupSnooze(accName, safeId, days) {
+  const acc = state.accounts.find(a => a.name === accName);
+  if (!acc) return;
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const fmtDate = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
+  acc.followUpDate = fmtDate;
+  try {
+    await saveAccountNote(acc, acc.repNote || '', fmtDate, acc.repStatus || '');
+    showToast('Snoozed until ' + fmtDate, 'success');
+    const card = document.getElementById(safeId);
+    if (card) { card.style.opacity='0'; card.style.transition='opacity 0.3s'; setTimeout(()=>card.remove(),300); }
+    updateBadges();
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+function fupRemove(accName, safeId) {
+  const repKey = state.viewAsRep || state.repId || 'admin';
+  let removedSet = new Set();
+  try { removedSet = new Set(JSON.parse(localStorage.getItem('fup_removed_' + repKey) || '[]')); } catch(e){}
+  removedSet.add(accName);
+  localStorage.setItem('fup_removed_' + repKey, JSON.stringify([...removedSet]));
+  const card = document.getElementById(safeId);
+  if (card) { card.style.opacity='0'; card.style.transition='opacity 0.3s'; setTimeout(()=>card.remove(),300); }
+  showToast('Removed from list', 'success');
+}
+
+function fupPin(accName, safeId) {
+  const repKey = state.viewAsRep || state.repId || 'admin';
+  let pinnedSet = new Set();
+  try { pinnedSet = new Set(JSON.parse(localStorage.getItem('fup_pinned_' + repKey) || '[]')); } catch(e){}
+  if (pinnedSet.has(accName)) { pinnedSet.delete(accName); showToast('Unpinned', 'success'); }
+  else { pinnedSet.add(accName); showToast('Pinned to top ✓', 'success'); }
+  localStorage.setItem('fup_pinned_' + repKey, JSON.stringify([...pinnedSet]));
+  renderFollowUpCommandCenter();
+}
+
+function fupAddAccount() {
+  const search = prompt('Search for account to add to your Top 50:');
+  if (!search) return;
+  const repKey = state.viewAsRep || state.repId || 'admin';
+  let pinnedSet = new Set();
+  try { pinnedSet = new Set(JSON.parse(localStorage.getItem('fup_pinned_' + repKey) || '[]')); } catch(e){}
+  let removedSet = new Set();
+  try { removedSet = new Set(JSON.parse(localStorage.getItem('fup_removed_' + repKey) || '[]')); } catch(e){}
+
+  let accs = [...state.accounts];
+  if (state.isAdmin && state.viewAsRep) accs = accs.filter(a => a.rep === state.viewAsRep);
+  else if (!state.isAdmin && state.repId) accs = accs.filter(a => a.rep === state.repId);
+
+  const matches = accs.filter(a => a.name.toLowerCase().includes(search.toLowerCase())).slice(0,5);
+  if (!matches.length) { showToast('No accounts found matching "' + search + '"', 'error'); return; }
+
+  const name = matches.length === 1 ? matches[0].name : matches[prompt(
+    'Multiple matches:\n' + matches.map((a,i) => (i+1)+'. '+a.name).join('\n') + '\n\nEnter number:') - 1]?.name;
+  if (!name) return;
+
+  removedSet.delete(name);
+  pinnedSet.add(name);
+  localStorage.setItem('fup_removed_' + repKey, JSON.stringify([...removedSet]));
+  localStorage.setItem('fup_pinned_' + repKey, JSON.stringify([...pinnedSet]));
+  showToast(name + ' added & pinned ✓', 'success');
+  renderFollowUpCommandCenter();
+}
+
+function fupFilter() {
+  const q = document.getElementById('fup-search')?.value.toLowerCase() || '';
+  document.querySelectorAll('.fup-card').forEach(card => {
+    const name = card.querySelector('.fup-card-name')?.textContent.toLowerCase() || '';
+    card.style.display = name.includes(q) ? '' : 'none';
+  });
+}
+
+function selectAccountByName(name) {
+  const acc = state.accounts.find(a => a.name === name);
+  if (acc) { switchView('accounts'); setTimeout(() => selectAccount(acc), 300); }
 }
 
 
@@ -6691,7 +7122,7 @@ function apkRender(repAccs, otherAccs, rep) {
 
       <!-- Pool strip -->
       <div class="splitter-v" onmousedown="startSplitV(event,'apk-pool-wrap','apk-splitter-v')" id="apk-splitter-v"></div>
-      <div style="height:220px;min-height:80px;flex-shrink:0;border-top:2px solid var(--border);background:var(--s1);display:flex;flex-direction:column;overflow:hidden" id="apk-pool-wrap">
+      <div style="flex:1;border-top:2px solid var(--border);background:var(--s1);display:flex;flex-direction:column;overflow:hidden" id="apk-pool-wrap">
         <div style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid var(--border);gap:10px">
           <span style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3)" id="apk-pool-count">POOL</span>
           <span style="font-size:11px;color:var(--text-3)">Click zone buttons on a card to assign it · ↑ star to add, ↓ to return to pool</span>
@@ -6702,7 +7133,7 @@ function apkRender(repAccs, otherAccs, rep) {
             <button onclick="apkSaveNow()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:5px 14px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;font-weight:700" id="apk-save-btn">SAVE PLAN</button>
           </div>
         </div>
-        <div id="apk-pool" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;min-height:60px;flex:1;overflow-y:auto;align-content:flex-start">
+        <div id="apk-pool" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;min-height:60px;max-height:160px;overflow-y:auto">
           <!-- pool cards injected by apkRenderPool -->
         </div>
       </div>
@@ -7815,9 +8246,6 @@ async function init() {
   const savedSidebar = localStorage.getItem('it_split_sidebar');
   if (savedSidebar) {
     document.documentElement.style.setProperty('--sidebar-w', savedSidebar + 'px');
-    let _st = document.getElementById('_sb_w');
-    if (!_st) { _st = document.createElement('style'); _st.id = '_sb_w'; document.head.appendChild(_st); }
-    _st.textContent = '.sidebar{width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important;max-width:' + savedSidebar + 'px!important}';
   }
 
   setLoading(true, currentLang==='es' ? 'VERIFICANDO SESIÓN...' : 'CHECKING SESSION...', 10);
@@ -7855,9 +8283,6 @@ function startSplitH(e, leftId, rightId, splitterId) {
     function onMove(ev) {
       const newW = Math.max(160, Math.min(startW + (ev.clientX - startX), 380));
       document.documentElement.style.setProperty('--sidebar-w', newW + 'px');
-      let _st = document.getElementById('_sb_w');
-      if (!_st) { _st = document.createElement('style'); _st.id = '_sb_w'; document.head.appendChild(_st); }
-      _st.textContent = '.sidebar{width:' + newW + 'px!important;min-width:' + newW + 'px!important;max-width:' + newW + 'px!important}';
       try { localStorage.setItem('it_split_sidebar', newW); } catch(e){}
     }
     function onUp() {
@@ -7934,20 +8359,16 @@ function startSplitV(e, bottomId, splitterId) {
 }
 
 function restoreSplitPositions() {
-  // Restore sidebar width via CSS variable + injected style tag
+  // Restore sidebar width via CSS variable (survives re-renders)
   const savedSidebar = localStorage.getItem('it_split_sidebar');
   if (savedSidebar) {
     document.documentElement.style.setProperty('--sidebar-w', savedSidebar + 'px');
-    let _st = document.getElementById('_sb_w');
-    if (!_st) { _st = document.createElement('style'); _st.id = '_sb_w'; document.head.appendChild(_st); }
-    _st.textContent = '.sidebar{width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important;max-width:' + savedSidebar + 'px!important}';
   }
   // Restore panel splitter positions
   const panels = [
     { id: 'account-list',       type: 'h' },
     { id: 'coll-list',          type: 'h' },
-    { id: 'contacts-list-panel',type: 'h' },
-    { id: 'apk-pool-wrap',      type: 'v' }
+    { id: 'contacts-list-panel',type: 'h' }
   ];
   panels.forEach(p => {
     const saved = localStorage.getItem('it_split_' + p.id);

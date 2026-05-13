@@ -4368,6 +4368,39 @@ function renderFollowUpCommandCenter() {
   const el = document.getElementById('main-content');
   if (!el) return;
 
+  // If cache not loaded yet, show loading and auto-retry every 2 seconds
+  if (!state.cacheLoaded || !state.accounts || state.accounts.length === 0) {
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-3);font-family:var(--mono);font-size:11px;flex-direction:column;gap:16px">' +
+      '<div style="font-size:32px">📅</div>' +
+      '<div id="iq-load-msg">LOADING INTELLIGENCE DATA...</div>' +
+      '<div style="font-size:9px;color:var(--text-3)">Auto-refreshing when ready</div>' +
+      '<div style="width:200px;height:2px;background:var(--border);border-radius:1px;overflow:hidden">' +
+        '<div id="iq-load-bar" style="height:100%;background:var(--blue-b);width:0%;transition:width 0.5s;border-radius:1px"></div>' +
+      '</div>' +
+      '</div>';
+    // Animate loading bar
+    let pct = 0;
+    const barInterval = setInterval(() => {
+      pct = Math.min(90, pct + Math.random() * 8);
+      const bar = document.getElementById('iq-load-bar');
+      if (bar) bar.style.width = pct + '%';
+    }, 500);
+    // Poll until ready
+    const poll = setInterval(() => {
+      if (state.activeView !== 'followup') { clearInterval(poll); clearInterval(barInterval); return; }
+      if (state.cacheLoaded && state.accounts && state.accounts.length > 0) {
+        clearInterval(poll);
+        clearInterval(barInterval);
+        const bar = document.getElementById('iq-load-bar');
+        if (bar) { bar.style.width = '100%'; bar.style.background = 'var(--green)'; }
+        setTimeout(() => { if (state.activeView === 'followup') renderFollowUpCommandCenter(); }, 300);
+      }
+    }, 1000);
+    // Also kick off cache load
+    ensureCacheLoaded().catch(()=>{});
+    return;
+  }
+
   const today = new Date(); today.setHours(0,0,0,0);
   const todayStr = today.toISOString().slice(0,10);
 

@@ -1367,25 +1367,33 @@ async function loadSupplementalData() {
     }
 
     // Load orders history (dated orders for booked calc)
-    const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A1:H200000");
-    if (ordHistRows.length > 1) {
-      const hdrs = ordHistRows[0];
-      state.ordersHistoryCache = ordHistRows.slice(1).map(r => {
-        const obj = {};
-        hdrs.forEach((h, i) => obj[h] = r[i] || '');
-        return obj;
-      });
-    }
+    try {
+      const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A1:H200000");
+      if (ordHistRows.length > 1) {
+        const hdrs = ordHistRows[0];
+        state.ordersHistoryCache = ordHistRows.slice(1).map(r => {
+          const obj = {};
+          hdrs.forEach((h, i) => obj[h] = r[i] || '');
+          return obj;
+        });
+        console.log('Orders history loaded:', state.ordersHistoryCache.length);
+      }
+    } catch(e) { console.error('Orders history load failed:', e.message); }
 
-    // Load GP data
-    const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:Z200000");
-    if (gpRows.length > 1) {
-      const hdrs = gpRows[0];
-      state.gpCache = gpRows.slice(1).map(r => {
-        const obj = {};
-        hdrs.forEach((h, i) => obj[h] = r[i] || '');
-        return obj;
-      });
+    // Load GP data (critical for dashboard)
+    try {
+      const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:Z200000");
+      if (gpRows.length > 1) {
+        const hdrs = gpRows[0];
+        state.gpCache = gpRows.slice(1).map(r => {
+          const obj = {};
+          hdrs.forEach((h, i) => obj[h] = r[i] || '');
+          return obj;
+        });
+        console.log('GP cache loaded:', state.gpCache.length, 'rows');
+      }
+    } catch(e) {
+      console.error('GP load failed:', e.message);
     }
 
     state.cacheLoaded = true;
@@ -2605,8 +2613,8 @@ function switchView(view) {
   document.getElementById('topbar-title').textContent = titles[view] || view;
 
   const viewRenderers = {
-    dashboard:   () => ensureCacheLoaded().then(() => renderDashboard()),
-    collections: () => ensureCacheLoaded().then(() => renderCollectionsView()),
+    dashboard:   () => ensureCacheLoaded().then(() => { if (state.activeView === 'dashboard') renderDashboard(); }),
+    collections: () => ensureCacheLoaded().then(() => { if (state.activeView === 'collections') renderCollectionsView(); }),
     contacts:    () => renderContactsView(),
     attack:      () => renderAttackPlan(),
     followup:    () => {

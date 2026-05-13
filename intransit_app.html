@@ -1390,6 +1390,40 @@ async function loadSupplementalData() {
 
     state.cacheLoaded = true;
 
+    // Load per-contact revenue (_CONTACT_REVENUE tab — from ORDERED_BY field)
+    try {
+      const crRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_REVENUE'!A1:G200000");
+      if (crRows.length > 1) {
+        const hdrs = crRows[0];
+        const iRep  = hdrs.indexOf('SALES_REP');
+        const iCust = hdrs.indexOf('CUSTOMER_NAME');
+        const iOby  = hdrs.indexOf('ORDERED_BY');
+        const iCnt  = hdrs.indexOf('ORDER_COUNT');
+        const iShip = hdrs.indexOf('TOTAL_SHIPPED');
+        const iGp   = hdrs.indexOf('TOTAL_GP');
+        const iDate = hdrs.indexOf('LAST_ORDER_DATE');
+        state.contactRevenueCache = {};
+        for (let r = 1; r < crRows.length; r++) {
+          const row = crRows[r];
+          const cust = (row[iCust]||'').trim();
+          const name = (row[iOby]||'').trim();
+          if (!cust || !name) continue;
+          if (!state.contactRevenueCache[cust]) state.contactRevenueCache[cust] = {};
+          state.contactRevenueCache[cust][name] = {
+            rep:        (row[iRep]||'').trim(),
+            orderCount: parseInt(row[iCnt])||0,
+            shipped:    parseFloat(row[iShip])||0,
+            gp:         parseFloat(row[iGp])||0,
+            lastOrder:  (row[iDate]||'').trim(),
+          };
+        }
+        console.log('Contact revenue loaded:', Object.keys(state.contactRevenueCache).length, 'accounts');
+      }
+    } catch(e) {
+      state.contactRevenueCache = {};
+      console.log('No _CONTACT_REVENUE tab yet — run add_contact_revenue.py');
+    }
+
     // Auto-render Daily Mission if it's the active view waiting for data
     if (state.activeView === 'followup') {
       setTimeout(() => renderFollowUpCommandCenter(), 100);
@@ -1415,9 +1449,13 @@ async function loadSupplementalData() {
         }
       } else {
         state.contactNotesCache = {};
+        // Ensure tab exists by writing header
+        try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT','CONTACT','TYPE','NOTE','DATE','REP']]); } catch(e2) {}
       }
     } catch(e) {
       state.contactNotesCache = {};
+      // Tab doesn't exist — create with header
+      try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT','CONTACT','TYPE','NOTE','DATE','REP']]); } catch(e2) {}
     }
 
     console.log('Supplemental data loaded');
@@ -2171,7 +2209,7 @@ let state = {
   dashPeriod: 'mtd',   // persists selected dashboard period across re-renders
   contactsCache: {},      // keyed by customer name
   historyCache: {},       // keyed by customer name
-  collectionsCache: {},   // keyed by customer name
+  contactRevenueCache: {},  // keyed by customer name → ordered_by name → {shipped, gp, orderCount, lastOrder}
   contactNotesCache: {},  // keyed by account name — contact-level activity notes
   cacheLoaded: false,
   ordersCache: [],        // open orders (current backlog)
@@ -4277,6 +4315,15 @@ function openScheduleModal(accName, contactName, contactEmail) {
     '<div class="sched-field"><div class="sched-label">NOTE / AGENDA</div>' +
       '<textarea id="sched-note" class="sched-input" rows="2" placeholder="What do you want to discuss or follow up on?"></textarea>' +
     '</div>' +
+    '<div class="sched-field"><div class="sched-label">REPEAT</div>' +
+      '<select id="sched-repeat" class="sched-input">' +
+        '<option value="">No repeat — one time only</option>' +
+        '<option value="daily">Every day</option>' +
+        '<option value="weekly">Every week</option>' +
+        '<option value="biweekly">Every 2 weeks</option>' +
+        '<option value="monthly">Every month</option>' +
+      '</select>' +
+    '</div>' +
     '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
       '<button onclick="document.getElementById(\'sched-modal\').remove()" ' +
         'style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:11px;padding:8px 18px;cursor:pointer;border-radius:var(--r)">CANCEL</button>' +
@@ -4302,10 +4349,31 @@ function schedConfirm(accName) {
   const date = document.getElementById('sched-date')?.value || '';
   const time = document.getElementById('sched-time')?.value || '';
   const note = document.getElementById('sched-note')?.value.trim() || '';
+  const repeat = document.getElementById('sched-repeat')?.value || '';
   if (!date) { showToast('Please pick a date', 'error'); return; }
-  schedAdd({ type, accName, contactName, contactEmail, date, time, note });
+
+  // Build events — for recurring, create next 12 occurrences
+  const eventsToAdd = [];
+  const baseEvent = { type, accName, contactName, contactEmail, date, time, note, repeat };
+
+  eventsToAdd.push({ ...baseEvent });
+
+  if (repeat) {
+    const repeatDays = { daily: 1, weekly: 7, biweekly: 14, monthly: 30 };
+    const days = repeatDays[repeat] || 0;
+    const occurrences = repeat === 'monthly' ? 6 : repeat === 'biweekly' ? 8 : 12;
+    let d = new Date(date + 'T12:00:00');
+    for (let i = 1; i < occurrences; i++) {
+      if (repeat === 'monthly') { d.setMonth(d.getMonth() + 1); }
+      else { d.setDate(d.getDate() + days); }
+      eventsToAdd.push({ ...baseEvent, date: d.toISOString().slice(0,10) });
+    }
+  }
+
+  eventsToAdd.forEach(ev => schedAdd(ev));
   document.getElementById('sched-modal')?.remove();
-  showToast('Scheduled ✓', 'success');
+  const msg = repeat ? 'Scheduled ' + eventsToAdd.length + ' recurring events ✓' : 'Scheduled ✓';
+  showToast(msg, 'success');
   updateBadges();
   if (state.activeView === 'followup') renderFollowUpCommandCenter();
 }
@@ -4315,7 +4383,8 @@ function iqScore(c) {
   let score = 0;
   const ds = c.daysSince || 999;
   const dc = c.daysSinceContact;
-  const rev = c.totalRevenue || 0;
+  // Use personal revenue if known from ORDERED_BY, else account total
+  const rev = (c.contactRevenue && c.contactRevenue > 0) ? c.contactRevenue : (c.totalRevenue || 0);
 
   // Revenue (0-35 pts)
   if (rev > 500000) score += 35;
@@ -4361,10 +4430,21 @@ function iqReason(c) {
   const parts = [];
   const ds = c.daysSince || 999;
   const rev = c.totalRevenue || 0;
-  if (rev > 50000) parts.push('$' + formatNum(rev) + ' buyer');
+
+  // Show personal revenue if known, otherwise account total
+  if (c.contactRevenue && c.contactRevenue > 0) {
+    parts.push('Personal: $' + formatNum(c.contactRevenue) + ' ordered');
+    if (rev > 0 && Math.abs(c.contactRevenue - rev) > 1000) {
+      parts.push('Acct total: $' + formatNum(rev));
+    }
+  } else if (rev > 50000) {
+    parts.push('Account: $' + formatNum(rev) + ' lifetime');
+  }
+
   if (ds > 180) parts.push('no order in ' + ds + 'd');
   else if (ds > 60) parts.push('going cold — ' + ds + 'd since last order');
   else if (ds <= 60) parts.push('active — keep warm');
+
   const reqs = (c.reqs || []).filter(r => !r.closed);
   if (reqs.length) parts.push(reqs.length + ' open RFQ' + (reqs.length > 1 ? 's' : ''));
   if (c.daysSinceContact === null) parts.push('never contacted');
@@ -4497,28 +4577,73 @@ function renderFollowUpCommandCenter() {
     const lastNote = notes.length ? notes[notes.length-1] : null;
     const daysSinceContact = lastNote ? Math.floor((today - new Date(lastNote.date)) / 86400000) : null;
 
-    // Pick best contact — prefer the one with most invoice activity
-    // Since we don't have per-contact invoice linking, rank by: has email > title contains buyer/purchasing > first
-    let bestContact = null;
-    if (contacts.length) {
+    // Use ORDERED_BY revenue data if available — this is real per-contact revenue
+    const contactRevData = state.contactRevenueCache[acc.name.trim()] || {};
+    const hasRevData = Object.keys(contactRevData).length > 0;
+
+    // Use primary contact from account Sheet data first
+    let bestContactName = acc.contactName || null;
+    let bestContactTitle = acc.contactTitle || null;
+    let bestContactEmail = acc.contactEmail || null;
+    let bestContactPhone = acc.contactPhone || acc.contactMobile || null;
+    let bestContactRevenue = null; // personal revenue if known
+
+    if (hasRevData) {
+      // Find the top revenue contact from ORDERED_BY data
+      const topOrderedBy = Object.entries(contactRevData)
+        .sort((a,b) => b[1].shipped - a[1].shipped)[0];
+      if (topOrderedBy) {
+        const [obName, obData] = topOrderedBy;
+        bestContactRevenue = obData.shipped;
+        // Try to match to a contact in contactsCache for email/title
+        const matched = contacts.find(c =>
+          c.name && (
+            c.name.toLowerCase().includes(obName.toLowerCase().split(' ')[0]) ||
+            obName.toLowerCase().includes(c.name.toLowerCase().split(' ')[0])
+          )
+        );
+        if (matched) {
+          bestContactName = matched.name;
+          bestContactTitle = matched.title;
+          bestContactEmail = matched.email;
+          bestContactPhone = matched.phone || matched.mobile;
+        } else {
+          // Use the ORDERED_BY name even if no contact match
+          bestContactName = obName;
+          bestContactTitle = 'Buyer (from order history)';
+          bestContactEmail = acc.contactEmail || null;
+        }
+      }
+    } else if (!bestContactEmail && contacts.length) {
+      // Fall back to ranked contact from contacts cache
       const ranked = [...contacts].sort((a, b) => {
         const aScore = (a.email ? 10 : 0) + (/buyer|purchas|procurement|commodity|sourcing|material/i.test(a.title||'') ? 5 : 0);
         const bScore = (b.email ? 10 : 0) + (/buyer|purchas|procurement|commodity|sourcing|material/i.test(b.title||'') ? 5 : 0);
         return bScore - aScore;
       });
-      bestContact = ranked[0];
+      const fallback = ranked[0];
+      if (!bestContactName) bestContactName = fallback?.name || null;
+      if (!bestContactTitle) bestContactTitle = fallback?.title || null;
+      if (!bestContactEmail) bestContactEmail = fallback?.email || null;
+      if (!bestContactPhone) bestContactPhone = fallback?.phone || fallback?.mobile || null;
     }
+
+    // All ORDERED_BY buyers for this account (for "anyone else" suggestion)
+    const orderedByBuyers = Object.entries(contactRevData)
+      .sort((a,b) => b[1].shipped - a[1].shipped)
+      .map(([name, data]) => ({ name, ...data }));
 
     // All contacts for "anyone else" feature
     const allContacts = contacts;
 
     const entry = {
       acc, accName: acc.name, totalRevenue, daysSince, topParts, reqs, lastNote, daysSinceContact,
-      allContacts,
-      contactName: bestContact?.name || null,
-      contactTitle: bestContact?.title || null,
-      contactEmail: bestContact?.email || null,
-      contactPhone: bestContact?.phone || bestContact?.mobile || null,
+      allContacts, orderedByBuyers: orderedByBuyers || [],
+      contactName: bestContactName,
+      contactTitle: bestContactTitle,
+      contactEmail: bestContactEmail,
+      contactPhone: bestContactPhone,
+      contactRevenue: bestContactRevenue, // personal revenue if known from ORDERED_BY
     };
     contactList.push(entry);
   });
@@ -4850,13 +4975,22 @@ function renderFollowUpCommandCenter() {
       aiRow.appendChild(noContact);
     }
 
-    // Other contacts at this account
+    // Other buyers at this account — from real order data or contacts
+    const otherBuyers = (c.orderedByBuyers || []).filter(x => x.name !== c.contactName).slice(0,3);
     const otherContacts = (c.allContacts || []).filter(x => x.name !== c.contactName);
-    if (otherContacts.length > 0 && !isHidden) {
+    if ((otherBuyers.length > 0 || otherContacts.length > 0) && !isHidden) {
       const othersEl = document.createElement('div');
       othersEl.style.cssText = 'font-size:9px;color:var(--text-3);margin-bottom:3px';
-      othersEl.textContent = 'Also: ' + otherContacts.slice(0,3).map(x => x.name + (x.title ? ' (' + x.title + ')' : '')).join(' · ');
-      aiRow.appendChild(othersEl);
+      if (otherBuyers.length > 0) {
+        // Real buyers with revenue from order history
+        othersEl.textContent = 'Also buys: ' + otherBuyers.map(x =>
+          x.name + ' ($' + formatNum(x.shipped) + ')'
+        ).join(' · ');
+      } else {
+        const buying = otherContacts.filter(x => !/AP|collections|payable/i.test(x.type||''));
+        if (buying.length) othersEl.textContent = 'Also: ' + buying.slice(0,2).map(x => x.name + (x.title ? ' (' + x.title + ')' : '')).join(' · ');
+      }
+      if (othersEl.textContent) aiRow.appendChild(othersEl);
     }
 
     if (!isHidden) {
@@ -7630,7 +7764,8 @@ function apkRender(repAccs, otherAccs, rep) {
             ring:   { label: '○ Outer Ring',    max: 30, color: 'var(--green)',  desc: 'Up to 30 — keep warm' },
           };
           const d = defs[key];
-          const count = Object.values(window.apkState).filter(z => z === key).length;
+          const repAccNames = new Set(repAccs.map(a => a.name));
+          const count = Object.entries(window.apkState).filter(([name, z]) => z === key && repAccNames.has(name)).length;
           const pct = Math.min(100, Math.round(count / d.max * 100));
           return `<div style="flex:1;padding-bottom:10px" id="apk-hdr-${key}">
             <div style="display:flex;justify-content:space-between;align-items:center">
@@ -7835,8 +7970,10 @@ function apkRenderHeaders() {
     center: { max: 10, color: 'var(--blue-b)' },
     ring:   { max: 30, color: 'var(--green)' },
   };
+  const repFilter2 = state.isAdmin ? (state.viewAsRep || null) : state.repId;
+  const validNames = new Set(state.accounts.filter(a => !repFilter2 || a.rep === repFilter2).map(a => a.name));
   Object.entries(defs).forEach(([key, d]) => {
-    const count = Object.values(window.apkState).filter(z => z === key).length;
+    const count = Object.entries(window.apkState).filter(([name, z]) => z === key && validNames.has(name)).length;
     const countEl = document.getElementById('apk-count-' + key);
     const barEl   = document.getElementById('apk-bar-' + key);
     if (countEl) { countEl.textContent = count + '/' + d.max; countEl.style.color = count >= d.max ? 'var(--green)' : 'var(--text-3)'; }

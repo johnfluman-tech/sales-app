@@ -1361,7 +1361,7 @@ async function loadSupplementalData() {
       const hdrs = orderRows[0];
       state.ordersCache = orderRows.slice(1).map(r => {
         const obj = {};
-        hdrs.forEach((h, i) => obj[h] = r[i] || '');
+        hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
         return obj;
       });
     }
@@ -1373,51 +1373,32 @@ async function loadSupplementalData() {
         const hdrs = ordHistRows[0];
         state.ordersHistoryCache = ordHistRows.slice(1).map(r => {
           const obj = {};
-          hdrs.forEach((h, i) => obj[h] = r[i] || '');
+          hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
           return obj;
         });
         console.log('Orders history loaded:', state.ordersHistoryCache.length);
       }
     } catch(e) { console.error('Orders history load failed:', e.message); }
 
-    // Load GP data (critical for dashboard) — batched to avoid Worker timeout
+    // Load GP data — columns A:I only (confirmed in sheet), trim all values
+    state.gpLoadError = null;
     try {
-      const GP_BATCH = 10000;
-      let gpHdrs = null;
-      let gpAllRows = [];
-      let gpStartRow = 1;
-      let gpDone = false;
-      while (!gpDone) {
-        const endRow = gpStartRow + GP_BATCH - 1;
-        const range = gpStartRow === 1
-          ? "'_GP'!A1:Z" + GP_BATCH
-          : "'_GP'!A" + gpStartRow + ":Z" + endRow;
-        const batch = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, range);
-        if (!batch || batch.length === 0) { gpDone = true; break; }
-        if (gpStartRow === 1) {
-          gpHdrs = batch[0];
-          gpAllRows = gpAllRows.concat(batch.slice(1));
-        } else {
-          gpAllRows = gpAllRows.concat(batch);
-        }
-        if (batch.length < GP_BATCH) { gpDone = true; }
-        gpStartRow += GP_BATCH;
-        if (gpStartRow > 300000) { gpDone = true; }
-      }
-      if (gpHdrs && gpAllRows.length > 0) {
-        state.gpCache = gpAllRows.map(r => {
+      const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:I300000");
+      if (gpRows.length > 1) {
+        const hdrs = gpRows[0].map(h => (h||'').trim());
+        state.gpCache = gpRows.slice(1).map(r => {
           const obj = {};
-          gpHdrs.forEach((h, i) => obj[h] = r[i] || '');
+          hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
           return obj;
         });
         console.log('GP cache loaded:', state.gpCache.length, 'rows');
       } else {
-        console.warn('GP cache: 0 rows — _GP tab may be missing or empty');
-        state.gpLoadError = '_GP tab returned 0 rows. Tab may not exist or be empty.';
+        state.gpLoadError = '_GP returned ' + gpRows.length + ' rows (empty?)';
+        console.warn(state.gpLoadError);
       }
     } catch(e) {
-      console.error('GP load failed:', e.message);
       state.gpLoadError = 'GP load error: ' + e.message;
+      console.error(state.gpLoadError);
     }
 
     state.cacheLoaded = true;
@@ -5273,11 +5254,10 @@ function renderDashboard() {
           style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:6px 8px;outline:none"
           onchange="refreshDashboard()">
         <div style="margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--accent)">${repLabel}</div>
-        <button onclick="toggleDashDiag()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);font-family:var(--mono,monospace);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:3px;letter-spacing:0.08em;margin-left:8px">⚙ DIAG</button>
+        <button onclick="toggleDashDiag()" style="background:transparent;border:1px solid #c9a84c;color:#c9a84c;font-family:monospace;font-size:9px;padding:4px 10px;cursor:pointer;border-radius:3px;letter-spacing:0.08em;margin-left:8px">⚙ DIAG</button>
       </div>
 
-      <!-- Diagnostic panel -->
-      <div id="dash-diag-panel" style="display:none;background:#0d1b2a;border:1px solid #c9a84c;border-left:3px solid #c9a84c;border-radius:4px;padding:14px 16px;margin-bottom:16px;font-family:monospace;font-size:11px">
+      <div id="dash-diag-panel" style="display:none;background:#0a1628;border:1px solid #c9a84c;border-left:3px solid #c9a84c;border-radius:4px;padding:14px 16px;margin-bottom:16px;font-family:monospace;font-size:11px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <span style="font-size:10px;letter-spacing:0.15em;color:#c9a84c">⚙ DASHBOARD DIAGNOSTIC</span>
           <div style="display:flex;gap:8px;align-items:center">
@@ -5285,10 +5265,10 @@ function renderDashboard() {
             <button onclick="document.getElementById('dash-diag-panel').style.display='none'" style="background:transparent;border:none;color:#666;cursor:pointer;font-size:14px">✕</button>
           </div>
         </div>
-        <div id="dash-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;color:#666">Click DIAG to populate, or ▶ TEST _GP TAB to probe the sheet directly.</div>
-        <div id="dash-diag-test" style="margin-top:10px;padding-top:10px;border-top:1px solid #1e3a5f;display:none">
-          <div style="color:#666;font-size:9px;letter-spacing:0.1em;margin-bottom:6px">_GP TAB RAW RESPONSE</div>
-          <div id="dash-diag-test-result" style="color:#e0e0e0;word-break:break-all;white-space:pre-wrap"></div>
+        <div id="dash-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:5px"><div style="color:#666;grid-column:span 2">Refresh dashboard to populate.</div></div>
+        <div id="dash-diag-test" style="margin-top:10px;padding-top:10px;border-top:1px solid #1a3050;display:none">
+          <div style="color:#666;font-size:9px;letter-spacing:0.1em;margin-bottom:6px">▶ _GP TAB RAW RESPONSE</div>
+          <pre id="dash-diag-test-result" style="color:#e0e0e0;font-size:10px;white-space:pre-wrap;word-break:break-all;margin:0;max-height:300px;overflow-y:auto"></pre>
         </div>
       </div>
 
@@ -5312,53 +5292,24 @@ function renderDashboard() {
 }
 
 function toggleDashDiag() {
-  const panel = document.getElementById('dash-diag-panel');
-  if (!panel) return;
-  const showing = panel.style.display !== 'none';
-  panel.style.display = showing ? 'none' : 'block';
-  if (!showing) refreshDashboard();
+  const p = document.getElementById('dash-diag-panel');
+  if (!p) return;
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  if (p.style.display === 'block') refreshDashboard();
 }
 
 async function testGPTab() {
   const testEl = document.getElementById('dash-diag-test');
-  const resultEl = document.getElementById('dash-diag-test-result');
-  if (!testEl || !resultEl) return;
+  const resEl  = document.getElementById('dash-diag-test-result');
+  if (!testEl || !resEl) return;
   testEl.style.display = 'block';
-  resultEl.textContent = 'Fetching first 5 rows of _GP tab...';
+  resEl.textContent = 'Fetching _GP!A1:I5...\n';
   try {
-    // Test 1: fetch just header row
-    const url = CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + '/values/' + encodeURIComponent("'_GP'!A1:Z5");
-    const res = await fetch(url, { headers: { 'X-Google-Token': state.accessToken } });
-    const statusText = 'HTTP ' + res.status + ' ' + res.statusText;
-    const raw = await res.text();
-    let parsed;
-    try { parsed = JSON.parse(raw); } catch(e) { parsed = null; }
-    const lines = [
-      'URL: ' + url,
-      'Status: ' + statusText,
-      'Response length: ' + raw.length + ' chars',
-      '',
-      parsed
-        ? ('values: ' + JSON.stringify(parsed.values || parsed, null, 2).slice(0, 2000))
-        : ('Raw (first 500): ' + raw.slice(0, 500)),
-    ];
-
-    // Test 2: list all tabs to see what exists
-    const tabUrl = CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + '/metadata';
-    let tabInfo = '';
-    try {
-      const tabRes = await fetch(tabUrl, { headers: { 'X-Google-Token': state.accessToken } });
-      const tabRaw = await tabRes.json();
-      const sheets = (tabRaw.sheets || []).map(s => s.properties?.title || '?');
-      tabInfo = '\n\nTabs in History sheet:\n' + (sheets.length ? sheets.join(', ') : '(none found or metadata endpoint not supported)');
-    } catch(e) {
-      tabInfo = '\n\nCould not fetch tab list: ' + e.message;
-    }
-
-    resultEl.textContent = lines.join('\n') + tabInfo;
-  } catch(e) {
-    resultEl.textContent = 'Error: ' + e.message;
-  }
+    const url = CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + '/values/' + encodeURIComponent("'_GP'!A1:I5");
+    const res  = await fetch(url, { headers: { 'X-Google-Token': state.accessToken } });
+    const text = await res.text();
+    resEl.textContent = 'HTTP ' + res.status + '\nURL: ' + url + '\n\n' + text.slice(0, 3000);
+  } catch(e) { resEl.textContent = 'Error: ' + e.message; }
 }
 
 function setDashPeriod(period, btn) {
@@ -5435,37 +5386,29 @@ async function refreshDashboard() {
 
   const shipped = gpFiltered.reduce((s, r) => s + parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE || 0), 0);
 
-  // ── Populate diagnostic panel if open ──
-  const diagEl = document.getElementById('dash-diag-content');
-  const diagPanel = document.getElementById('dash-diag-panel');
-  if (diagEl && diagPanel && diagPanel.style.display !== 'none') {
-    const sampleRep   = state.gpCache.length > 0 ? (state.gpCache[0][gpSalesRepCol] || '(col missing)') : '(cache empty)';
-    const sampleDate  = state.gpCache.length > 0 ? (state.gpCache[0][gpDateCol]     || '(col missing)') : '(cache empty)';
-    const samplePrice = state.gpCache.length > 0 ? (state.gpCache[0][gpInvTotalCol] || '(col missing)') : '(cache empty)';
-    const sampleGP    = state.gpCache.length > 0 ? (state.gpCache[0][gpGPCol]       || '(col missing)') : '(cache empty)';
-    const inRange     = state.gpCache.filter(r => { const d=normDate(r[gpDateCol]||''); return d>=from&&d<=to; }).length;
-    const uniqueReps  = [...new Set(state.gpCache.slice(0,500).map(r=>(r[gpSalesRepCol]||'').trim()).filter(Boolean))];
+  // Update diagnostic panel if open
+  const _dp = document.getElementById('dash-diag-panel');
+  const _dc = document.getElementById('dash-diag-content');
+  if (_dc && _dp && _dp.style.display !== 'none') {
+    const s0 = state.gpCache[0] || null;
+    const inRange = state.gpCache.filter(r => { const d=normDate(r[gpDateCol]||''); return d>=from&&d<=to; }).length;
+    const uReps = [...new Set(state.gpCache.slice(0,500).map(r=>(r[gpSalesRepCol]||'').trim()).filter(Boolean))];
     const rows = [
-      ['gpCache total rows',                   state.gpCache.length],
-      ['gpLoadError',                          state.gpLoadError || '(none)'],
-      ['rows in date range (any rep)',         inRange],
-      ['gpFiltered rows (after rep filter)',   gpFiltered.length],
-      ['repFilter',                            repFilter || '(none — all reps)'],
-      ['gpSalesRepCol',                        gpSalesRepCol],
-      ['gpDateCol',                            gpDateCol],
-      ['gpInvTotalCol',                        gpInvTotalCol],
-      ['gpGPCol',                              gpGPCol],
-      ['sample SALES_REP',                     '"' + sampleRep + '"'],
-      ['sample INVOICE_DATE',                  '"' + sampleDate + '"'],
-      ['sample EXTENDED_PRICE',                '"' + samplePrice + '"'],
-      ['sample GP',                            '"' + sampleGP + '"'],
-      ['unique SALES_REP values (first 500r)', uniqueReps.length ? uniqueReps.join(', ') : '(none found)'],
-      ['date range',                           from + ' → ' + to],
+      ['gpCache total rows',           state.gpCache.length],
+      ['gpLoadError',                  state.gpLoadError || '(none)'],
+      ['rows in date range (any rep)', inRange],
+      ['gpFiltered (rep+date)',        gpFiltered.length],
+      ['repFilter',                    repFilter || '(none)'],
+      ['gpSalesRepCol',                gpSalesRepCol],
+      ['gpInvTotalCol',                gpInvTotalCol],
+      ['sample SALES_REP',             s0 ? '"' + (s0[gpSalesRepCol]||'') + '"' : '(cache empty)'],
+      ['sample EXTENDED_PRICE',        s0 ? '"' + (s0[gpInvTotalCol]||'') + '"' : '(cache empty)'],
+      ['unique SALES_REP values',      uReps.join(', ') || '(none)'],
+      ['date range',                   from + ' → ' + to],
     ];
-    diagEl.innerHTML = rows.map(([k, v]) => {
-      const bad = v === 0 || String(v).includes('(cache empty)') || (k==='gpLoadError' && v!=='(none)') || (k.includes('unique') && v.includes('none'));
-      return '<div style="color:#888">' + k + '</div>' +
-             '<div style="color:' + (bad?'#e74c3c':'#e0e0e0') + ';word-break:break-all">' + String(v).replace(/</g,'&lt;') + '</div>';
+    _dc.innerHTML = rows.map(([k,v]) => {
+      const bad = v===0 || String(v).includes('(cache empty)') || (k==='gpLoadError'&&v!=='(none)');
+      return '<div style="color:#888">' + k + '</div><div style="color:' + (bad?'#e74c3c':'#ccc') + ';word-break:break-all">' + String(v).replace(/</g,'&lt;') + '</div>';
     }).join('');
   }
   const gp      = gpFiltered.reduce((s, r) => s + parseMoney(r[gpGPCol] || r.GP || 0), 0);

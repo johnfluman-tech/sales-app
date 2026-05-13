@@ -745,6 +745,18 @@ body::before {
   padding: 32px 36px; box-shadow: 0 24px 64px rgba(0,0,0,0.7);
 }
 </style>
+<script>
+// Run immediately — set sidebar width from localStorage before ANY render
+(function(){
+  var w = localStorage.getItem('it_split_sidebar');
+  if (w) {
+    var s = document.createElement('style');
+    s.id = '_sb_w';
+    s.textContent = '.sidebar{width:' + w + 'px!important;min-width:' + w + 'px!important}';
+    document.head.appendChild(s);
+  }
+})();
+</script>
 <script src="https://accounts.google.com/gsi/client" async></script>
 </head>
 <body>

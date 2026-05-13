@@ -117,7 +117,7 @@ body::before {
 
 /* ── SIDEBAR ───────────────────────────── */
 .sidebar {
-  width: 240px; min-width: 240px;
+  width: var(--sidebar-w, 240px); min-width: var(--sidebar-w, 240px);
   background: var(--s0); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
 }
@@ -1518,7 +1518,7 @@ Return ONLY the JSON, no other text.`;
 
   try {
     const response = await callAI({ model: 'claude-sonnet-4-5', max_tokens: 600, messages: [{ role: 'user', content: prompt }] });
-    const data = await response.json();
+    const data = response;
     const text = data.content?.[0]?.text || '';
     let parsed;
     try { parsed = JSON.parse(text.replace(/```json|```/g,'').trim()); } catch(e) { parsed = null; }
@@ -1601,11 +1601,8 @@ Contacts: ${contacts.map(c=>c.name+(c.title?' ('+c.title+')':'')).join(', ')||'n
 Answer the rep's question concisely and specifically. If you don't know something (like number of locations), say so clearly and suggest how they might find out.`;
 
   try {
-    const resp = await callAI({
-        model: 'claude-sonnet-4-5', max_tokens: 400,
-        messages: [{ role: 'user', content: context + '\n\nQuestion: ' + question }]
-      });
-    const data = await resp.json();
+    const resp = await callAI({        model: 'claude-sonnet-4-5', max_tokens: 400,        messages: [{ role: 'user', content: context + '\n\nQuestion: ' + question }]      });
+    const data = resp;
     const answer = data.content?.[0]?.text || 'No response';
     const thinkEl = document.getElementById(thinkingId);
     if (thinkEl) thinkEl.outerHTML = `<div style="background:rgba(52,152,219,0.06);border:1px solid var(--blue);border-left:3px solid var(--blue-b);border-radius:var(--r);padding:8px 10px;font-size:12px;line-height:1.5;color:var(--text)">
@@ -3189,14 +3186,8 @@ Contacts on file: ${contacts.map(c=>c.name+(c.title?' ('+c.title+')':'')).join('
 Use the web_search tool to find current information when needed. Be specific and actionable. If you find multiple locations, list them. If you find news, summarize it. Always tie your research back to how it can help the sales rep sell more.`;
 
   try {
-    const resp = await callAI({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1200,
-        system: systemPrompt,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages: [{ role: 'user', content: question }]
-      });
-    const data = await resp.json();
+    const resp = await callAI({        model: 'claude-sonnet-4-5',        max_tokens: 1200,        system: systemPrompt,        tools: [{ type: 'web_search_20250305', name: 'web_search' }],        messages: [{ role: 'user', content: question }]      });
+    const data = resp;
 
     // Extract text from potentially multi-block response
     let answer = '';
@@ -3362,6 +3353,7 @@ async function confirmLocation() {
   // Log the access entry (non-blocking)
   logAccessEntry(locationClaim).catch(e => console.warn('Access log failed:', e));
   // Now complete the real login flow
+  loadAllAccounts();
   showNDA_or_complete();
 }
 
@@ -3485,8 +3477,6 @@ async function logAccessEntry(locationClaim) {
 function completeLoginAfterLocation() {
   // NDA log was already written by acceptNDA()
   // Access log is written by logAccessEntry()
-  // Reset the login complete flag so completeLogin runs fully
-  state._loginComplete = false;
   // Now do the actual app init
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').classList.add('visible');
@@ -4634,12 +4624,8 @@ Return ONLY a JSON object with two keys: "subject" and "body". No preamble, no m
 
     const apiKey = getAnthropicKey();
     if (!apiKey) return;
-    const response = await callAI({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      });
-    const data = await response.json();
+    const response = await callAI({        model: 'claude-sonnet-4-5',        max_tokens: 1000,        messages: [{ role: 'user', content: prompt }]      });
+    const data = response;
     const text = data.content?.[0]?.text || '';
 
     let parsed;
@@ -5495,12 +5481,8 @@ No markdown, no code fences, no explanation. Just the JSON.`;
     showToast('Generating ' + toneLabel + '...', 'success');
     const apiKey = getAnthropicKey();
     if (!apiKey) return;
-    const response = await callAI({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 2000,
-        messages: [{ role: 'user', content: prompt }]
-      });
-    const data = await response.json();
+    const response = await callAI({        model: 'claude-sonnet-4-5',        max_tokens: 2000,        messages: [{ role: 'user', content: prompt }]      });
+    const data = response;
 
     // Check for API-level errors
     if (data.error) {
@@ -6327,12 +6309,8 @@ Return ONLY a JSON object with keys "subject" and "body". No preamble, no markdo
   try {
     const apiKey = getAnthropicKey();
     if (!apiKey) return;
-    const response = await callAI({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      });
-    const data = await response.json();
+    const response = await callAI({        model: 'claude-sonnet-4-5',        max_tokens: 1000,        messages: [{ role: 'user', content: prompt }]      });
+    const data = response;
     const text = data.content?.[0]?.text || '';
 
     let parsed;
@@ -7506,12 +7484,8 @@ INSTRUCTIONS:
 - Focus on what will drive the most revenue and re-engagement.`;
 
   try {
-    const resp = await callAI({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 600,
-        messages: [{ role: 'user', content: prompt }]
-      });
-    const data = await resp.json();
+    const resp = await callAI({        model: 'claude-sonnet-4-5',        max_tokens: 600,        messages: [{ role: 'user', content: prompt }]      });
+    const data = resp;
     const answer = data.content?.[0]?.text || 'No response';
     const thinkEl = document.getElementById(thinkId);
     if (thinkEl) thinkEl.outerHTML = `
@@ -7797,13 +7771,8 @@ App overview:
 Answer the user's question clearly and concisely. If they ask how to do something, give step-by-step instructions. Be friendly and practical.`;
 
   try {
-    const resp = await callAI({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 500,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: question }]
-      });
-    const data = await resp.json();
+    const resp = await callAI({        model: 'claude-sonnet-4-5',        max_tokens: 500,        system: systemPrompt,        messages: [{ role: 'user', content: question }]      });
+    const data = resp;
     const answer = data.content?.[0]?.text || 'No response';
     const thinkEl = document.getElementById(thinkId);
     if (thinkEl) thinkEl.outerHTML = `
@@ -7831,10 +7800,7 @@ async function init() {
   // Restore sidebar width immediately before anything else renders
   const savedSidebar = localStorage.getItem('it_split_sidebar');
   if (savedSidebar) {
-    const sidebar = document.querySelector('.sidebar');
-    if (sidebar) {
-      sidebar.style.cssText = (sidebar.style.cssText||'') + ';width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important';
-    }
+    document.documentElement.style.setProperty('--sidebar-w', savedSidebar + 'px');
   }
 
   setLoading(true, currentLang==='es' ? 'VERIFICANDO SESIÓN...' : 'CHECKING SESSION...', 10);
@@ -7871,7 +7837,7 @@ function startSplitH(e, leftId, rightId, splitterId) {
 
     function onMove(ev) {
       const newW = Math.max(160, Math.min(startW + (ev.clientX - startX), 380));
-      sidebar.style.cssText = sidebar.style.cssText.replace(/width:[^;]+;?/g,'').replace(/min-width:[^;]+;?/g,'') + ';width:' + newW + 'px!important;min-width:' + newW + 'px!important';
+      document.documentElement.style.setProperty('--sidebar-w', newW + 'px');
       try { localStorage.setItem('it_split_sidebar', newW); } catch(e){}
     }
     function onUp() {
@@ -7948,13 +7914,10 @@ function startSplitV(e, bottomId, splitterId) {
 }
 
 function restoreSplitPositions() {
-  // Restore sidebar width
+  // Restore sidebar width via CSS variable (survives re-renders)
   const savedSidebar = localStorage.getItem('it_split_sidebar');
   if (savedSidebar) {
-    const sidebar = document.querySelector('.sidebar');
-    if (sidebar) {
-      sidebar.style.cssText = sidebar.style.cssText.replace(/width:[^;]+;?/g,'').replace(/min-width:[^;]+;?/g,'') + ';width:' + savedSidebar + 'px!important;min-width:' + savedSidebar + 'px!important';
-    }
+    document.documentElement.style.setProperty('--sidebar-w', savedSidebar + 'px');
   }
   // Restore panel splitter positions
   const panels = [

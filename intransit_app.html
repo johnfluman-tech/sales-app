@@ -209,8 +209,8 @@ body::before {
 
 /* ── RESIZABLE SPLITTERS ───────────────── */
 .splitter-h {
-  width: 5px;
-  min-width: 5px;
+  width: 8px;
+  min-width: 8px;
   flex-shrink: 0;
   align-self: stretch;
   background: var(--border);
@@ -220,6 +220,18 @@ body::before {
   transition: background 0.15s;
 }
 .splitter-h:hover, .splitter-h.dragging { background: var(--blue-b); }
+.splitter-h::after {
+  content: '⋮';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255,255,255,0.25);
+  font-size: 16px;
+  line-height: 1;
+  pointer-events: none;
+}
+.splitter-h:hover::after { color: rgba(255,255,255,0.7); }
 .splitter-v {
   height: 5px;
   min-height: 5px;
@@ -909,7 +921,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.25</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.17</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1143,24 +1155,7 @@ const SECURITY = {
 //  SUPPLEMENTAL DATA LOADING (Contacts, History, Collections)
 // ══════════════════════════════════════════════════════════
 async function loadSupplementalData() {
-  if (state.cacheLoaded) {
-    // If cache loaded but GP is empty, retry GP only
-    if (state.gpCache.length === 0) {
-      state.gpLoadError = null;
-      try {
-        const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'");
-        if (gpRows && gpRows.length > 1) {
-          const hdrs = gpRows[0].map(h => (h||'').trim());
-          state.gpCache = gpRows.slice(1).map(r => {
-            const obj = {};
-            hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
-            return obj;
-          });
-        }
-      } catch(e) { state.gpLoadError = 'GP retry error: ' + e.message; }
-    }
-    return;
-  }
+  if (state.cacheLoaded && state.gpCache.length > 0) return;
   try {
     // ── Load GP FIRST — most critical, must not be rate-limited by other fetches ──
     state.gpLoadError = null;
@@ -1183,26 +1178,21 @@ async function loadSupplementalData() {
       console.error(state.gpLoadError);
     }
 
-    // ── Fetch in 3 waves of 3 — parallel within each wave, sequential between waves ──
-    // Avoids overwhelming the Worker with 9 simultaneous connections
-    state.ordHistError = null;
-    const [contactRows, invRows, ordHistRows] = await Promise.all([
+    // ── Fetch all tabs in parallel — ~3-5x faster than sequential ──
+    const [
+      contactRows, collRows, sigRowsRaw, openOrderRows,
+      invRows, collInvRows, ordHistRows,
+      reqRows, quoteRows,
+    ] = await Promise.all([
       sheetsGet("'_CONTACTS'!A1:K50000").catch(() => []),
+      sheetsGet("'_COLLECTIONS'!A1:P5000").catch(() => []),
+      sheetsGet("'_SIGNATURES'!A1:D100").catch(() => []),
+      sheetsGet("'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L50000").catch(() => []),
-      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A:I").catch(e => { state.ordHistError = e.message; return []; }),
-    ]);
-    state._ordHistRaw = ordHistRows.length; // set immediately so DIAG can show it
-    await new Promise(r => setTimeout(r, 500));
-    const [reqRows, quoteRows, collRows] = await Promise.all([
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000").catch(() => []),
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'").catch(() => []),
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000").catch(() => []),
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_QUOTES'!A1:P50000").catch(() => []),
-      sheetsGet("'_COLLECTIONS'!A1:P5000").catch(() => []),
-    ]);
-    await new Promise(r => setTimeout(r, 500));
-    const [collInvRows, openOrderRows, sigRowsRaw] = await Promise.all([
-      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000").catch(() => []),
-      sheetsGet("'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
-      sheetsGet("'_SIGNATURES'!A1:D100").catch(() => []),
     ]);
 
     // Process contacts
@@ -1296,7 +1286,6 @@ async function loadSupplementalData() {
     }
 
     // Process orders history
-    state._ordHistRaw = ordHistRows.length;
     if (ordHistRows.length > 1) {
       const hdrs=ordHistRows[0];
       state.ordersHistoryCache=ordHistRows.slice(1).map(r=>{const obj={};hdrs.forEach((h,i)=>obj[h]=typeof r[i]==='string'?r[i].trim():(r[i]||''));return obj;});
@@ -2126,8 +2115,6 @@ let state = {
   cacheLoaded: false,
   ordersCache: [],        // open orders (current backlog)
   ordersHistoryCache: [], // orders placed by date (for booked calc)
-  ordHistError: null,
-  _ordHistRaw: null,
   gpCache: [],            // GP records
   gpLoadError: null,
   reqsCache: [],          // flat reqs for dashboard counting
@@ -2278,24 +2265,17 @@ async function sheetsGet(range) {
   return sheetsGetFrom(CONFIG.SPREADSHEET_ID, range);
 }
 
-async function sheetsGetFrom(spreadsheetId, range, _retry) {
+async function sheetsGetFrom(spreadsheetId, range) {
   const url = CONFIG.WORKER_URL + '/sheets/' + spreadsheetId + '/values/' + encodeURIComponent(range);
-  try {
-    const res = await fetch(url, { headers: { 'X-Google-Token': state.accessToken } });
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) { handleSignout(); throw new Error('Session expired'); }
-      throw new Error('Sheets API error ' + res.status);
-    }
-    const data = await res.json();
-    return data.values || [];
-  } catch(e) {
-    if (!_retry) {
-      // Wait 2s and retry once
-      await new Promise(r => setTimeout(r, 2000));
-      return sheetsGetFrom(spreadsheetId, range, true);
-    }
-    throw e;
+  const res = await fetch(url, {
+    headers: { 'X-Google-Token': state.accessToken }
+  });
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) { handleSignout(); throw new Error('Session expired'); }
+    throw new Error('Sheets API error ' + res.status);
   }
+  const data = await res.json();
+  return data.values || [];
 }
 
 async function sheetsUpdateIn(spreadsheetId, range, values) {
@@ -2499,7 +2479,7 @@ function setFilter(f) {
 
 // Single gatekeeper for supplemental data — prevents duplicate fetches
 function ensureCacheLoaded() {
-  if (state.cacheLoaded) return Promise.resolve();
+  if (state.cacheLoaded && state.gpCache.length > 0) return Promise.resolve();
   if (state._cacheLoadingPromise) return state._cacheLoadingPromise;
   state._cacheLoadingPromise = loadSupplementalData().finally(() => {
     state._cacheLoadingPromise = null;
@@ -2708,6 +2688,15 @@ function renderAccountsView() {
       </div>
     </div>
   `;
+
+  // Restore saved account list width
+  const savedAccW = localStorage.getItem('it_split_account-list');
+  if (savedAccW) {
+    const el = document.getElementById('account-list');
+    if (el) { el.style.width = savedAccW + 'px'; el.style.minWidth = savedAccW + 'px'; el.style.maxWidth = savedAccW + 'px'; el.style.flex = 'none'; }
+    const dp = document.getElementById('detail-panel');
+    if (dp) dp.style.flex = '1';
+  }
 
   const tbody = document.getElementById('account-tbody');
   if (accs.length === 0) {
@@ -5165,7 +5154,7 @@ function renderDashboard() {
           style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:6px 8px;outline:none"
           onchange="refreshDashboard()">
         <div style="margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--accent)">${repLabel}</div>
-        <button onclick="toggleDashDiag()" style="background:transparent;border:1px solid #c9a84c;color:#c9a84c;font-family:monospace;font-size:9px;padding:4px 10px;cursor:pointer;border-radius:3px;letter-spacing:0.08em;margin-left:8px">⚙ DIAG</button>
+        ${state.isAdmin ? `<button onclick="toggleDashDiag()" style="background:transparent;border:1px solid #c9a84c;color:#c9a84c;font-family:monospace;font-size:9px;padding:4px 10px;cursor:pointer;border-radius:3px;letter-spacing:0.08em;margin-left:8px">⚙ DIAG</button>` : ''}
       </div>
       <div id="dash-diag-panel" style="display:none;background:#0a1628;border:1px solid #c9a84c;border-left:3px solid #c9a84c;border-radius:4px;padding:14px 16px;margin-bottom:16px;font-family:monospace;font-size:11px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -5274,7 +5263,25 @@ async function refreshDashboard() {
   });
 
   const shipped = gpFiltered.reduce((s, r) => s + parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE || 0), 0);
-
+  // Update DIAG panel if open
+  const _dp = document.getElementById('dash-diag-panel');
+  const _dc = document.getElementById('dash-diag-content');
+  if (_dc && _dp && _dp.style.display !== 'none') {
+    const inRange = state.gpCache.filter(r=>{const d=normDate(r[gpDateCol]||'');return d>=from&&d<=to;}).length;
+    const rows = [
+      ['gpCache rows', state.gpCache.length],
+      ['gpLoadError', state.gpLoadError || '(none)'],
+      ['rows in date range', inRange],
+      ['gpFiltered (rep+date)', gpFiltered.length],
+      ['ordersHistoryCache rows', state.ordersHistoryCache.length],
+      ['ordersFiltered (rep+date)', ordersFiltered.length],
+      ['repFilter', repFilter || '(none)'],
+    ];
+    _dc.innerHTML = rows.map(([k,v]) => {
+      const bad = v === 0 || String(v).includes('(empty)') || (k === 'gpLoadError' && v !== '(none)');
+      return '<div style="color:#888">' + k + '</div><div style="color:' + (bad?'#e74c3c':'#ccc') + ';word-break:break-all">' + String(v).replace(/</g,'&lt;') + '</div>';
+    }).join('');
+  }
   const gp      = gpFiltered.reduce((s, r) => s + parseMoney(r[gpGPCol] || r.GP || 0), 0);
   const gpPct   = shipped > 0 ? (gp / shipped * 100) : 0;
 
@@ -5295,31 +5302,6 @@ async function refreshDashboard() {
   }, 0);
   const bookedGPPct = booked > 0 ? (bookedGP / booked * 100) : 0;
   const bookedLabel = 'Orders Booked';
-
-  // Update DIAG panel if open
-  const _dp = document.getElementById('dash-diag-panel');
-  const _dc = document.getElementById('dash-diag-content');
-  if (_dc && _dp && _dp.style.display !== 'none') {
-    const inRange = state.gpCache.filter(r=>{const d=normDate(r[gpDateCol]||'');return d>=from&&d<=to;}).length;
-    const rows = [
-      ['gpCache rows', state.gpCache.length],
-      ['gpLoadError', state.gpLoadError || '(none)'],
-      ['rows in date range', inRange],
-      ['gpFiltered (rep+date)', gpFiltered.length],
-      ['ordersHistoryCache rows', state.ordersHistoryCache.length],
-      ['ordHistCols', state.ordersHistoryCache.length > 0 ? Object.keys(state.ordersHistoryCache[0]).join(', ') : '(empty)'],
-      ['ordHist sample SALES_REP', state.ordersHistoryCache.length > 0 ? ('"' + (state.ordersHistoryCache[0].SALES_REP||'MISSING') + '"') : '(empty)'],
-      ['ordHist sample ORDER_DATE', state.ordersHistoryCache.length > 0 ? ('"' + (state.ordersHistoryCache[0].ORDER_DATE||'MISSING') + '"') : '(empty)'],
-      ['ordHistError', state.ordHistError || '(none)'],
-      ['ordHistRaw rows (before process)', state._ordHistRaw || '(not set)'],
-      ['ordersFiltered (rep+date)', ordersFiltered.length],
-      ['repFilter', repFilter || '(none)'],
-    ];
-    _dc.innerHTML = rows.map(([k,v]) => {
-      const bad = v === 0 || String(v).includes('(empty)') || (k === 'gpLoadError' && v !== '(none)');
-      return '<div style="color:#888">' + k + '</div><div style="color:' + (bad?'#e74c3c':'#ccc') + ';word-break:break-all">' + String(v).replace(/</g,'&lt;') + '</div>';
-    }).join('');
-  }
 
   const reqsFiltered = state.reqsCache.filter(r => {
     const raw = r[reqDateCol] || r.DATE || r.DATE_ENTERED || '';

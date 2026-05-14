@@ -909,7 +909,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.13</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.14</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1368,7 +1368,7 @@ async function loadSupplementalData() {
 
     // Load orders history (dated orders for booked calc)
     try {
-      const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "_ORDERS_HISTORY");
+      const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'");
       if (ordHistRows.length > 1) {
         const hdrs = ordHistRows[0];
         state.ordersHistoryCache = ordHistRows.slice(1).map(r => {
@@ -1380,10 +1380,10 @@ async function loadSupplementalData() {
       }
     } catch(e) { console.error('Orders history load failed:', e.message); }
 
-    // Load GP data — fetch whole tab (no row limit), trim CHAR padding
+    // Load GP data — no range bounds, Google returns all actual rows
     state.gpLoadError = null;
     try {
-      const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "_GP");
+      const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'");
       if (gpRows && gpRows.length > 1) {
         const hdrs = gpRows[0].map(h => (h||'').trim());
         state.gpCache = gpRows.slice(1).map(r => {
@@ -1439,7 +1439,7 @@ async function loadSupplementalData() {
     }
 
     // Load contact revenue in background (non-blocking — tab may not exist yet)
-    sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "_CONTACT_REVENUE")
+    sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_REVENUE'")
       .then(crRows => {
         if (crRows.length > 1) {
           const hdrs = crRows[0];
@@ -5363,20 +5363,26 @@ async function refreshDashboard() {
   });
 
   const shipped = gpFiltered.reduce((s, r) => s + parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE || 0), 0);
+  // Update DIAG panel if open
   const _dp = document.getElementById('dash-diag-panel');
   const _dc = document.getElementById('dash-diag-content');
   if (_dc && _dp && _dp.style.display !== 'none') {
     const s0 = state.gpCache[0];
     const inRange = state.gpCache.filter(r=>{const d=normDate(r[gpDateCol]||'');return d>=from&&d<=to;}).length;
     const uReps = [...new Set(state.gpCache.slice(0,500).map(r=>(r[gpSalesRepCol]||'').trim()).filter(Boolean))];
-    const rows = [['gpCache rows',state.gpCache.length],['gpLoadError',state.gpLoadError||'(none)'],
-      ['in date range',inRange],['gpFiltered',gpFiltered.length],['repFilter',repFilter||'(none)'],
-      ['sample SALES_REP',s0?'"'+s0[gpSalesRepCol]+'"':'(empty)'],
-      ['sample EXTENDED_PRICE',s0?'"'+s0[gpInvTotalCol]+'"':'(empty)'],
-      ['unique SALES_REP',uReps.join(', ')||'(none)']];
-    _dc.innerHTML = rows.map(([k,v])=>{
-      const bad=v===0||String(v).includes('(empty)')||(k==='gpLoadError'&&v!=='(none)');
-      return '<div style="color:#888">'+k+'</div><div style="color:'+(bad?'#e74c3c':'#ccc')+';word-break:break-all">'+String(v).replace(/</g,'&lt;')+'</div>';
+    const rows = [
+      ['gpCache rows', state.gpCache.length],
+      ['gpLoadError', state.gpLoadError || '(none)'],
+      ['rows in date range', inRange],
+      ['gpFiltered (rep+date)', gpFiltered.length],
+      ['repFilter', repFilter || '(none)'],
+      ['sample SALES_REP', s0 ? '"' + s0[gpSalesRepCol] + '"' : '(empty)'],
+      ['sample EXTENDED_PRICE', s0 ? '"' + s0[gpInvTotalCol] + '"' : '(empty)'],
+      ['unique SALES_REP values', uReps.join(', ') || '(none)'],
+    ];
+    _dc.innerHTML = rows.map(([k,v]) => {
+      const bad = v === 0 || String(v).includes('(empty)') || (k === 'gpLoadError' && v !== '(none)');
+      return '<div style="color:#888">' + k + '</div><div style="color:' + (bad?'#e74c3c':'#ccc') + ';word-break:break-all">' + String(v).replace(/</g,'&lt;') + '</div>';
     }).join('');
   }
   const gp      = gpFiltered.reduce((s, r) => s + parseMoney(r[gpGPCol] || r.GP || 0), 0);
@@ -5958,6 +5964,20 @@ function renderSettingsView() {
         <div style="background:rgba(39,174,96,0.1);border-left:3px solid var(--green);padding:12px 14px;font-size:12px;color:var(--green)">
           ✓ AI emails enabled — key secured in Cloudflare Worker
         </div>
+      </div>
+
+      <!-- Dev Tools — admin only -->
+      <div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px">Developer Tools</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Copy your current OAuth session token for use in pre-deploy testing.</div>
+        <button onclick="copySessionToken()" style="background:var(--navy-mid);border:1px solid var(--gold);color:var(--gold);font-family:var(--font-mono);font-size:11px;padding:8px 16px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em">
+          📋 COPY SESSION TOKEN
+        </button>
+        <span id="copy-token-msg" style="font-size:11px;color:var(--green);margin-left:12px;display:none">✓ Copied to clipboard</span>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.6">
+          Paste into <strong style="color:var(--text)">intransit_test.html</strong> to validate a new build before deploying.<br>
+          Token expires after ~50 min. If test fails auth, sign out and back in to get a fresh one.
+        </div>
       </div>` : ''}
 
       <!-- App Info -->
@@ -5974,6 +5994,25 @@ function renderSettingsView() {
       </div>
 
     </div>`;
+}
+
+function copySessionToken() {
+  const token = state.accessToken || localStorage.getItem('it_token') || '';
+  if (!token) { showToast('No session token found — please sign in first', 'error'); return; }
+  navigator.clipboard.writeText(token).then(() => {
+    const msg = document.getElementById('copy-token-msg');
+    if (msg) { msg.style.display = 'inline'; setTimeout(() => msg.style.display = 'none', 3000); }
+  }).catch(() => {
+    // Fallback for clipboard API failure
+    const ta = document.createElement('textarea');
+    ta.value = token;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    const msg = document.getElementById('copy-token-msg');
+    if (msg) { msg.style.display = 'inline'; setTimeout(() => msg.style.display = 'none', 3000); }
+  });
 }
 
 function saveApiKey() {

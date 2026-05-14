@@ -909,7 +909,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.17</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.19</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -5242,25 +5242,7 @@ async function refreshDashboard() {
   });
 
   const shipped = gpFiltered.reduce((s, r) => s + parseMoney(r[gpInvTotalCol] || r.INVOICE_TOTAL || r.EXTENDED_PRICE || 0), 0);
-  // Update DIAG panel if open
-  const _dp = document.getElementById('dash-diag-panel');
-  const _dc = document.getElementById('dash-diag-content');
-  if (_dc && _dp && _dp.style.display !== 'none') {
-    const inRange = state.gpCache.filter(r=>{const d=normDate(r[gpDateCol]||'');return d>=from&&d<=to;}).length;
-    const rows = [
-      ['gpCache rows', state.gpCache.length],
-      ['gpLoadError', state.gpLoadError || '(none)'],
-      ['rows in date range', inRange],
-      ['gpFiltered (rep+date)', gpFiltered.length],
-      ['ordersHistoryCache rows', state.ordersHistoryCache.length],
-      ['ordersFiltered (rep+date)', ordersFiltered.length],
-      ['repFilter', repFilter || '(none)'],
-    ];
-    _dc.innerHTML = rows.map(([k,v]) => {
-      const bad = v === 0 || String(v).includes('(empty)') || (k === 'gpLoadError' && v !== '(none)');
-      return '<div style="color:#888">' + k + '</div><div style="color:' + (bad?'#e74c3c':'#ccc') + ';word-break:break-all">' + String(v).replace(/</g,'&lt;') + '</div>';
-    }).join('');
-  }
+
   const gp      = gpFiltered.reduce((s, r) => s + parseMoney(r[gpGPCol] || r.GP || 0), 0);
   const gpPct   = shipped > 0 ? (gp / shipped * 100) : 0;
 
@@ -5281,6 +5263,26 @@ async function refreshDashboard() {
   }, 0);
   const bookedGPPct = booked > 0 ? (bookedGP / booked * 100) : 0;
   const bookedLabel = 'Orders Booked';
+
+  // Update DIAG panel if open
+  const _dp = document.getElementById('dash-diag-panel');
+  const _dc = document.getElementById('dash-diag-content');
+  if (_dc && _dp && _dp.style.display !== 'none') {
+    const inRange = state.gpCache.filter(r=>{const d=normDate(r[gpDateCol]||'');return d>=from&&d<=to;}).length;
+    const rows = [
+      ['gpCache rows', state.gpCache.length],
+      ['gpLoadError', state.gpLoadError || '(none)'],
+      ['rows in date range', inRange],
+      ['gpFiltered (rep+date)', gpFiltered.length],
+      ['ordersHistoryCache rows', state.ordersHistoryCache.length],
+      ['ordersFiltered (rep+date)', ordersFiltered.length],
+      ['repFilter', repFilter || '(none)'],
+    ];
+    _dc.innerHTML = rows.map(([k,v]) => {
+      const bad = v === 0 || String(v).includes('(empty)') || (k === 'gpLoadError' && v !== '(none)');
+      return '<div style="color:#888">' + k + '</div><div style="color:' + (bad?'#e74c3c':'#ccc') + ';word-break:break-all">' + String(v).replace(/</g,'&lt;') + '</div>';
+    }).join('');
+  }
 
   const reqsFiltered = state.reqsCache.filter(r => {
     const raw = r[reqDateCol] || r.DATE || r.DATE_ENTERED || '';

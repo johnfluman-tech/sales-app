@@ -1155,7 +1155,24 @@ const SECURITY = {
 //  SUPPLEMENTAL DATA LOADING (Contacts, History, Collections)
 // ══════════════════════════════════════════════════════════
 async function loadSupplementalData() {
-  if (state.cacheLoaded && state.gpCache.length > 0) return;
+  if (state.cacheLoaded) {
+    // If cache loaded but GP empty, retry GP only
+    if (state.gpCache.length === 0) {
+      state.gpLoadError = null;
+      try {
+        const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'");
+        if (gpRows && gpRows.length > 1) {
+          const hdrs = gpRows[0].map(h => (h||'').trim());
+          state.gpCache = gpRows.slice(1).map(r => {
+            const obj = {};
+            hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
+            return obj;
+          });
+        }
+      } catch(e) { state.gpLoadError = 'GP retry: ' + e.message; }
+    }
+    return;
+  }
   try {
     // ── Load GP FIRST — most critical, must not be rate-limited by other fetches ──
     state.gpLoadError = null;
@@ -2488,7 +2505,7 @@ function setFilter(f) {
 
 // Single gatekeeper for supplemental data — prevents duplicate fetches
 function ensureCacheLoaded() {
-  if (state.cacheLoaded && state.gpCache.length > 0) return Promise.resolve();
+  if (state.cacheLoaded) return Promise.resolve();
   if (state._cacheLoadingPromise) return state._cacheLoadingPromise;
   state._cacheLoadingPromise = loadSupplementalData().finally(() => {
     state._cacheLoadingPromise = null;

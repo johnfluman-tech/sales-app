@@ -909,7 +909,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.24</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.25</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -5307,6 +5307,9 @@ async function refreshDashboard() {
       ['rows in date range', inRange],
       ['gpFiltered (rep+date)', gpFiltered.length],
       ['ordersHistoryCache rows', state.ordersHistoryCache.length],
+      ['ordHistCols', state.ordersHistoryCache.length > 0 ? Object.keys(state.ordersHistoryCache[0]).join(', ') : '(empty)'],
+      ['ordHist sample SALES_REP', state.ordersHistoryCache.length > 0 ? ('"' + (state.ordersHistoryCache[0].SALES_REP||'MISSING') + '"') : '(empty)'],
+      ['ordHist sample ORDER_DATE', state.ordersHistoryCache.length > 0 ? ('"' + (state.ordersHistoryCache[0].ORDER_DATE||'MISSING') + '"') : '(empty)'],
       ['ordHistError', state.ordHistError || '(none)'],
       ['ordHistRaw rows (before process)', state._ordHistRaw || '(not set)'],
       ['ordersFiltered (rep+date)', ordersFiltered.length],

@@ -909,7 +909,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.19</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.20</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1166,21 +1166,22 @@ async function loadSupplementalData() {
       console.error(state.gpLoadError);
     }
 
-    // ── Fetch all tabs in parallel — ~3-5x faster than sequential ──
-    const [
-      contactRows, collRows, sigRowsRaw, openOrderRows,
-      invRows, collInvRows, ordHistRows,
-      reqRows, quoteRows,
-    ] = await Promise.all([
+    // ── Fetch in 3 waves of 3 — parallel within each wave, sequential between waves ──
+    // Avoids overwhelming the Worker with 9 simultaneous connections
+    const [contactRows, invRows, ordHistRows] = await Promise.all([
       sheetsGet("'_CONTACTS'!A1:K50000").catch(() => []),
-      sheetsGet("'_COLLECTIONS'!A1:P5000").catch(() => []),
-      sheetsGet("'_SIGNATURES'!A1:D100").catch(() => []),
-      sheetsGet("'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L50000").catch(() => []),
-      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000").catch(() => []),
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'").catch(() => []),
+    ]);
+    const [reqRows, quoteRows, collRows] = await Promise.all([
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000").catch(() => []),
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_QUOTES'!A1:P50000").catch(() => []),
+      sheetsGet("'_COLLECTIONS'!A1:P5000").catch(() => []),
+    ]);
+    const [collInvRows, openOrderRows, sigRowsRaw] = await Promise.all([
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000").catch(() => []),
+      sheetsGet("'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
+      sheetsGet("'_SIGNATURES'!A1:D100").catch(() => []),
     ]);
 
     // Process contacts

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Intransit v1.14 — Pre-Deploy Test</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #060d18; color: #c8d4e0; font-family: 'Courier New', monospace; font-size: 13px; min-height: 100vh; padding: 32px; }
+  h1 { font-size: 11px; letter-spacing: 0.3em; color: #4a6fa5; margin-bottom: 4px; }
+  h2 { font-size: 18px; font-weight: 700; color: #e0eaf5; letter-spacing: -0.02em; margin-bottom: 32px; }
+  .card { background: #0d1b2e; border: 1px solid #1a3050; border-radius: 6px; padding: 20px 24px; margin-bottom: 16px; }
+  .card-title { font-size: 9px; letter-spacing: 0.2em; color: #4a6fa5; margin-bottom: 12px; text-transform: uppercase; }
+  label { font-size: 10px; letter-spacing: 0.1em; color: #4a6fa5; display: block; margin-bottom: 6px; }
+  input, textarea { background: #060d18; border: 1px solid #1a3050; color: #c8d4e0; font-family: 'Courier New', monospace; font-size: 12px; padding: 8px 12px; border-radius: 4px; width: 100%; outline: none; }
+  input:focus, textarea:focus { border-color: #2a5080; }
+  textarea { height: 80px; resize: vertical; }
+  button { background: #1a3a5c; border: 1px solid #2a5080; color: #7ab3e0; font-family: 'Courier New', monospace; font-size: 11px; letter-spacing: 0.1em; padding: 8px 20px; border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+  button:hover { background: #2a5080; color: #c8d4e0; }
+  button.run { background: #0d3320; border-color: #1a6040; color: #4dba80; font-size: 12px; padding: 10px 28px; }
+  button.run:hover { background: #1a5035; }
+  .tests { display: flex; flex-direction: column; gap: 10px; }
+  .test { border-radius: 4px; overflow: hidden; }
+  .test-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #0a1525; border: 1px solid #1a3050; cursor: pointer; }
+  .test-header:hover { background: #0d1b2e; }
+  .status { width: 8px; height: 8px; border-radius: 50%; background: #2a3a50; flex-shrink: 0; }
+  .status.pass { background: #2dba6e; box-shadow: 0 0 6px #2dba6e60; }
+  .status.fail { background: #e04060; box-shadow: 0 0 6px #e0406060; }
+  .status.running { background: #c9a84c; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .test-name { flex: 1; font-size: 11px; letter-spacing: 0.08em; }
+  .test-result { font-size: 10px; color: #4a6fa5; text-align: right; }
+  .test-body { background: #060d18; border: 1px solid #1a3050; border-top: none; padding: 12px 14px; display: none; font-size: 11px; line-height: 1.7; }
+  .test-body.open { display: block; }
+  .pass-text { color: #2dba6e; }
+  .fail-text { color: #e04060; }
+  .warn-text { color: #c9a84c; }
+  .dim { color: #4a6fa5; }
+  .value { color: #7ab3e0; }
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 24px; }
+  .stat { background: #0a1525; border: 1px solid #1a3050; border-radius: 4px; padding: 14px 16px; }
+  .stat-label { font-size: 9px; letter-spacing: 0.15em; color: #4a6fa5; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; font-weight: 700; color: #e0eaf5; }
+  .stat-value.good { color: #2dba6e; }
+  .stat-value.bad { color: #e04060; }
+  #run-btn { margin-top: 16px; }
+  .sep { border: none; border-top: 1px solid #1a3050; margin: 20px 0; }
+  pre { white-space: pre-wrap; word-break: break-all; }
+  .token-help { font-size: 10px; color: #4a6fa5; margin-top: 8px; line-height: 1.6; }
+  .token-help a { color: #7ab3e0; }
+  .badge { display: inline-block; font-size: 9px; padding: 2px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
+  .badge.pass { background: #0d3320; color: #2dba6e; border: 1px solid #1a6040; }
+  .badge.fail { background: #2a0d14; color: #e04060; border: 1px solid #5a1a28; }
+</style>
+</head>
+<body>
+<div id="cors-warning" style="display:none;background:#2a0d14;border-bottom:2px solid #e04060;padding:12px 32px;font-family:Courier New,monospace;font-size:12px;color:#e04060">
+  ⚠ Running as a local file — Worker will block all requests (CORS). 
+  This page must be opened from <strong style="color:#ff8080">https://johnfluman-tech.github.io/sales-app/intransit_test.html</strong>
+  <br>Push this file to your GitHub repo alongside intransit_app.html, then open it from that URL.
+</div>
+<script>
+  if (location.protocol === 'file:') document.getElementById('cors-warning').style.display = 'block';
+</script>
+
+<h1>INTRANSIT TECHNOLOGIES</h1>
+<h2>Sales Intelligence v1.14 — Pre-Deploy Validation</h2>
+
+<div class="card">
+  <div class="card-title">Step 1 — Paste your Google OAuth token</div>
+  <label>ACCESS TOKEN (from browser localStorage: it_token)</label>
+  <textarea id="token-input" placeholder="Paste your Google OAuth token here. Get it from the live app: open browser DevTools → Application → Local Storage → it_token"></textarea>
+  <p class="token-help">
+    How to get your token: Open the <strong>live app</strong> → F12 → Application → Local Storage → johnfluman-tech.github.io → copy value of <strong>it_token</strong>
+  </p>
+  <button class="run" id="run-btn" onclick="runAllTests()">▶ RUN ALL TESTS</button>
+</div>
+
+<div class="card" id="results-card" style="display:none">
+  <div class="card-title">Test Results</div>
+
+  <div class="summary">
+    <div class="stat"><div class="stat-label">TESTS PASSED</div><div class="stat-value good" id="stat-pass">—</div></div>
+    <div class="stat"><div class="stat-label">TESTS FAILED</div><div class="stat-value bad" id="stat-fail">—</div></div>
+    <div class="stat"><div class="stat-label">GP ROWS LOADED</div><div class="stat-value" id="stat-gp">—</div></div>
+    <div class="stat"><div class="stat-label">CKaren MAY SHIPPED</div><div class="stat-value" id="stat-shipped">—</div></div>
+  </div>
+
+  <hr class="sep">
+
+  <div class="tests" id="tests-container"></div>
+</div>
+
+<script>
+const WORKER   = 'https://intransit-worker.intransit-sales.workers.dev';
+const MAIN_ID  = '1xH_OC_fvSwQWZet95xBlJ951LsaQWru-glv2rkSnDm4';
+const HIST_ID  = '192ELLBgiEUZ3z6ytkWXbmA24wS2BjHmclJdf_UF_c24';
+const ACT_ID   = '12dJ0eLFQse-_pi1k6rXc25yTkwwYTjMm32v11tGKeRo';
+
+let token = '';
+let results = [];
+
+// ── Exact same fetch as the app ──────────────────────────────────
+async function sheetsGetFrom(spreadsheetId, range) {
+  const url = WORKER + '/sheets/' + spreadsheetId + '/values/' + encodeURIComponent(range);
+  const res = await fetch(url, { headers: { 'X-Google-Token': token } });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return data.values || [];
+}
+
+function normDate(s) {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d)) return '';
+  return d.toISOString().slice(0, 10);
+}
+
+function parseMoney(v) {
+  if (typeof v === 'number') return v;
+  return parseFloat(String(v).replace(/[^0-9.\-]/g,'')) || 0;
+}
+
+// ── Test runner ──────────────────────────────────────────────────
+function addTest(name) {
+  const div = document.createElement('div');
+  div.className = 'test';
+  div.id = 'test-' + results.length;
+  div.innerHTML = `
+    <div class="test-header" onclick="toggle(this)">
+      <div class="status running" id="status-${results.length}"></div>
+      <div class="test-name">${name}</div>
+      <div class="test-result" id="result-${results.length}">running...</div>
+    </div>
+    <div class="test-body" id="body-${results.length}"></div>`;
+  document.getElementById('tests-container').appendChild(div);
+  const idx = results.length;
+  results.push({ name, pass: null });
+  return idx;
+}
+
+function setResult(idx, pass, resultText, bodyHtml) {
+  results[idx].pass = pass;
+  document.getElementById('status-' + idx).className = 'status ' + (pass ? 'pass' : 'fail');
+  document.getElementById('result-' + idx).innerHTML = pass
+    ? '<span class="pass-text">✓ ' + resultText + '</span>'
+    : '<span class="fail-text">✗ ' + resultText + '</span>';
+  if (bodyHtml) {
+    const b = document.getElementById('body-' + idx);
+    b.innerHTML = bodyHtml;
+    if (!pass) { b.classList.add('open'); } // auto-open failures
+  }
+  updateSummary();
+}
+
+function toggle(el) {
+  const body = el.nextElementSibling;
+  body.classList.toggle('open');
+}
+
+function updateSummary() {
+  const done = results.filter(r => r.pass !== null);
+  const pass = done.filter(r => r.pass).length;
+  const fail = done.filter(r => !r.pass).length;
+  document.getElementById('stat-pass').textContent = pass;
+  document.getElementById('stat-fail').textContent = fail;
+  document.getElementById('stat-fail').className = 'stat-value ' + (fail > 0 ? 'bad' : 'good');
+}
+
+// ── Individual tests ─────────────────────────────────────────────
+async function testWorkerReachable() {
+  const idx = addTest('Worker reachable (test-sheets endpoint)');
+  try {
+    const res = await fetch(WORKER + '/test-sheets');
+    const data = await res.json();
+    if (data.ok) {
+      setResult(idx, true, 'Worker online', `<span class="pass-text">Worker responded OK. Token prefix: ${data.token}</span>`);
+    } else {
+      setResult(idx, false, 'Worker error', `<span class="fail-text">${JSON.stringify(data)}</span>`);
+    }
+  } catch(e) {
+    setResult(idx, false, e.message, `<span class="fail-text">Could not reach Worker: ${e.message}</span>`);
+  }
+}
+
+async function testAuth() {
+  const idx = addTest('Auth token valid (whoami)');
+  try {
+    const res = await fetch(WORKER + '/whoami', { headers: { 'X-Google-Token': token } });
+    const data = await res.json();
+    if (data.email) {
+      setResult(idx, true, data.email, `<span class="pass-text">Authenticated as: ${data.email}</span>`);
+    } else {
+      setResult(idx, false, 'Auth failed', `<span class="fail-text">Response: ${JSON.stringify(data)}</span>`);
+    }
+  } catch(e) {
+    setResult(idx, false, e.message, `<span class="fail-text">${e.message}</span>`);
+  }
+}
+
+async function testGPSmallRange() {
+  const idx = addTest("_GP tab: small range A1:Z5 (sanity check)");
+  try {
+    const rows = await sheetsGetFrom(HIST_ID, "'_GP'!A1:Z5");
+    if (rows.length >= 2) {
+      const hdrs = rows[0];
+      const sample = rows[1];
+      setResult(idx, true, rows.length + ' rows',
+        `<span class="pass-text">Headers: ${hdrs.join(', ')}</span><br>` +
+        `<span class="dim">Row 1: </span><span class="value">${sample.join(' | ')}</span>`);
+    } else {
+      setResult(idx, false, 'Only ' + rows.length + ' rows',
+        `<span class="fail-text">Expected ≥2 rows, got ${rows.length}. Tab may be missing.</span>`);
+    }
+  } catch(e) {
+    setResult(idx, false, e.message, `<span class="fail-text">${e.message}</span>`);
+  }
+}
+
+async function testGPFullLoad() {
+  const idx = addTest("_GP tab: full load with no range bounds (v1.14 fix) — exact app fetch");
+  try {
+    // THIS IS THE EXACT FETCH THE NEW APP USES
+    const rows = await sheetsGetFrom(HIST_ID, "'_GP'");
+    if (rows.length > 1) {
+      const hdrs = rows[0].map(h => (h||'').trim());
+      const cache = rows.slice(1).map(r => {
+        const obj = {};
+        hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
+        return obj;
+      });
+
+      // Validate columns
+      const hasRep   = hdrs.includes('SALES_REP');
+      const hasDate  = hdrs.includes('INVOICE_DATE');
+      const hasPrice = hdrs.includes('EXTENDED_PRICE');
+      const hasGP    = hdrs.includes('GP');
+      const sampleRep = cache[0]?.SALES_REP || '(missing)';
+      const trailingSpaces = sampleRep !== sampleRep.trim();
+
+      // Test CKaren MTD May 2026
+      const ckMay = cache.filter(r => {
+        const d = normDate(r.INVOICE_DATE || '');
+        return d >= '2026-05-01' && d <= '2026-05-31' && r.SALES_REP === 'CKaren';
+      });
+      const ckShipped = ckMay.reduce((s, r) => s + parseMoney(r.EXTENDED_PRICE || 0), 0);
+      document.getElementById('stat-gp').textContent = cache.length.toLocaleString();
+      document.getElementById('stat-gp').className = 'stat-value ' + (cache.length > 20000 ? 'good' : 'bad');
+      document.getElementById('stat-shipped').textContent = '$' + Math.round(ckShipped).toLocaleString();
+      document.getElementById('stat-shipped').className = 'stat-value ' + (ckShipped > 0 ? 'good' : 'bad');
+
+      const allPass = hasRep && hasDate && hasPrice && hasGP && cache.length > 20000 && ckShipped > 0 && !trailingSpaces;
+      const body = [
+        `<span class="${cache.length > 20000 ? 'pass-text' : 'fail-text'}">Rows loaded: ${cache.length.toLocaleString()} (expect ~21,943)</span>`,
+        `<span class="${hasRep ? 'pass-text' : 'fail-text'}">SALES_REP column: ${hasRep ? '✓' : '✗ MISSING'}</span>`,
+        `<span class="${hasDate ? 'pass-text' : 'fail-text'}">INVOICE_DATE column: ${hasDate ? '✓' : '✗ MISSING'}</span>`,
+        `<span class="${hasPrice ? 'pass-text' : 'fail-text'}">EXTENDED_PRICE column: ${hasPrice ? '✓' : '✗ MISSING'}</span>`,
+        `<span class="${hasGP ? 'pass-text' : 'fail-text'}">GP column: ${hasGP ? '✓' : '✗ MISSING'}</span>`,
+        `<span class="${!trailingSpaces ? 'pass-text' : 'fail-text'}">SALES_REP trailing spaces: ${trailingSpaces ? '✗ STILL PADDED: "' + sampleRep + '"' : '✓ Clean: "' + sampleRep + '"'}</span>`,
+        `<span class="${ckShipped > 0 ? 'pass-text' : 'fail-text'}">CKaren MTD May 2026: $${Math.round(ckShipped).toLocaleString()} shipped from ${ckMay.length} invoices (expect >$0)</span>`,
+      ].join('<br>');
+
+      setResult(idx, allPass, cache.length.toLocaleString() + ' rows — CKaren May: $' + Math.round(ckShipped).toLocaleString(), body);
+    } else {
+      document.getElementById('stat-gp').textContent = '0';
+      document.getElementById('stat-gp').className = 'stat-value bad';
+      setResult(idx, false, 'EMPTY — ' + rows.length + ' rows',
+        `<span class="fail-text">Full load returned ${rows.length} rows. The no-bounds fix did NOT work.<br>` +
+        `The Worker or Google is still returning empty for this range.</span>`);
+    }
+  } catch(e) {
+    setResult(idx, false, e.message, `<span class="fail-text">${e.message}</span>`);
+  }
+}
+
+async function testGPOldRange() {
+  const idx = addTest("_GP tab: old range A1:Z200000 (confirm this is the broken one)");
+  try {
+    const rows = await sheetsGetFrom(HIST_ID, "'_GP'!A1:Z200000");
+    if (rows.length > 1) {
+      setResult(idx, false, rows.length + ' rows — OLD RANGE WORKS??',
+        `<span class="warn-text">Unexpected: old range returned ${rows.length} rows. The bug may be elsewhere.</span>`);
+    } else {
+      setResult(idx, true, 'Confirmed empty (' + rows.length + ' rows)',
+        `<span class="pass-text">Confirmed: A1:Z200000 returns empty — this was the bug. The fix (no bounds) is correct.</span>`);
+    }
+  } catch(e) {
+    setResult(idx, true, 'Error (expected): ' + e.message,
+      `<span class="pass-text">Old range errored out — confirms the fix is needed.</span>`);
+  }
+}
+
+async function testMainSheetAccounts() {
+  const idx = addTest("Main Sheet: CKaren tab loads (accounts)");
+  try {
+    const rows = await sheetsGetFrom(MAIN_ID, "'CKaren'!A1:Z5");
+    if (rows.length >= 2) {
+      setResult(idx, true, rows.length + ' rows (sample)',
+        `<span class="pass-text">Headers: ${rows[0].slice(0,6).join(', ')}...</span><br>` +
+        `<span class="dim">First account: ${rows[1][0]}</span>`);
+    } else {
+      setResult(idx, false, 'Empty', `<span class="fail-text">CKaren tab returned ${rows.length} rows</span>`);
+    }
+  } catch(e) {
+    setResult(idx, false, e.message, `<span class="fail-text">${e.message}</span>`);
+  }
+}
+
+async function testOrdersHistory() {
+  const idx = addTest("Orders History: no-bounds fetch (same fix as GP)");
+  try {
+    const rows = await sheetsGetFrom(HIST_ID, "'_ORDERS_HISTORY'");
+    if (rows.length > 1) {
+      setResult(idx, true, rows.length.toLocaleString() + ' rows',
+        `<span class="pass-text">Loaded ${rows.length} rows. Headers: ${rows[0].slice(0,5).join(', ')}</span>`);
+    } else {
+      setResult(idx, false, 'Empty', `<span class="fail-text">_ORDERS_HISTORY returned ${rows.length} rows with no-bounds fetch</span>`);
+    }
+  } catch(e) {
+    setResult(idx, false, e.message, `<span class="fail-text">${e.message}</span>`);
+  }
+}
+
+// ── Main runner ──────────────────────────────────────────────────
+async function runAllTests() {
+  token = document.getElementById('token-input').value.trim();
+  if (!token) { alert('Paste your Google OAuth token first.'); return; }
+
+  document.getElementById('results-card').style.display = 'block';
+  document.getElementById('tests-container').innerHTML = '';
+  results = [];
+
+  document.getElementById('stat-pass').textContent = '—';
+  document.getElementById('stat-fail').textContent = '—';
+  document.getElementById('stat-gp').textContent = '—';
+  document.getElementById('stat-shipped').textContent = '—';
+
+  await testWorkerReachable();
+  await testAuth();
+  await testGPSmallRange();
+  await testGPOldRange();   // confirm old range is broken
+  await testGPFullLoad();   // confirm new fix works
+  await testMainSheetAccounts();
+  await testOrdersHistory();
+
+  const pass = results.filter(r => r.pass).length;
+  const fail = results.filter(r => !r.pass).length;
+  document.getElementById('stat-pass').textContent = pass;
+  document.getElementById('stat-fail').textContent = fail;
+}
+</script>
+</body>
+</html>

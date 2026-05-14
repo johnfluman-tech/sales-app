@@ -909,7 +909,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.15</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.16</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1145,6 +1145,27 @@ const SECURITY = {
 async function loadSupplementalData() {
   if (state.cacheLoaded && state.gpCache.length > 0) return;
   try {
+    // ── Load GP FIRST — most critical, must not be rate-limited by other fetches ──
+    state.gpLoadError = null;
+    try {
+      const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'");
+      if (gpRows && gpRows.length > 1) {
+        const hdrs = gpRows[0].map(h => (h||'').trim());
+        state.gpCache = gpRows.slice(1).map(r => {
+          const obj = {};
+          hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
+          return obj;
+        });
+        console.log('GP cache loaded:', state.gpCache.length, 'rows');
+      } else {
+        state.gpLoadError = '_GP returned ' + (gpRows ? gpRows.length : 0) + ' rows';
+        console.warn(state.gpLoadError);
+      }
+    } catch(e) {
+      state.gpLoadError = 'GP error: ' + e.message;
+      console.error(state.gpLoadError);
+    }
+
     // Load contacts
     const contactRows = await sheetsGet("'_CONTACTS'!A1:K50000");
     if (contactRows.length > 1) {
@@ -1379,27 +1400,6 @@ async function loadSupplementalData() {
         console.log('Orders history loaded:', state.ordersHistoryCache.length);
       }
     } catch(e) { console.error('Orders history load failed:', e.message); }
-
-    // Load GP data — no range bounds, Google returns all actual rows
-    state.gpLoadError = null;
-    try {
-      const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'");
-      if (gpRows && gpRows.length > 1) {
-        const hdrs = gpRows[0].map(h => (h||'').trim());
-        state.gpCache = gpRows.slice(1).map(r => {
-          const obj = {};
-          hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
-          return obj;
-        });
-        console.log('GP cache loaded:', state.gpCache.length, 'rows');
-      } else {
-        state.gpLoadError = '_GP returned ' + (gpRows ? gpRows.length : 0) + ' rows';
-        console.warn(state.gpLoadError);
-      }
-    } catch(e) {
-      state.gpLoadError = 'GP error: ' + e.message;
-      console.error(state.gpLoadError);
-    }
 
     state.cacheLoaded = true;
 

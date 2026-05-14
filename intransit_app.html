@@ -909,7 +909,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.22</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.23</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1172,7 +1172,7 @@ async function loadSupplementalData() {
     const [contactRows, invRows, ordHistRows] = await Promise.all([
       sheetsGet("'_CONTACTS'!A1:K50000").catch(() => []),
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L50000").catch(() => []),
-      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'").catch(e => { state.ordHistError = e.message; return []; }),
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A:I").catch(e => { state.ordHistError = e.message; return []; }),
     ]);
     await new Promise(r => setTimeout(r, 500));
     const [reqRows, quoteRows, collRows] = await Promise.all([
@@ -1278,6 +1278,7 @@ async function loadSupplementalData() {
     }
 
     // Process orders history
+    state._ordHistRaw = ordHistRows.length;
     if (ordHistRows.length > 1) {
       const hdrs=ordHistRows[0];
       state.ordersHistoryCache=ordHistRows.slice(1).map(r=>{const obj={};hdrs.forEach((h,i)=>obj[h]=typeof r[i]==='string'?r[i].trim():(r[i]||''));return obj;});
@@ -2108,6 +2109,7 @@ let state = {
   ordersCache: [],        // open orders (current backlog)
   ordersHistoryCache: [], // orders placed by date (for booked calc)
   ordHistError: null,
+  _ordHistRaw: null,
   gpCache: [],            // GP records
   gpLoadError: null,
   reqsCache: [],          // flat reqs for dashboard counting
@@ -5288,6 +5290,7 @@ async function refreshDashboard() {
       ['gpFiltered (rep+date)', gpFiltered.length],
       ['ordersHistoryCache rows', state.ordersHistoryCache.length],
       ['ordHistError', state.ordHistError || '(none)'],
+      ['ordHistRaw rows (before process)', state._ordHistRaw || '(not set)'],
       ['ordersFiltered (rep+date)', ordersFiltered.length],
       ['repFilter', repFilter || '(none)'],
     ];

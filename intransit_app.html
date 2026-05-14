@@ -909,7 +909,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.16</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.17</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1166,242 +1166,121 @@ async function loadSupplementalData() {
       console.error(state.gpLoadError);
     }
 
-    // Load contacts
-    const contactRows = await sheetsGet("'_CONTACTS'!A1:K50000");
+    // ── Fetch all tabs in parallel — ~3-5x faster than sequential ──
+    const [
+      contactRows, collRows, sigRowsRaw, openOrderRows,
+      invRows, collInvRows, ordHistRows,
+      reqRows, quoteRows,
+    ] = await Promise.all([
+      sheetsGet("'_CONTACTS'!A1:K50000").catch(() => []),
+      sheetsGet("'_COLLECTIONS'!A1:P5000").catch(() => []),
+      sheetsGet("'_SIGNATURES'!A1:D100").catch(() => []),
+      sheetsGet("'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L50000").catch(() => []),
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000").catch(() => []),
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'").catch(() => []),
+      sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000").catch(() => []),
+      sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_QUOTES'!A1:P50000").catch(() => []),
+    ]);
+
+    // Process contacts
     if (contactRows.length > 1) {
       const hdrs = contactRows[0];
-      const iName  = hdrs.indexOf('CUSTOMER_NAME');
-      const iCName = hdrs.indexOf('CONTACT_NAME');
-      const iTitle = hdrs.indexOf('TITLE');
-      const iEmail = hdrs.indexOf('EMAIL');
-      const iPhone = hdrs.indexOf('PHONE');
-      const iMob   = hdrs.indexOf('MOBILE');
-      const iType  = hdrs.indexOf('CONTACT_TYPE');
-      for (let r = 1; r < contactRows.length; r++) {
-        const row = contactRows[r];
-        const key = (row[iName] || '').trim();
-        if (!key) continue;
-        if (!state.contactsCache[key]) state.contactsCache[key] = [];
-        state.contactsCache[key].push({
-          name:  (row[iCName] || '').trim(),
-          title: (row[iTitle] || '').trim(),
-          email: (row[iEmail] || '').trim(),
-          phone: (row[iPhone] || '').trim(),
-          mobile:(row[iMob]   || '').trim(),
-          type:  (row[iType]  || '').trim(),
-        });
+      const iName=hdrs.indexOf('CUSTOMER_NAME'),iCName=hdrs.indexOf('CONTACT_NAME'),iTitle=hdrs.indexOf('TITLE');
+      const iEmail=hdrs.indexOf('EMAIL'),iPhone=hdrs.indexOf('PHONE'),iMob=hdrs.indexOf('MOBILE'),iType=hdrs.indexOf('CONTACT_TYPE');
+      for (let r=1;r<contactRows.length;r++) {
+        const row=contactRows[r]; const key=(row[iName]||'').trim(); if(!key) continue;
+        if(!state.contactsCache[key]) state.contactsCache[key]=[];
+        state.contactsCache[key].push({name:(row[iCName]||'').trim(),title:(row[iTitle]||'').trim(),email:(row[iEmail]||'').trim(),phone:(row[iPhone]||'').trim(),mobile:(row[iMob]||'').trim(),type:(row[iType]||'').trim()});
       }
     }
 
-    // Load invoice history
-    const invRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L50000");
+    // Process invoice history
     if (invRows.length > 1) {
-      const hdrs = invRows[0];
-      const iName  = hdrs.indexOf('CUSTOMER_NAME');
-      const iInv   = hdrs.indexOf('INVOICE_NUMBER');
-      const iDate  = hdrs.indexOf('INVOICE_DATE');
-      const iTotal = hdrs.indexOf('INVOICE_TOTAL');
-      const iPart  = hdrs.indexOf('PART_NUMBER');
-      const iDesc  = hdrs.indexOf('DESCRIPTION');
-      const iQty   = hdrs.indexOf('QTY');
-      const iPrice = hdrs.indexOf('UNIT_PRICE');
-      const iLine  = hdrs.indexOf('LINE_TOTAL');
-      const iCond  = hdrs.indexOf('CONDITION');
-      for (let r = 1; r < invRows.length; r++) {
-        const row = invRows[r];
-        const key = (row[iName] || '').trim();
-        if (!key) continue;
-        if (!state.historyCache[key]) state.historyCache[key] = { invoices: [], reqs: [], quotes: [] };
-        state.historyCache[key].invoices.push({
-          invoiceNum: row[iInv]   || '',
-          date:       row[iDate]  || '',
-          total:      parseFloat(row[iTotal]) || 0,
-          part:       row[iPart]  || '',
-          desc:       row[iDesc]  || '',
-          qty:        row[iQty]   || '',
-          price:      parseFloat(row[iPrice]) || 0,
-          lineTotal:  parseFloat(row[iLine])  || 0,
-          condition:  row[iCond]  || '',
-        });
+      const hdrs=invRows[0];
+      const iName=hdrs.indexOf('CUSTOMER_NAME'),iInv=hdrs.indexOf('INVOICE_NUMBER'),iDate=hdrs.indexOf('INVOICE_DATE');
+      const iTotal=hdrs.indexOf('INVOICE_TOTAL'),iPart=hdrs.indexOf('PART_NUMBER'),iDesc=hdrs.indexOf('DESCRIPTION');
+      const iQty=hdrs.indexOf('QTY'),iPrice=hdrs.indexOf('UNIT_PRICE'),iLine=hdrs.indexOf('LINE_TOTAL'),iCond=hdrs.indexOf('CONDITION');
+      for (let r=1;r<invRows.length;r++) {
+        const row=invRows[r]; const key=(row[iName]||'').trim(); if(!key) continue;
+        if(!state.historyCache[key]) state.historyCache[key]={invoices:[],reqs:[],quotes:[]};
+        state.historyCache[key].invoices.push({invoiceNum:row[iInv]||'',date:row[iDate]||'',total:parseFloat(row[iTotal])||0,part:row[iPart]||'',desc:row[iDesc]||'',qty:row[iQty]||'',price:parseFloat(row[iPrice])||0,lineTotal:parseFloat(row[iLine])||0,condition:row[iCond]||''});
       }
     }
 
-    // Load RFQs
-    const reqRows = await sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000");
+    // Process RFQs
     if (reqRows.length > 1) {
-      const hdrs = reqRows[0];
-      const iName  = hdrs.indexOf('CUSTOMER_NAME');
-      const iDate  = hdrs.indexOf('DATE_ENTERED');
-      const iPart  = hdrs.indexOf('PART_NUMBER');
-      const iMfr   = hdrs.indexOf('MANUFACTURER');
-      const iQty   = hdrs.indexOf('QTY');
-      const iPrice = hdrs.indexOf('TARGET_PRICE');
-      const iDesc  = hdrs.indexOf('DESCRIPTION');
-      const iClosed= hdrs.indexOf('CLOSED');
-      const iRep   = hdrs.indexOf('SALES_REP');
-      for (let r = 1; r < reqRows.length; r++) {
-        const row = reqRows[r];
-        const key = (row[iName] || '').trim();
-        if (!key) continue;
-        if (!state.historyCache[key]) state.historyCache[key] = { invoices: [], reqs: [], quotes: [] };
-        const reqObj = {
-          date:   row[iDate]  || '',
-          part:   row[iPart]  || '',
-          mfr:    row[iMfr]   || '',
-          qty:    row[iQty]   || '',
-          price:  row[iPrice] || '',
-          desc:   row[iDesc]  || '',
-          closed: row[iClosed]|| '',
-          rep:    (row[iRep]  || '').trim(),
-        };
+      const hdrs=reqRows[0];
+      const iName=hdrs.indexOf('CUSTOMER_NAME'),iDate=hdrs.indexOf('DATE_ENTERED'),iPart=hdrs.indexOf('PART_NUMBER');
+      const iMfr=hdrs.indexOf('MANUFACTURER'),iQty=hdrs.indexOf('QTY'),iPrice=hdrs.indexOf('TARGET_PRICE');
+      const iDesc=hdrs.indexOf('DESCRIPTION'),iClosed=hdrs.indexOf('CLOSED'),iRep=hdrs.indexOf('SALES_REP');
+      for (let r=1;r<reqRows.length;r++) {
+        const row=reqRows[r]; const key=(row[iName]||'').trim(); if(!key) continue;
+        if(!state.historyCache[key]) state.historyCache[key]={invoices:[],reqs:[],quotes:[]};
+        const reqObj={date:row[iDate]||'',part:row[iPart]||'',mfr:row[iMfr]||'',qty:row[iQty]||'',price:row[iPrice]||'',desc:row[iDesc]||'',closed:row[iClosed]||'',rep:(row[iRep]||'').trim()};
         state.historyCache[key].reqs.push(reqObj);
-        // Also push to flat cache for dashboard counting
-        state.reqsCache.push({ DATE: row[iDate] || '', SALES_REP: (row[iRep] || '').trim() });
+        state.reqsCache.push({DATE:row[iDate]||'',SALES_REP:(row[iRep]||'').trim()});
       }
     }
 
-    // Load Quotes
-    const quoteRows = await sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_QUOTES'!A1:P50000");
+    // Process quotes
     if (quoteRows.length > 1) {
-      const hdrs = quoteRows[0];
-      const iName = hdrs.indexOf('CUSTOMER_NAME');
-      const iId   = hdrs.indexOf('QUOTE_ID');
-      const iDate = hdrs.indexOf('QUOTE_DATE');
-      const iPart = hdrs.indexOf('PART_NUMBER');
-      const iMfr  = hdrs.indexOf('MANUFACTURER');
-      const iQty  = hdrs.indexOf('QTY');
-      const iPrice= hdrs.indexOf('PRICE');
-      const iDesc = hdrs.indexOf('DESCRIPTION');
-      const iClosed=hdrs.indexOf('CLOSED');
-      for (let r = 1; r < quoteRows.length; r++) {
-        const row = quoteRows[r];
-        const key = (row[iName] || '').trim();
-        if (!key) continue;
-        if (!state.historyCache[key]) state.historyCache[key] = { invoices: [], reqs: [], quotes: [] };
-        state.historyCache[key].quotes.push({
-          quoteId: row[iId]   || '',
-          date:    row[iDate] || '',
-          part:    row[iPart] || '',
-          mfr:     row[iMfr]  || '',
-          qty:     row[iQty]  || '',
-          price:   parseFloat(row[iPrice]) || 0,
-          desc:    row[iDesc] || '',
-          closed:  row[iClosed]|| '',
-        });
+      const hdrs=quoteRows[0];
+      const iName=hdrs.indexOf('CUSTOMER_NAME'),iId=hdrs.indexOf('QUOTE_ID'),iDate=hdrs.indexOf('QUOTE_DATE');
+      const iPart=hdrs.indexOf('PART_NUMBER'),iMfr=hdrs.indexOf('MANUFACTURER'),iQty=hdrs.indexOf('QTY');
+      const iPrice=hdrs.indexOf('PRICE'),iDesc=hdrs.indexOf('DESCRIPTION'),iClosed=hdrs.indexOf('CLOSED');
+      for (let r=1;r<quoteRows.length;r++) {
+        const row=quoteRows[r]; const key=(row[iName]||'').trim(); if(!key) continue;
+        if(!state.historyCache[key]) state.historyCache[key]={invoices:[],reqs:[],quotes:[]};
+        state.historyCache[key].quotes.push({quoteId:row[iId]||'',date:row[iDate]||'',part:row[iPart]||'',mfr:row[iMfr]||'',qty:row[iQty]||'',price:parseFloat(row[iPrice])||0,desc:row[iDesc]||'',closed:row[iClosed]||''});
       }
     }
 
-    // Load collections
-    const collRows = await sheetsGet("'_COLLECTIONS'!A1:P5000");
+    // Process collections
     if (collRows.length > 1) {
-      const hdrs = collRows[0];
-      const iName     = hdrs.indexOf('CUSTOMER_NAME');
-      const iBal      = hdrs.indexOf('CURRENT_BALANCE');
-      const iCred     = hdrs.indexOf('CREDIT_LIMIT');
-      const iPay      = hdrs.indexOf('AVG_DAYS_TO_PAY');
-      const iTerms    = hdrs.indexOf('PAYMENT_TERMS');
-      const iDaysPast = hdrs.indexOf('DAYS_PAST_DUE');
-      const iNote     = hdrs.indexOf('COLLECTION_NOTE');
-      const iRisk     = hdrs.indexOf('RISK_FLAG');
-      const iAppHold  = hdrs.indexOf('APP_HOLD');
-      for (let r = 1; r < collRows.length; r++) {
-        const row = collRows[r];
-        const key = (row[iName] || '').trim();
-        if (!key) continue;
-        state.collectionsCache[key] = {
-          balance:    parseFloat(row[iBal])      || 0,
-          credit:     parseFloat(row[iCred])     || 0,
-          avgPay:     parseFloat(row[iPay])      || 0,
-          terms:      row[iTerms]                || '',
-          daysPastDue:(() => { const d = parseInt(row[iDaysPast])||0; return d > 3650 ? 0 : d; })(),
-          note:       row[iNote]                 || '',
-          risk:       row[iRisk]                 || '',
-          appHold:    row[iAppHold]              || '',
-        };
+      const hdrs=collRows[0];
+      const iName=hdrs.indexOf('CUSTOMER_NAME'),iBal=hdrs.indexOf('CURRENT_BALANCE'),iCred=hdrs.indexOf('CREDIT_LIMIT');
+      const iPay=hdrs.indexOf('AVG_DAYS_TO_PAY'),iTerms=hdrs.indexOf('PAYMENT_TERMS'),iDaysPast=hdrs.indexOf('DAYS_PAST_DUE');
+      const iNote=hdrs.indexOf('COLLECTION_NOTE'),iRisk=hdrs.indexOf('RISK_FLAG'),iAppHold=hdrs.indexOf('APP_HOLD');
+      for (let r=1;r<collRows.length;r++) {
+        const row=collRows[r]; const key=(row[iName]||'').trim(); if(!key) continue;
+        state.collectionsCache[key]={balance:parseFloat(row[iBal])||0,credit:parseFloat(row[iCred])||0,avgPay:parseFloat(row[iPay])||0,terms:row[iTerms]||'',daysPastDue:(()=>{const d=parseInt(row[iDaysPast])||0;return d>3650?0:d;})(),note:row[iNote]||'',risk:row[iRisk]||'',appHold:row[iAppHold]||''};
       }
     }
 
-    // Load email signatures
-    try {
-      const sigRows = await sheetsGet("'_SIGNATURES'!A1:D100");
-      if (sigRows.length > 1) {
-        const hdrs = sigRows[0];
-        const iRep  = hdrs.indexOf('REP');
-        const iSig  = hdrs.indexOf('SIGNATURE_TEXT');
-        for (let r = 1; r < sigRows.length; r++) {
-          const row = sigRows[r];
-          const rep = (row[iRep] || '').trim();
-          if (rep) state.signaturesCache[rep] = row[iSig] || '';
-        }
-      }
-    } catch(e) { /* _SIGNATURES tab may not exist yet */ }
+    // Process signatures
+    if (sigRowsRaw.length > 1) {
+      const hdrs=sigRowsRaw[0]; const iRep=hdrs.indexOf('REP'),iSig=hdrs.indexOf('SIGNATURE_TEXT');
+      for (let r=1;r<sigRowsRaw.length;r++) { const row=sigRowsRaw[r]; const rep=(row[iRep]||'').trim(); if(rep) state.signaturesCache[rep]=row[iSig]||''; }
+    }
 
-    // Load open invoice balances for collections
-    const collInvRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000");
+    // Process collections invoices
     if (collInvRows.length > 1) {
-      const hdrs = collInvRows[0];
-      const iCust    = hdrs.indexOf('CUSTOMER_NAME');
-      const iRep     = hdrs.indexOf('SALES_REP');
-      const iInvNum  = hdrs.indexOf('INVOICE_NUMBER');
-      const iDate    = hdrs.indexOf('INVOICE_DATE');
-      const iTotal   = hdrs.indexOf('INVOICE_TOTAL');
-      const iBal     = hdrs.indexOf('INVOICE_BALANCE');
-      const iTerms   = hdrs.indexOf('PAYMENT_TERMS');
-      const iOrder   = hdrs.indexOf('ORDER_NUMBER');
-      const iTrack   = hdrs.indexOf('TRACKING_NUMBER');
-      const iShipVia = hdrs.indexOf('SHIP_VIA');
-      const iCustId  = hdrs.indexOf('CUSTOMER_ID');
-      const iAging   = hdrs.indexOf('AGING_DAYS');
-      // fallback for old column order
-      const iName    = iCust  >= 0 ? iCust  : hdrs.indexOf('CUSTOMER_NAME');
-      for (let r = 1; r < collInvRows.length; r++) {
-        const row = collInvRows[r];
-        const key = (row[iName] || '').trim();
-        if (!key) continue;
-        if (!state.collectionsInvoicesCache[key]) state.collectionsInvoicesCache[key] = [];
-        state.collectionsInvoicesCache[key].push({
-          invoiceNum: row[iInvNum]  || '',
-          date:       row[iDate]    || '',
-          total:      parseFloat(row[iTotal]) || 0,
-          balance:    parseFloat(row[iBal])   || 0,
-          terms:      row[iTerms]   || '',
-          orderNum:   row[iOrder]   || '',
-          tracking:   (row[iTrack] || '').trim(),
-          shipVia:    (row[iShipVia]|| '').trim(),
-          agingDays:  parseInt(row[iAging]) || 0,
-        });
+      const hdrs=collInvRows[0];
+      const iName=hdrs.indexOf('CUSTOMER_NAME'),iInvNum=hdrs.indexOf('INVOICE_NUMBER'),iDate=hdrs.indexOf('INVOICE_DATE');
+      const iTotal=hdrs.indexOf('INVOICE_TOTAL'),iBal=hdrs.indexOf('INVOICE_BALANCE'),iTerms=hdrs.indexOf('PAYMENT_TERMS');
+      const iOrder=hdrs.indexOf('ORDER_NUMBER'),iTrack=hdrs.indexOf('TRACKING_NUMBER'),iShipVia=hdrs.indexOf('SHIP_VIA'),iAging=hdrs.indexOf('AGING_DAYS');
+      for (let r=1;r<collInvRows.length;r++) {
+        const row=collInvRows[r]; const key=(row[iName]||'').trim(); if(!key) continue;
+        if(!state.collectionsInvoicesCache[key]) state.collectionsInvoicesCache[key]=[];
+        state.collectionsInvoicesCache[key].push({invoiceNum:row[iInvNum]||'',date:row[iDate]||'',total:parseFloat(row[iTotal])||0,balance:parseFloat(row[iBal])||0,terms:row[iTerms]||'',orderNum:row[iOrder]||'',tracking:(row[iTrack]||'').trim(),shipVia:(row[iShipVia]||'').trim(),agingDays:parseInt(row[iAging])||0});
       }
     }
-    // Load open orders
-    let orderRows = [];
-    try {
-      orderRows = await sheetsGet("'_OPEN_ORDERS'!A1:Z2000");
-    } catch(e) { orderRows = []; }
 
-    if (orderRows.length > 1) {
-      const hdrs = orderRows[0];
-      state.ordersCache = orderRows.slice(1).map(r => {
-        const obj = {};
-        hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
-        return obj;
-      });
+    // Process open orders
+    if (openOrderRows.length > 1) {
+      const hdrs=openOrderRows[0];
+      state.ordersCache=openOrderRows.slice(1).map(r=>{const obj={};hdrs.forEach((h,i)=>obj[h]=typeof r[i]==='string'?r[i].trim():(r[i]||''));return obj;});
     }
 
-    // Load orders history (dated orders for booked calc)
-    try {
-      const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'");
-      if (ordHistRows.length > 1) {
-        const hdrs = ordHistRows[0];
-        state.ordersHistoryCache = ordHistRows.slice(1).map(r => {
-          const obj = {};
-          hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
-          return obj;
-        });
-        console.log('Orders history loaded:', state.ordersHistoryCache.length);
-      }
-    } catch(e) { console.error('Orders history load failed:', e.message); }
+    // Process orders history
+    if (ordHistRows.length > 1) {
+      const hdrs=ordHistRows[0];
+      state.ordersHistoryCache=ordHistRows.slice(1).map(r=>{const obj={};hdrs.forEach((h,i)=>obj[h]=typeof r[i]==='string'?r[i].trim():(r[i]||''));return obj;});
+      console.log('Orders history loaded:', state.ordersHistoryCache.length);
+    }
 
-    state.cacheLoaded = true;
+        state.cacheLoaded = true;
 
     // Load contact notes (non-blocking, after cacheLoaded)
     try {
@@ -5367,18 +5246,13 @@ async function refreshDashboard() {
   const _dp = document.getElementById('dash-diag-panel');
   const _dc = document.getElementById('dash-diag-content');
   if (_dc && _dp && _dp.style.display !== 'none') {
-    const s0 = state.gpCache[0];
     const inRange = state.gpCache.filter(r=>{const d=normDate(r[gpDateCol]||'');return d>=from&&d<=to;}).length;
-    const uReps = [...new Set(state.gpCache.slice(0,500).map(r=>(r[gpSalesRepCol]||'').trim()).filter(Boolean))];
     const rows = [
       ['gpCache rows', state.gpCache.length],
       ['gpLoadError', state.gpLoadError || '(none)'],
       ['rows in date range', inRange],
       ['gpFiltered (rep+date)', gpFiltered.length],
       ['repFilter', repFilter || '(none)'],
-      ['sample SALES_REP', s0 ? '"' + s0[gpSalesRepCol] + '"' : '(empty)'],
-      ['sample EXTENDED_PRICE', s0 ? '"' + s0[gpInvTotalCol] + '"' : '(empty)'],
-      ['unique SALES_REP values', uReps.join(', ') || '(none)'],
     ];
     _dc.innerHTML = rows.map(([k,v]) => {
       const bad = v === 0 || String(v).includes('(empty)') || (k === 'gpLoadError' && v !== '(none)');
@@ -5395,6 +5269,10 @@ async function refreshDashboard() {
     return true;
   });
   const booked     = ordersFiltered.reduce((s, r) => s + parseMoney(r.EXTENDED_PRICE || r.ORDER_TOTAL || 0), 0);
+  // Booked GP: match order lines to GP cache by customer+date to estimate GP on booked orders
+  // Simpler: use same GP% as shipped (best available estimate for booked)
+  const bookedGPPct = gpPct; // use shipped GP% as proxy for booked margin
+  const bookedGP    = booked * (bookedGPPct / 100);
   const bookedLabel = 'Orders Booked';
 
   const reqsFiltered = state.reqsCache.filter(r => {
@@ -5421,7 +5299,7 @@ async function refreshDashboard() {
     <div class="stat-card">
       <div class="stat-label">${bookedLabel}</div>
       <div class="stat-value blue">$${formatNum(booked)}</div>
-      <div class="stat-sub">${ordersFiltered.length} order lines</div>
+      <div class="stat-sub">${ordersFiltered.length} lines · GP est. $${formatNum(bookedGP)} (${bookedGPPct.toFixed(1)}%)</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Gross Profit</div>

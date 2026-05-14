@@ -921,7 +921,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.28</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.29</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -2706,7 +2706,7 @@ function renderAccountsView() {
         </table>
       </div>
     </div>
-    <div class="splitter-h" id="main-splitter-h" onmousedown="startSplitH(event,'account-list','detail-panel','main-splitter-h')"></div>
+    <div class="splitter-h" id="main-splitter-h" onmousedown="startSplitH(event,'account-list','detail-panel','main-splitter-h')" style="background:rgba(82,130,190,0.5);width:8px"></div>
     <div class="detail-panel" id="detail-panel">
       <div class="detail-empty">
         <div class="detail-empty-icon">◈</div>
@@ -5213,7 +5213,19 @@ function toggleDashDiag() {
   const p = document.getElementById('dash-diag-panel');
   if (!p) return;
   p.style.display = p.style.display === 'none' ? 'block' : 'none';
-  if (p.style.display === 'block') refreshDashboard();
+  if (p.style.display === 'block') {
+    // Show immediate cache status even before refreshDashboard runs
+    const dc = document.getElementById('dash-diag-content');
+    if (dc && dc.innerHTML.includes('Refresh to populate')) {
+      dc.innerHTML = '<div style="color:#888">gpCache rows</div><div style="color:#ccc">' + state.gpCache.length + '</div>' +
+        '<div style="color:#888">ordersHistoryCache rows</div><div style="color:#ccc">' + state.ordersHistoryCache.length + '</div>' +
+        '<div style="color:#888">cacheLoaded</div><div style="color:#ccc">' + state.cacheLoaded + '</div>' +
+        '<div style="color:#888">gpLoadError</div><div style="color:' + (state.gpLoadError ? '#e74c3c' : '#ccc') + '">' + (state.gpLoadError || '(none)') + '</div>' +
+        '<div style="color:#888">ordHistError</div><div style="color:' + (state.ordHistError ? '#e74c3c' : '#ccc') + '">' + (state.ordHistError || '(none)') + '</div>' +
+        '<div style="color:#888">ordHistRaw rows</div><div style="color:#ccc">' + (state._ordHistRaw !== null ? state._ordHistRaw : '(not set)') + '</div>';
+    }
+    refreshDashboard();
+  }
 }
 
 function setDashPeriod(period, btn) {
@@ -5317,7 +5329,7 @@ async function refreshDashboard() {
   const gpPct   = shipped > 0 ? (gp / shipped * 100) : 0;
 
   const ordersFiltered = (state.ordersHistoryCache.length > 0 ? state.ordersHistoryCache : state.ordersCache).filter(r => {
-    const d = (r.ORDER_DATE || '').slice(0,10);
+    const d = (r.ORDER_DATE || r.order_date || '').slice(0,10);
     if (!d || d < from || d > to) return false;
     if (repFilter) return (r.SALES_REP || '').trim() === repFilter;
     return true;

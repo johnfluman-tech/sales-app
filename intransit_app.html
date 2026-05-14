@@ -921,7 +921,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.17</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.27</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1190,7 +1190,7 @@ async function loadSupplementalData() {
       sheetsGet("'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L50000").catch(() => []),
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000").catch(() => []),
-      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'").catch(() => []),
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A:I").catch(e => { state.ordHistError = e.message; return []; }),
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000").catch(() => []),
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_QUOTES'!A1:P50000").catch(() => []),
     ]);
@@ -1286,6 +1286,7 @@ async function loadSupplementalData() {
     }
 
     // Process orders history
+    state._ordHistRaw = ordHistRows.length;
     if (ordHistRows.length > 1) {
       const hdrs=ordHistRows[0];
       state.ordersHistoryCache=ordHistRows.slice(1).map(r=>{const obj={};hdrs.forEach((h,i)=>obj[h]=typeof r[i]==='string'?r[i].trim():(r[i]||''));return obj;});
@@ -2115,6 +2116,8 @@ let state = {
   cacheLoaded: false,
   ordersCache: [],        // open orders (current backlog)
   ordersHistoryCache: [], // orders placed by date (for booked calc)
+  ordHistError: null,
+  _ordHistRaw: null,
   gpCache: [],            // GP records
   gpLoadError: null,
   reqsCache: [],          // flat reqs for dashboard counting
@@ -2265,17 +2268,23 @@ async function sheetsGet(range) {
   return sheetsGetFrom(CONFIG.SPREADSHEET_ID, range);
 }
 
-async function sheetsGetFrom(spreadsheetId, range) {
+async function sheetsGetFrom(spreadsheetId, range, _retry) {
   const url = CONFIG.WORKER_URL + '/sheets/' + spreadsheetId + '/values/' + encodeURIComponent(range);
-  const res = await fetch(url, {
-    headers: { 'X-Google-Token': state.accessToken }
-  });
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) { handleSignout(); throw new Error('Session expired'); }
-    throw new Error('Sheets API error ' + res.status);
+  try {
+    const res = await fetch(url, { headers: { 'X-Google-Token': state.accessToken } });
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) { handleSignout(); throw new Error('Session expired'); }
+      throw new Error('Sheets API error ' + res.status);
+    }
+    const data = await res.json();
+    return data.values || [];
+  } catch(e) {
+    if (!_retry) {
+      await new Promise(r => setTimeout(r, 2000));
+      return sheetsGetFrom(spreadsheetId, range, true);
+    }
+    throw e;
   }
-  const data = await res.json();
-  return data.values || [];
 }
 
 async function sheetsUpdateIn(spreadsheetId, range, values) {
@@ -5274,6 +5283,11 @@ async function refreshDashboard() {
       ['rows in date range', inRange],
       ['gpFiltered (rep+date)', gpFiltered.length],
       ['ordersHistoryCache rows', state.ordersHistoryCache.length],
+      ['ordHistCols', state.ordersHistoryCache.length > 0 ? Object.keys(state.ordersHistoryCache[0]).join(', ') : '(empty)'],
+      ['ordHist sample SALES_REP', state.ordersHistoryCache.length > 0 ? ('"' + (state.ordersHistoryCache[0].SALES_REP||'MISSING') + '"') : '(empty)'],
+      ['ordHist sample ORDER_DATE', state.ordersHistoryCache.length > 0 ? ('"' + (state.ordersHistoryCache[0].ORDER_DATE||'MISSING') + '"') : '(empty)'],
+      ['ordHistError', state.ordHistError || '(none)'],
+      ['ordHistRaw rows', state._ordHistRaw !== null ? state._ordHistRaw : '(not set)'],
       ['ordersFiltered (rep+date)', ordersFiltered.length],
       ['repFilter', repFilter || '(none)'],
     ];

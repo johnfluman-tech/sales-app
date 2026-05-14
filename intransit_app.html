@@ -934,7 +934,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.36</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.39</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1216,13 +1216,13 @@ async function loadSupplementalData() {
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A:I").catch(e => { state.ordHistError = e.message; return []; }),
     ]);
     state._ordHistRaw = ordHistRows.length;
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 1000));
     const [reqRows, quoteRows, collRows] = await Promise.all([
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000").catch(() => []),
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_QUOTES'!A1:P50000").catch(() => []),
       sheetsGet("'_COLLECTIONS'!A1:P5000").catch(() => []),
     ]);
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 1000));
     const [collInvRows, openOrderRows, sigRowsRaw] = await Promise.all([
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000").catch(() => []),
       sheetsGet("'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
@@ -1332,6 +1332,23 @@ async function loadSupplementalData() {
     } catch(ohErr) {
       state.ordHistError = 'Processing error: ' + ohErr.message;
       console.error('Orders history processing failed:', ohErr);
+    }
+
+    // If ordersHistoryCache is empty after load, retry once after delay
+    if (state.ordersHistoryCache.length === 0 && ordHistRows.length > 1) {
+      console.warn('Orders history processed 0 rows despite', ordHistRows.length, 'raw rows - retrying');
+      try {
+        const retryRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A:I");
+        if (retryRows.length > 1) {
+          const hdrs = retryRows[0];
+          state.ordersHistoryCache = retryRows.slice(1).map(r => {
+            const obj = {};
+            hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
+            return obj;
+          });
+          console.log('Orders history retry loaded:', state.ordersHistoryCache.length);
+        }
+      } catch(retryErr) { console.error('Orders history retry failed:', retryErr); }
     }
 
     state.cacheLoaded = true;
@@ -2240,23 +2257,13 @@ function completeLogin() {
     const accessNav = document.getElementById('nav-access');
     if (accessNav) accessNav.style.display = 'block';
   }
-  // Load signatures immediately so Settings always shows them
-  sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SIGNATURES'!A1:D100").then(rows => {
-    if (rows && rows.length > 1) {
-      const hdrs = rows[0];
-      const iRep = hdrs.indexOf('REP');
-      const iSig = hdrs.indexOf('SIGNATURE_TEXT');
-      for (let r = 1; r < rows.length; r++) {
-        const rep = (rows[r][iRep] || '').trim();
-        if (rep) state.signaturesCache[rep] = rows[r][iSig] || '';
-      }
-    }
-  }).catch(() => {});
+  // Start loading supplemental data (incl. GP) immediately in background
+  // Don't wait for loadAllAccounts — they run in parallel for speed
+  ensureCacheLoaded().catch(() => {});
   loadAllAccounts().then(() => {
     renderAccountsView();
     updateBadges();
     initSecurity();
-    ensureCacheLoaded().catch(() => {});
   });
 }
 
@@ -2808,7 +2815,11 @@ function selectAccount(acc) {
   });
 
   renderDetail(acc);
-  setTimeout(restoreDetailSplit, 50);
+  setTimeout(() => {
+    restoreDetailSplit();
+    const sp = document.getElementById('detail-split-h');
+    if (sp && !sp._bound) { sp._bound = true; sp.addEventListener('mousedown', startDetailSplit); }
+  }, 50);
 }
 
 function renderDetail(acc) {
@@ -2863,7 +2874,7 @@ function renderDetail(acc) {
       <div class="revenue-bars">${barsHtml}</div>
     </div>
 
-    <div class="detail-split-h" id="detail-split-h" onmousedown="startDetailSplit(event)"></div>
+    <div class="detail-split-h" id="detail-split-h" onmousedown="startDetailSplit(event)" title="Drag to resize"></div>
 
     <div class="detail-bottom" id="detail-bottom">
       <div class="detail-tabs">
@@ -2880,6 +2891,12 @@ function renderDetail(acc) {
       ${state.activeDetailTab === 'notes' ? renderNoteInput(acc) : ''}
     </div>
   `;
+  // Rebind splitter after innerHTML reset
+  setTimeout(() => {
+    const sp = document.getElementById('detail-split-h');
+    if (sp) { sp.onmousedown = startDetailSplit; }
+    restoreDetailSplit();
+  }, 10);
 }
 
 function restoreDetailSplit() {
@@ -5223,7 +5240,7 @@ function renderDashboard() {
       <div id="dash-diag-panel" style="display:none;background:#0a1628;border:1px solid #c9a84c;border-left:3px solid #c9a84c;border-radius:4px;padding:14px 16px;margin-bottom:16px;font-family:monospace;font-size:11px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <span style="color:#c9a84c;font-size:10px;letter-spacing:0.1em">⚙ DASHBOARD DIAGNOSTIC</span>
-          <button onclick="document.getElementById('dash-diag-panel').style.display='none'" style="background:transparent;border:none;color:#666;cursor:pointer;font-size:14px">✕</button>
+          <button onclick="document.getElementById('dash-diag-panel').style.display='none';if(window._diagInterval){clearInterval(window._diagInterval);window._diagInterval=null;}" style="background:transparent;border:none;color:#666;cursor:pointer;font-size:14px">✕</button>
         </div>
         <div id="dash-diag-content" style="display:grid;grid-template-columns:1fr 1fr;gap:5px;color:#888">Refresh to populate.</div>
       </div>
@@ -5247,21 +5264,36 @@ function renderDashboard() {
   refreshDashboard();
 }
 
+function updateDiagNow() {
+  const p = document.getElementById('dash-diag-panel');
+  const dc = document.getElementById('dash-diag-content');
+  if (!p || p.style.display === 'none' || !dc) return;
+  const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
+  dc.innerHTML = [
+    ['gpCache rows', state.gpCache.length],
+    ['ordersHistoryCache rows', state.ordersHistoryCache.length],
+    ['cacheLoaded', String(state.cacheLoaded)],
+    ['gpLoadError', state.gpLoadError || '(none)'],
+    ['ordHistError', state.ordHistError || '(none)'],
+    ['cacheLoadError', state.cacheLoadError || '(none)'],
+    ['ordHistRaw', state._ordHistRaw !== null ? state._ordHistRaw : '(not set)'],
+    ['repFilter', repFilter || '(none)'],
+    ['reqsCache rows', state.reqsCache.length],
+  ].map(([k,v]) => {
+    const bad = v === 0 || v === false || (k==='gpLoadError'&&v!=='(none)') || (k==='ordHistError'&&v!=='(none)') || (k==='cacheLoadError'&&v!=='(none)');
+    return '<div style="color:#888">'+k+'</div><div style="color:'+(bad?'#e74c3c':'#ccc')+'">'+String(v)+'</div>';
+  }).join('');
+}
+
+let _diagInterval = null;
 function toggleDashDiag() {
   const p = document.getElementById('dash-diag-panel');
   if (!p) return;
   p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  if (_diagInterval) { clearInterval(_diagInterval); _diagInterval = null; }
   if (p.style.display === 'block') {
-    // Show immediate cache status even before refreshDashboard runs
-    const dc = document.getElementById('dash-diag-content');
-    if (dc && dc.innerHTML.includes('Refresh to populate')) {
-      dc.innerHTML = '<div style="color:#888">gpCache rows</div><div style="color:#ccc">' + state.gpCache.length + '</div>' +
-        '<div style="color:#888">ordersHistoryCache rows</div><div style="color:#ccc">' + state.ordersHistoryCache.length + '</div>' +
-        '<div style="color:#888">cacheLoaded</div><div style="color:#ccc">' + state.cacheLoaded + '</div>' +
-        '<div style="color:#888">gpLoadError</div><div style="color:' + (state.gpLoadError ? '#e74c3c' : '#ccc') + '">' + (state.gpLoadError || '(none)') + '</div>' +
-        '<div style="color:#888">ordHistError</div><div style="color:' + (state.ordHistError ? '#e74c3c' : '#ccc') + '">' + (state.ordHistError || '(none)') + '</div>' +
-        '<div style="color:#888">ordHistRaw rows</div><div style="color:#ccc">' + (state._ordHistRaw !== null ? state._ordHistRaw : '(not set)') + '</div>';
-    }
+    updateDiagNow();
+    _diagInterval = setInterval(updateDiagNow, 2000);
     refreshDashboard();
   }
 }
@@ -5291,12 +5323,7 @@ function setDashPeriod(period, btn) {
 
 async function refreshDashboard() {
   // If cache loaded but orders history empty, trigger a reload
-  if (state.cacheLoaded && state.ordersHistoryCache.length === 0 && !state._ordHistRetrying) {
-    state._ordHistRetrying = true;
-    state.cacheLoaded = false;
-    await ensureCacheLoaded();
-    state._ordHistRetrying = false;
-  }
+  // cache retry handled inside loadSupplementalData
   const from = document.getElementById('dash-from')?.value || '';
   const to   = document.getElementById('dash-to')?.value   || '';
   const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;

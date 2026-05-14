@@ -934,7 +934,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.34</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.35</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -5290,6 +5290,13 @@ function setDashPeriod(period, btn) {
 }
 
 async function refreshDashboard() {
+  // If cache loaded but orders history empty, trigger a reload
+  if (state.cacheLoaded && state.ordersHistoryCache.length === 0 && !state._ordHistRetrying) {
+    state._ordHistRetrying = true;
+    state.cacheLoaded = false;
+    await ensureCacheLoaded();
+    state._ordHistRetrying = false;
+  }
   const from = document.getElementById('dash-from')?.value || '';
   const to   = document.getElementById('dash-to')?.value   || '';
   const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
@@ -9103,21 +9110,23 @@ function startSplitH(e, leftId, rightId, splitterId) {
 
 function startDetailSplit(e) {
   e.preventDefault();
-  const splitter = document.getElementById('detail-split-h');
-  const bottom   = document.getElementById('detail-bottom');
-  if (!splitter || !bottom) return;
+  e.stopPropagation();
+  const bottom = document.getElementById('detail-bottom');
+  if (!bottom) return;
+  const splitter = e.currentTarget || e.target;
   splitter.classList.add('dragging');
   const startY = e.clientY;
   const startH = bottom.getBoundingClientRect().height;
   const panel  = bottom.parentElement;
-  const panelH = panel ? panel.getBoundingClientRect().height : window.innerHeight;
+  const panelH = panel ? panel.getBoundingClientRect().height : 600;
 
   function onMove(ev) {
     const delta = startY - ev.clientY;
-    const newH  = Math.max(120, Math.min(startH + delta, panelH - 100));
+    const newH  = Math.max(120, Math.min(startH + delta, panelH - 80));
     bottom.style.flex      = 'none';
     bottom.style.height    = newH + 'px';
     bottom.style.minHeight = newH + 'px';
+    bottom.style.maxHeight = newH + 'px';
     try { localStorage.setItem('it_split_detail_bottom', newH); } catch(ex) {}
   }
   function onUp() {

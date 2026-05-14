@@ -921,7 +921,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.29</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.30</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1195,21 +1195,25 @@ async function loadSupplementalData() {
       console.error(state.gpLoadError);
     }
 
-    // ── Fetch all tabs in parallel — ~3-5x faster than sequential ──
-    const [
-      contactRows, collRows, sigRowsRaw, openOrderRows,
-      invRows, collInvRows, ordHistRows,
-      reqRows, quoteRows,
-    ] = await Promise.all([
+    // ── Fetch in 3 waves of 3 — avoids Worker rate limits ──
+    state.ordHistError = null;
+    const [contactRows, invRows, ordHistRows] = await Promise.all([
       sheetsGet("'_CONTACTS'!A1:K50000").catch(() => []),
-      sheetsGet("'_COLLECTIONS'!A1:P5000").catch(() => []),
-      sheetsGet("'_SIGNATURES'!A1:D100").catch(() => []),
-      sheetsGet("'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L50000").catch(() => []),
-      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000").catch(() => []),
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A:I").catch(e => { state.ordHistError = e.message; return []; }),
+    ]);
+    state._ordHistRaw = ordHistRows.length;
+    await new Promise(r => setTimeout(r, 500));
+    const [reqRows, quoteRows, collRows] = await Promise.all([
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000").catch(() => []),
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_QUOTES'!A1:P50000").catch(() => []),
+      sheetsGet("'_COLLECTIONS'!A1:P5000").catch(() => []),
+    ]);
+    await new Promise(r => setTimeout(r, 500));
+    const [collInvRows, openOrderRows, sigRowsRaw] = await Promise.all([
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000").catch(() => []),
+      sheetsGet("'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
+      sheetsGet("'_SIGNATURES'!A1:D100").catch(() => []),
     ]);
 
     // Process contacts
@@ -1379,6 +1383,7 @@ async function loadSupplementalData() {
 
     console.log('Supplemental data loaded');
   } catch(e) {
+    state.cacheLoadError = e.message;
     console.error('Could not load supplemental data:', e);
   }
 }
@@ -2706,7 +2711,7 @@ function renderAccountsView() {
         </table>
       </div>
     </div>
-    <div class="splitter-h" id="main-splitter-h" onmousedown="startSplitH(event,'account-list','detail-panel','main-splitter-h')" style="background:rgba(82,130,190,0.5);width:8px"></div>
+    <div class="splitter-h" id="main-splitter-h" onmousedown="startSplitH(event,'account-list','detail-panel','main-splitter-h')" style="background:rgba(82,130,190,0.7);width:10px;cursor:col-resize;flex-shrink:0"></div>
     <div class="detail-panel" id="detail-panel">
       <div class="detail-empty">
         <div class="detail-empty-icon">◈</div>
@@ -5315,6 +5320,7 @@ async function refreshDashboard() {
       ['ordHistCols', state.ordersHistoryCache.length > 0 ? Object.keys(state.ordersHistoryCache[0]).join(', ') : '(empty)'],
       ['ordHist sample SALES_REP', state.ordersHistoryCache.length > 0 ? ('"' + (state.ordersHistoryCache[0].SALES_REP||'MISSING') + '"') : '(empty)'],
       ['ordHist sample ORDER_DATE', state.ordersHistoryCache.length > 0 ? ('"' + (state.ordersHistoryCache[0].ORDER_DATE||'MISSING') + '"') : '(empty)'],
+      ['cacheLoadError', state.cacheLoadError || '(none)'],
       ['ordHistError', state.ordHistError || '(none)'],
       ['ordHistRaw rows', state._ordHistRaw !== null ? state._ordHistRaw : '(not set)'],
       ['ordersFiltered (rep+date)', ordersFiltered.length],

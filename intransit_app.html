@@ -934,7 +934,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.31</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.33</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1321,13 +1321,20 @@ async function loadSupplementalData() {
 
     // Process orders history
     state._ordHistRaw = ordHistRows.length;
-    if (ordHistRows.length > 1) {
-      const hdrs=ordHistRows[0];
-      state.ordersHistoryCache=ordHistRows.slice(1).map(r=>{const obj={};hdrs.forEach((h,i)=>obj[h]=typeof r[i]==='string'?r[i].trim():(r[i]||''));return obj;});
-      console.log('Orders history loaded:', state.ordersHistoryCache.length);
+    try {
+      if (ordHistRows.length > 1) {
+        const hdrs=ordHistRows[0];
+        state.ordersHistoryCache=ordHistRows.slice(1).map(r=>{const obj={};hdrs.forEach((h,i)=>obj[h]=typeof r[i]==='string'?r[i].trim():(r[i]||''));return obj;});
+        console.log('Orders history loaded:', state.ordersHistoryCache.length);
+      } else {
+        state.ordHistError = 'ordHistRows only ' + ordHistRows.length + ' rows';
+      }
+    } catch(ohErr) {
+      state.ordHistError = 'Processing error: ' + ohErr.message;
+      console.error('Orders history processing failed:', ohErr);
     }
 
-        state.cacheLoaded = true;
+    state.cacheLoaded = true;
 
     // Load contact notes (non-blocking, after cacheLoaded)
     try {
@@ -1905,7 +1912,7 @@ function applyLanguage() {
   if (viewAsLabel) viewAsLabel.textContent = t('viewAsRep');
 
   // Re-render current view to pick up translated tab labels etc.
-  if (state.selectedAccount) renderDetail(state.selectedAccount);
+  if (state.selectedAccount) { renderDetail(state.selectedAccount); setTimeout(restoreDetailSplit, 50); }
 }
 
 // ── NDA MODAL ─────────────────────────────────────────────
@@ -2801,9 +2808,8 @@ function selectAccount(acc) {
   });
 
   renderDetail(acc);
+  setTimeout(restoreDetailSplit, 50);
 }
-
-function renderDetail(acc) {
   const panel = document.getElementById('detail-panel');
   if (!panel) return;
 
@@ -9089,6 +9095,34 @@ function startSplitH(e, leftId, rightId, splitterId) {
     document.removeEventListener('mouseup', onUp);
   }
 
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function startDetailSplit(e) {
+  e.preventDefault();
+  const splitter = document.getElementById('detail-split-h');
+  const bottom   = document.getElementById('detail-bottom');
+  if (!splitter || !bottom) return;
+  splitter.classList.add('dragging');
+  const startY = e.clientY;
+  const startH = bottom.getBoundingClientRect().height;
+  const panel  = bottom.parentElement;
+  const panelH = panel ? panel.getBoundingClientRect().height : window.innerHeight;
+
+  function onMove(ev) {
+    const delta = startY - ev.clientY;
+    const newH  = Math.max(120, Math.min(startH + delta, panelH - 100));
+    bottom.style.flex      = 'none';
+    bottom.style.height    = newH + 'px';
+    bottom.style.minHeight = newH + 'px';
+    try { localStorage.setItem('it_split_detail_bottom', newH); } catch(ex) {}
+  }
+  function onUp() {
+    splitter.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
 }

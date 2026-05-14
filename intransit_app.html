@@ -909,7 +909,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.23</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.24</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1143,7 +1143,24 @@ const SECURITY = {
 //  SUPPLEMENTAL DATA LOADING (Contacts, History, Collections)
 // ══════════════════════════════════════════════════════════
 async function loadSupplementalData() {
-  if (state.cacheLoaded && state.gpCache.length > 0) return;
+  if (state.cacheLoaded) {
+    // If cache loaded but GP is empty, retry GP only
+    if (state.gpCache.length === 0) {
+      state.gpLoadError = null;
+      try {
+        const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'");
+        if (gpRows && gpRows.length > 1) {
+          const hdrs = gpRows[0].map(h => (h||'').trim());
+          state.gpCache = gpRows.slice(1).map(r => {
+            const obj = {};
+            hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
+            return obj;
+          });
+        }
+      } catch(e) { state.gpLoadError = 'GP retry error: ' + e.message; }
+    }
+    return;
+  }
   try {
     // ── Load GP FIRST — most critical, must not be rate-limited by other fetches ──
     state.gpLoadError = null;
@@ -1174,6 +1191,7 @@ async function loadSupplementalData() {
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L50000").catch(() => []),
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A:I").catch(e => { state.ordHistError = e.message; return []; }),
     ]);
+    state._ordHistRaw = ordHistRows.length; // set immediately so DIAG can show it
     await new Promise(r => setTimeout(r, 500));
     const [reqRows, quoteRows, collRows] = await Promise.all([
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000").catch(() => []),
@@ -2481,7 +2499,7 @@ function setFilter(f) {
 
 // Single gatekeeper for supplemental data — prevents duplicate fetches
 function ensureCacheLoaded() {
-  if (state.cacheLoaded && state.gpCache.length > 0) return Promise.resolve();
+  if (state.cacheLoaded) return Promise.resolve();
   if (state._cacheLoadingPromise) return state._cacheLoadingPromise;
   state._cacheLoadingPromise = loadSupplementalData().finally(() => {
     state._cacheLoadingPromise = null;

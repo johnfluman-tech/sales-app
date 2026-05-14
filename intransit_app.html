@@ -345,6 +345,19 @@ body::before {
 .detail-tab:hover { color: var(--text-2); }
 .detail-tab.active { color: var(--blue-b); border-bottom-color: var(--blue-b); }
 .detail-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
+.detail-top { flex-shrink: 0; }
+.detail-bottom { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 120px; }
+.detail-split-h {
+  height: 6px; min-height: 6px; width: 100%; flex-shrink: 0;
+  background: rgba(82,130,190,0.5); cursor: row-resize; position: relative; z-index: 10;
+  transition: background 0.15s;
+}
+.detail-split-h:hover, .detail-split-h.dragging { background: var(--blue-b); }
+.detail-split-h::after {
+  content: '···'; position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%); color: rgba(255,255,255,0.6);
+  font-size: 14px; letter-spacing: 2px; pointer-events: none;
+}
 
 /* ── EMPTY STATE ───────────────────────── */
 .detail-empty {
@@ -921,7 +934,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.30</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.31</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -2842,24 +2855,36 @@ function renderDetail(acc) {
       <div class="revenue-bars">${barsHtml}</div>
     </div>
 
-    <div class="detail-tabs">
-      ${tabs.map(t => `
-        <div class="detail-tab ${t === state.activeDetailTab ? 'active' : ''}"
-             onclick="switchDetailTab('${t}')">${tabLabels[t]}</div>
-      `).join('')}
-    </div>
+    <div class="detail-split-h" id="detail-split-h" onmousedown="startDetailSplit(event)"></div>
 
-    <div class="detail-body" id="detail-body">
-      ${renderDetailTab(acc, state.activeDetailTab)}
-    </div>
+    <div class="detail-bottom" id="detail-bottom">
+      <div class="detail-tabs">
+        ${tabs.map(t => `
+          <div class="detail-tab ${t === state.activeDetailTab ? 'active' : ''}"
+               onclick="switchDetailTab('${t}')">${tabLabels[t]}</div>
+        `).join('')}
+      </div>
 
-    ${state.activeDetailTab === 'notes' ? renderNoteInput(acc) : ''}
+      <div class="detail-body" id="detail-body">
+        ${renderDetailTab(acc, state.activeDetailTab)}
+      </div>
+
+      ${state.activeDetailTab === 'notes' ? renderNoteInput(acc) : ''}
+    </div>
   `;
+}
+
+function restoreDetailSplit() {
+  const saved = localStorage.getItem('it_split_detail_bottom');
+  if (saved) {
+    const bottom = document.getElementById('detail-bottom');
+    if (bottom) { bottom.style.flex = 'none'; bottom.style.height = saved + 'px'; }
+  }
 }
 
 function switchDetailTab(tab) {
   state.activeDetailTab = tab;
-  if (state.selectedAccount) renderDetail(state.selectedAccount);
+  if (state.selectedAccount) { renderDetail(state.selectedAccount); setTimeout(restoreDetailSplit, 10); }
 }
 
 function renderDetailTab(acc, tab) {

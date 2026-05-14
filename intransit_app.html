@@ -5252,6 +5252,8 @@ async function refreshDashboard() {
       ['gpLoadError', state.gpLoadError || '(none)'],
       ['rows in date range', inRange],
       ['gpFiltered (rep+date)', gpFiltered.length],
+      ['ordersHistoryCache rows', state.ordersHistoryCache.length],
+      ['ordersFiltered (rep+date)', ordersFiltered.length],
       ['repFilter', repFilter || '(none)'],
     ];
     _dc.innerHTML = rows.map(([k,v]) => {
@@ -5269,10 +5271,15 @@ async function refreshDashboard() {
     return true;
   });
   const booked     = ordersFiltered.reduce((s, r) => s + parseMoney(r.EXTENDED_PRICE || r.ORDER_TOTAL || 0), 0);
-  // Booked GP: match order lines to GP cache by customer+date to estimate GP on booked orders
-  // Simpler: use same GP% as shipped (best available estimate for booked)
-  const bookedGPPct = gpPct; // use shipped GP% as proxy for booked margin
-  const bookedGP    = booked * (bookedGPPct / 100);
+  // Real booked GP from COST column (added to _ORDERS_HISTORY after script update)
+  const bookedGP   = ordersFiltered.reduce((s, r) => {
+    const ep   = parseMoney(r.EXTENDED_PRICE || 0);
+    const cost = parseMoney(r.COST || 0);
+    const gp   = parseMoney(r.GP  || 0);
+    if (gp !== 0) return s + gp;
+    return s + (cost > 0 ? ep - cost : 0);
+  }, 0);
+  const bookedGPPct = booked > 0 ? (bookedGP / booked * 100) : 0;
   const bookedLabel = 'Orders Booked';
 
   const reqsFiltered = state.reqsCache.filter(r => {
@@ -5299,7 +5306,7 @@ async function refreshDashboard() {
     <div class="stat-card">
       <div class="stat-label">${bookedLabel}</div>
       <div class="stat-value blue">$${formatNum(booked)}</div>
-      <div class="stat-sub">${ordersFiltered.length} lines · GP est. $${formatNum(bookedGP)} (${bookedGPPct.toFixed(1)}%)</div>
+      <div class="stat-sub">${ordersFiltered.length} lines · GP $${formatNum(bookedGP)} (${bookedGPPct > 0 ? bookedGPPct.toFixed(1)+'%' : 'no cost data yet'})</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Gross Profit</div>

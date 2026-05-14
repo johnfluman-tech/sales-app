@@ -909,7 +909,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence</div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.13</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1368,7 +1368,7 @@ async function loadSupplementalData() {
 
     // Load orders history (dated orders for booked calc)
     try {
-      const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A1:H15000");
+      const ordHistRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "_ORDERS_HISTORY");
       if (ordHistRows.length > 1) {
         const hdrs = ordHistRows[0];
         state.ordersHistoryCache = ordHistRows.slice(1).map(r => {
@@ -1380,31 +1380,24 @@ async function loadSupplementalData() {
       }
     } catch(e) { console.error('Orders history load failed:', e.message); }
 
-    // Load GP data — fetched in 5000-row chunks to stay under Worker timeout
+    // Load GP data — fetch whole tab (no row limit), trim CHAR padding
     state.gpLoadError = null;
     try {
-      const hdrRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'!A1:I1");
-      if (!hdrRows.length) throw new Error('Could not read _GP headers');
-      const hdrs = hdrRows[0].map(h => (h||'').trim());
-      let allGP = [];
-      const CHUNK = 5000;
-      for (let start = 2; start < 30000; start += CHUNK) {
-        const end = start + CHUNK - 1;
-        const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID,
-          "'_GP'!A" + start + ":I" + end);
-        if (!rows || rows.length === 0) break;
-        for (const r of rows) {
+      const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "_GP");
+      if (gpRows && gpRows.length > 1) {
+        const hdrs = gpRows[0].map(h => (h||'').trim());
+        state.gpCache = gpRows.slice(1).map(r => {
           const obj = {};
           hdrs.forEach((h, i) => obj[h] = typeof r[i] === 'string' ? r[i].trim() : (r[i] || ''));
-          allGP.push(obj);
-        }
-        if (rows.length < CHUNK) break; // last chunk
+          return obj;
+        });
+        console.log('GP cache loaded:', state.gpCache.length, 'rows');
+      } else {
+        state.gpLoadError = '_GP returned ' + (gpRows ? gpRows.length : 0) + ' rows';
+        console.warn(state.gpLoadError);
       }
-      state.gpCache = allGP;
-      console.log('GP cache loaded:', state.gpCache.length, 'rows');
-      if (allGP.length === 0) state.gpLoadError = '_GP returned 0 data rows';
     } catch(e) {
-      state.gpLoadError = 'GP load error: ' + e.message;
+      state.gpLoadError = 'GP error: ' + e.message;
       console.error(state.gpLoadError);
     }
 
@@ -1446,7 +1439,7 @@ async function loadSupplementalData() {
     }
 
     // Load contact revenue in background (non-blocking — tab may not exist yet)
-    sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_REVENUE'!A1:G5000")
+    sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "_CONTACT_REVENUE")
       .then(crRows => {
         if (crRows.length > 1) {
           const hdrs = crRows[0];
@@ -5374,20 +5367,15 @@ async function refreshDashboard() {
   const _dc = document.getElementById('dash-diag-content');
   if (_dc && _dp && _dp.style.display !== 'none') {
     const s0 = state.gpCache[0];
-    const inRange = state.gpCache.filter(r => { const d=normDate(r[gpDateCol]||''); return d>=from&&d<=to; }).length;
+    const inRange = state.gpCache.filter(r=>{const d=normDate(r[gpDateCol]||'');return d>=from&&d<=to;}).length;
     const uReps = [...new Set(state.gpCache.slice(0,500).map(r=>(r[gpSalesRepCol]||'').trim()).filter(Boolean))];
-    const rows = [
-      ['gpCache total rows', state.gpCache.length],
-      ['gpLoadError', state.gpLoadError || '(none)'],
-      ['rows in date range', inRange],
-      ['gpFiltered (rep+date)', gpFiltered.length],
-      ['repFilter', repFilter || '(none)'],
-      ['sample SALES_REP', s0 ? '"'+s0[gpSalesRepCol]+'"' : '(empty)'],
-      ['sample EXTENDED_PRICE', s0 ? '"'+s0[gpInvTotalCol]+'"' : '(empty)'],
-      ['unique SALES_REP values', uReps.join(', ') || '(none)'],
-    ];
-    _dc.innerHTML = rows.map(([k,v]) => {
-      const bad = v===0||String(v).includes('(empty)')||(k==='gpLoadError'&&v!=='(none)');
+    const rows = [['gpCache rows',state.gpCache.length],['gpLoadError',state.gpLoadError||'(none)'],
+      ['in date range',inRange],['gpFiltered',gpFiltered.length],['repFilter',repFilter||'(none)'],
+      ['sample SALES_REP',s0?'"'+s0[gpSalesRepCol]+'"':'(empty)'],
+      ['sample EXTENDED_PRICE',s0?'"'+s0[gpInvTotalCol]+'"':'(empty)'],
+      ['unique SALES_REP',uReps.join(', ')||'(none)']];
+    _dc.innerHTML = rows.map(([k,v])=>{
+      const bad=v===0||String(v).includes('(empty)')||(k==='gpLoadError'&&v!=='(none)');
       return '<div style="color:#888">'+k+'</div><div style="color:'+(bad?'#e74c3c':'#ccc')+';word-break:break-all">'+String(v).replace(/</g,'&lt;')+'</div>';
     }).join('');
   }

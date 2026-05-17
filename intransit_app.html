@@ -1239,6 +1239,7 @@ async function loadSupplementalData() {
       for (let r=1;r<contactRows.length;r++) {
         const row=contactRows[r]; const key=(row[iName]||'').trim(); if(!key) continue;
         if(!state.contactsCache[key]) state.contactsCache[key]=[];
+        if(!Array.isArray(state.contactsCache[key])) state.contactsCache[key]=[];
         state.contactsCache[key].push({name:(row[iCName]||'').trim(),title:(row[iTitle]||'').trim(),email:(row[iEmail]||'').trim(),phone:(row[iPhone]||'').trim(),mobile:(row[iMob]||'').trim(),type:(row[iType]||'').trim()});
       }
     }

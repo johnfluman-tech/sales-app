@@ -1392,7 +1392,7 @@ async function loadSupplementalData() {
     }
 
     // _CONTACT_REVENUE loading disabled
-    // sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_REVENUE'")
+    /* sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_REVENUE'")
       .then(crRows => {
         if (crRows.length > 1) {
           const hdrs = crRows[0];
@@ -1419,7 +1419,7 @@ async function loadSupplementalData() {
           console.log('Contact revenue loaded:', Object.keys(state.contactRevenueCache).length, 'accounts');
         }
       })
-      .catch(() => { state.contactRevenueCache = {}; });
+      .catch(() => { state.contactRevenueCache = {}; }); */
 
     console.log('Supplemental data loaded');
   } catch(e) {

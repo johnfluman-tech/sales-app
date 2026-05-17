@@ -1150,6 +1150,8 @@ const CONFIG = {
     // etc — add each rep's email below
   },
   API_BASE: 'http://localhost:5050',  // Local Python API on the server
+  SUPABASE_URL: 'https://hutmehcaijdxbqchuivh.supabase.co',
+  SUPABASE_KEY: 'your_full_publishable_key_here',
 };
 
 // ══════════════════════════════════════════════════════
@@ -9226,6 +9228,46 @@ function restoreSplitPositions() {
       el.style.flexShrink = '0';
     }
   });
+}
+
+
+async function sbGet(table, params) {
+  try {
+    let url = CONFIG.SUPABASE_URL + '/rest/v1/' + table + '?';
+    if (params) url += params;
+    url += '&limit=50000';
+    const res = await fetch(url, {
+      headers: {
+        'apikey': CONFIG.SUPABASE_KEY,
+        'Authorization': 'Bearer ' + CONFIG.SUPABASE_KEY,
+      }
+    });
+    if (!res.ok) throw new Error('Supabase error ' + res.status);
+    return await res.json();
+  } catch(e) {
+    console.warn('Supabase read failed:', e.message);
+    return null;
+  }
+}
+
+async function sbUpsert(table, rows) {
+  try {
+    const res = await fetch(CONFIG.SUPABASE_URL + '/rest/v1/' + table, {
+      method: 'POST',
+      headers: {
+        'apikey': CONFIG.SUPABASE_KEY,
+        'Authorization': 'Bearer ' + CONFIG.SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify(rows)
+    });
+    if (!res.ok) throw new Error('Supabase upsert error ' + res.status);
+    return true;
+  } catch(e) {
+    console.warn('Supabase write failed:', e.message);
+    return false;
+  }
 }
 
 // Restore positions after any view switch

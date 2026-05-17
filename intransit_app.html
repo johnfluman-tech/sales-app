@@ -1293,6 +1293,7 @@ async function loadSupplementalData() {
       const iNote=hdrs.indexOf('COLLECTION_NOTE'),iRisk=hdrs.indexOf('RISK_FLAG'),iAppHold=hdrs.indexOf('APP_HOLD');
       for (let r=1;r<collRows.length;r++) {
         const row=collRows[r]; const key=(row[iName]||'').trim(); if(!key) continue;
+        if(!state.collectionsCache) state.collectionsCache={};
         state.collectionsCache[key]={balance:parseFloat(row[iBal])||0,credit:parseFloat(row[iCred])||0,avgPay:parseFloat(row[iPay])||0,terms:row[iTerms]||'',daysPastDue:(()=>{const d=parseInt(row[iDaysPast])||0;return d>3650?0:d;})(),note:row[iNote]||'',risk:row[iRisk]||'',appHold:row[iAppHold]||''};
       }
     }

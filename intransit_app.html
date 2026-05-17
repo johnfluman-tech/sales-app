@@ -1391,8 +1391,8 @@ async function loadSupplementalData() {
       setTimeout(() => renderFollowUpCommandCenter(), 100);
     }
 
-    // Load contact revenue in background (non-blocking — tab may not exist yet)
-    sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_REVENUE'")
+    // _CONTACT_REVENUE loading disabled
+    // sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_REVENUE'")
       .then(crRows => {
         if (crRows.length > 1) {
           const hdrs = crRows[0];

@@ -1409,8 +1409,7 @@ async function loadSupplementalData() {
             const name = (row[iOby]||'').trim();
             if (!cust || !name) continue;
             if (!state.contactRevenueCache[cust]) state.contactRevenueCache[cust] = {};
-            if (!state.contactRevenueCache[cust]) state.contactRevenueCache[cust] = {};
-          state.contactRevenueCache[cust][name] = {
+            state.contactRevenueCache[cust][name] = {
               orderCount: parseInt(row[iCnt])||0,
               shipped:    parseFloat(row[iShip])||0,
               gp:         parseFloat(row[iGp])||0,

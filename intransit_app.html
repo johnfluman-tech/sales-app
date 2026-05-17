@@ -1425,6 +1425,7 @@ async function loadSupplementalData() {
   } catch(e) {
     state.cacheLoadError = e.message;
     console.error('Could not load supplemental data:', e);
+    console.error('Stack:', e.stack);
   }
 }
 

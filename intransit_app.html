@@ -4375,7 +4375,12 @@ function schedConfirm(accName) {
 
   // Build events — for recurring, create next 12 occurrences
   const eventsToAdd = [];
-  const baseEvent = { type, accName, contactName, contactEmail, date, time, note, repeat };
+  // Look up phone/mobile from contacts cache
+  const evContacts = state.contactsCache[accName] || [];
+  const evContact = evContacts.find(ct => ct.name === contactName) || evContacts[0] || {};
+  const contactPhone = evContact.phone || '';
+  const contactMobile = evContact.mobile || '';
+  const baseEvent = { type, accName, contactName, contactEmail, contactPhone, contactMobile, date, time, note, repeat };
 
   eventsToAdd.push({ ...baseEvent });
 
@@ -4855,6 +4860,33 @@ function renderFollowUpCommandCenter() {
         rowBody.appendChild(noteEl);
       }
 
+      if (ev.contactPhone || ev.contactMobile) {
+        const phoneEl = document.createElement('div');
+        phoneEl.style.cssText = 'font-size:10px;color:var(--text-2);margin-bottom:2px';
+        const parts = [];
+        if (ev.contactPhone) parts.push('📞 ' + ev.contactPhone);
+        if (ev.contactMobile) parts.push('📱 ' + ev.contactMobile);
+        phoneEl.textContent = parts.join('  ');
+        rowBody.appendChild(phoneEl);
+      }
+      if (ev.contactPhone || ev.contactMobile) {
+        const phoneEl = document.createElement('div');
+        phoneEl.style.cssText = 'font-size:10px;color:var(--text-2);margin-bottom:2px';
+        const parts = [];
+        if (ev.contactPhone) parts.push('📞 ' + ev.contactPhone);
+        if (ev.contactMobile) parts.push('📱 ' + ev.contactMobile);
+        phoneEl.textContent = parts.join('  ');
+        rowBody.appendChild(phoneEl);
+      }
+      if (ev.contactPhone || ev.contactMobile) {
+        const phoneEl = document.createElement('div');
+        phoneEl.style.cssText = 'font-size:10px;color:var(--text-2);margin-bottom:2px';
+        const parts = [];
+        if (ev.contactPhone) parts.push('📞 ' + ev.contactPhone);
+        if (ev.contactMobile) parts.push('📱 ' + ev.contactMobile);
+        phoneEl.textContent = parts.join('  ');
+        rowBody.appendChild(phoneEl);
+      }
       if (ev.contactEmail) {
         const emailEl = document.createElement('div');
         emailEl.style.cssText = 'font-size:10px;color:var(--blue-bright);margin-bottom:4px';
@@ -4926,9 +4958,12 @@ function renderFollowUpCommandCenter() {
       meta.className = 'iq-row-meta';
       const accData = state.accounts.find(a => a.name === ev.accName);
       if (accData) {
+        const buyerRevData = (state.contactRevenueCache[ev.accName] || {})[ev.contactName] || null;
+        const buyerRevAmt = buyerRevData ? buyerRevData.shipped : 0;
         meta.innerHTML =
+          (buyerRevAmt > 0 ? '<div class="iq-meta-val" style="color:var(--gold);font-size:11px">$' + formatNum(buyerRevAmt) + '</div><div class="iq-meta-lbl">BUYER</div>' : '') +
           '<div class="iq-meta-val" style="color:var(--blue-bright)">$' + formatNum(accData.total||0) + '</div>' +
-          '<div class="iq-meta-lbl">LIFETIME</div>';
+          '<div class="iq-meta-lbl">SINCE 2020</div>';
       }
       row.appendChild(meta);
 

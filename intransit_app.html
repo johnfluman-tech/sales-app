@@ -4427,15 +4427,6 @@ function iqScoreColor(s) {
 let iqSortMode = 'score';
 function iqSetSort(mode) {
   iqSortMode = mode;
-  // Update button styles
-  ['score','buyer','acct'].forEach(m => {
-    const btn = document.getElementById('iq-sort-' + m);
-    if (btn) {
-      btn.style.background = m === mode ? 'var(--blue-b)' : 'transparent';
-      btn.style.color = m === mode ? '#fff' : 'var(--text-3)';
-    }
-  });
-  // Re-render the whole command center with new sort
   renderFollowUpCommandCenter();
 }
 
@@ -4445,12 +4436,12 @@ function iqReason(c) {
   const rev = c.totalRevenue || 0;
 
   // Show personal revenue if known, otherwise account total
-  if (c.contactRevenue && c.contactRevenue > 0) {
-    parts.push('Buyer: $' + formatNum(c.contactRevenue));
-    parts.push('Acct: $' + formatNum(rev) + ' lifetime');
-  } else {
-    parts.push('Acct: $' + formatNum(rev) + ' lifetime');
+  // Show buyer personal revenue if available
+  const buyerRev = c.contactRevenue || (c.orderedByBuyers && c.orderedByBuyers[0] && c.orderedByBuyers[0].name === c.contactName ? c.orderedByBuyers[0].shipped : 0);
+  if (buyerRev && buyerRev > 0) {
+    parts.push('Buyer: $' + formatNum(buyerRev) + ' shipped');
   }
+  if (rev > 0) parts.push('Acct: $' + formatNum(rev) + ' lifetime');
 
   if (ds > 180) parts.push('no order in ' + ds + 'd');
   else if (ds > 60) parts.push('going cold — ' + ds + 'd since last order');
@@ -4598,6 +4589,8 @@ function renderFollowUpCommandCenter() {
     let bestContactEmail = acc.contactEmail || null;
     let bestContactPhone = acc.contactPhone || acc.contactMobile || null;
     let bestContactRevenue = null; // personal revenue if known
+    // Calculate buyer revenue from invoice history if not in contactRevenueCache
+    const accInvoices = (state.historyCache[acc.name.trim()] || {}).invoices || [];
 
     if (hasRevData) {
       // Find the top revenue contact from ORDERED_BY data
@@ -5059,8 +5052,17 @@ function renderFollowUpCommandCenter() {
       } else {
         window._iqLastPicks = aiPicks;
         let sortedPicks = [...aiPicks];
-        if (iqSortMode === 'buyer') sortedPicks.sort((a,b) => (b.contactRevenue||b.totalRevenue||0) - (a.contactRevenue||a.totalRevenue||0));
+        if (iqSortMode === 'buyer') sortedPicks.sort((a,b) => (b.contactRevenue||0) - (a.contactRevenue||0));
         else if (iqSortMode === 'acct') sortedPicks.sort((a,b) => (b.totalRevenue||0) - (a.totalRevenue||0));
+        else sortedPicks.sort((a,b) => b.score - a.score);
+        // Update sort button highlights
+        ['score','buyer','acct'].forEach(m => {
+          const btn = document.getElementById('iq-sort-' + m);
+          if (btn) {
+            btn.style.background = m === iqSortMode ? 'var(--blue-b)' : 'transparent';
+            btn.style.color = m === iqSortMode ? '#fff' : 'var(--text-3)';
+          }
+        });
         sortedPicks.forEach((c, idx) => aiList.appendChild(renderAiRow(c, idx, false)));
       }
     }

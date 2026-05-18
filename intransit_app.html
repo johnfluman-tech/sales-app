@@ -1427,6 +1427,30 @@ async function loadSupplementalData() {
       })
       .catch(() => { state.contactRevenueCache = {}; }); */
 
+    // Build contactRevenueCache from gpCache BUYER_NAME field
+    if (state.gpCache && state.gpCache.length > 0) {
+      state.contactRevenueCache = {};
+      state.gpCache.forEach(row => {
+        const cust = (row['CUSTOMER_NAME'] || '').trim();
+        const buyer = (row['BUYER_NAME'] || '').trim();
+        const shipped = parseFloat(row['EXTENDED_PRICE']) || 0;
+        const gp = parseFloat(row['GP']) || 0;
+        const date = (row['INVOICE_DATE'] || '').trim();
+        if (!cust || !buyer || shipped <= 0) return;
+        if (!state.contactRevenueCache[cust]) state.contactRevenueCache[cust] = {};
+        if (!state.contactRevenueCache[cust][buyer]) {
+          state.contactRevenueCache[cust][buyer] = { shipped: 0, gp: 0, orderCount: 0, lastOrder: '' };
+        }
+        state.contactRevenueCache[cust][buyer].shipped += shipped;
+        state.contactRevenueCache[cust][buyer].gp += gp;
+        state.contactRevenueCache[cust][buyer].orderCount += 1;
+        if (date > state.contactRevenueCache[cust][buyer].lastOrder) {
+          state.contactRevenueCache[cust][buyer].lastOrder = date;
+        }
+      });
+      console.log('Buyer revenue built:', Object.keys(state.contactRevenueCache).length, 'accounts');
+    }
+
     console.log('Supplemental data loaded');
   } catch(e) {
     state.cacheLoadError = e.message;

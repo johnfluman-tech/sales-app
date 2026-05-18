@@ -6367,7 +6367,7 @@ function selectCollectionsAccount(name) {
   const c = state.collectionsCache[name] || {};
   const acc = state.accounts.find(a => a.name.trim() === name.trim());
 
-  // Contact lookup — 3-tier fallback: exact → case-insensitive → partial
+  // Contact lookup -- 4-tier fallback: exact -> case-insensitive -> partial start -> any word match
   let rawContacts = state.contactsCache[name] || [];
   if (rawContacts.length === 0) {
     const nameLower = name.trim().toLowerCase();
@@ -6375,8 +6375,19 @@ function selectCollectionsAccount(name) {
     if (matchKey) rawContacts = state.contactsCache[matchKey] || [];
   }
   if (rawContacts.length === 0) {
-    const nameStart = name.trim().toLowerCase().slice(0, 20);
+    const nameStart = name.trim().toLowerCase().slice(0, 30);
     const matchKey = Object.keys(state.contactsCache).find(k => k.trim().toLowerCase().startsWith(nameStart));
+    if (matchKey) rawContacts = state.contactsCache[matchKey] || [];
+  }
+  if (rawContacts.length === 0) {
+    const nameStart = name.trim().toLowerCase().slice(0, 15);
+    const matchKey = Object.keys(state.contactsCache).find(k => k.trim().toLowerCase().includes(nameStart));
+    if (matchKey) rawContacts = state.contactsCache[matchKey] || [];
+  }
+  if (rawContacts.length === 0) {
+    // Last resort: match first significant word (skip short words)
+    const firstWord = name.trim().toLowerCase().split(/\s+/).find(w => w.length > 4) || name.trim().toLowerCase().slice(0,8);
+    const matchKey = Object.keys(state.contactsCache).find(k => k.trim().toLowerCase().startsWith(firstWord));
     if (matchKey) rawContacts = state.contactsCache[matchKey] || [];
   }
   const allContacts = rawContacts.filter(ct => ct.email);

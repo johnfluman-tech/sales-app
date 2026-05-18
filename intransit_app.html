@@ -4423,6 +4423,33 @@ function iqScoreColor(s) {
   return 'var(--text-3)';
 }
 
+// IQ sort state
+let iqSortMode = 'score';
+function iqSetSort(mode) {
+  iqSortMode = mode;
+  // Update button styles
+  ['score','buyer','acct'].forEach(m => {
+    const btn = document.getElementById('iq-sort-' + m);
+    if (btn) {
+      btn.style.background = m === mode ? 'var(--blue-b)' : 'transparent';
+      btn.style.color = m === mode ? '#fff' : 'var(--text-3)';
+    }
+  });
+  // Re-render picks panel with new sort
+  const aiPanel = document.getElementById('iq-ai-panel');
+  if (!aiPanel) return;
+  const picksList = aiPanel.querySelector('.iq-picks-list');
+  if (!picksList) return;
+  const repKey = state.viewAsRep || state.repId;
+  const hidden = JSON.parse(localStorage.getItem('iq_hidden_' + repKey) || '[]');
+  let picks = (window._iqLastPicks || []).filter(p => !hidden.includes(p.accName));
+  if (mode === 'buyer') picks = [...picks].sort((a,b) => (b.contactRevenue||0) - (a.contactRevenue||0));
+  else if (mode === 'acct') picks = [...picks].sort((a,b) => (b.totalRevenue||0) - (a.totalRevenue||0));
+  else picks = [...picks].sort((a,b) => b.score - a.score);
+  picksList.innerHTML = '';
+  picks.forEach((p,i) => picksList.appendChild(renderAiRow(p, i, false)));
+}
+
 function iqReason(c) {
   const parts = [];
   const ds = c.daysSince || 999;
@@ -4430,12 +4457,10 @@ function iqReason(c) {
 
   // Show personal revenue if known, otherwise account total
   if (c.contactRevenue && c.contactRevenue > 0) {
-    parts.push('Personal: $' + formatNum(c.contactRevenue) + ' ordered');
-    if (rev > 0 && Math.abs(c.contactRevenue - rev) > 1000) {
-      parts.push('Acct total: $' + formatNum(rev));
-    }
-  } else if (rev > 50000) {
-    parts.push('Account: $' + formatNum(rev) + ' lifetime');
+    parts.push('Buyer: $' + formatNum(c.contactRevenue));
+    parts.push('Acct: $' + formatNum(rev) + ' lifetime');
+  } else {
+    parts.push('Acct: $' + formatNum(rev) + ' lifetime');
   }
 
   if (ds > 180) parts.push('no order in ' + ds + 'd');
@@ -4922,6 +4947,12 @@ function renderFollowUpCommandCenter() {
     '<div style="display:flex;gap:0;flex:1">' +
       '<button id="iq-tab-picks" onclick="iqSwitchTab(\'picks\')" style="flex:1;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer;letter-spacing:0.08em">✦ AI PICKS (' + aiPicks.length + ')</button>' +
       '<button id="iq-tab-hidden" onclick="iqSwitchTab(\'hidden\')" style="flex:1;background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer;letter-spacing:0.08em">HIDDEN (' + hiddenPicks.length + ')</button>' +
+    '</div>' +
+    '<div style="display:flex;gap:0;border-top:1px solid var(--border)">' +
+      '<span style="font-family:var(--mono);font-size:8px;color:var(--text-3);padding:4px 8px;align-self:center">SORT:</span>' +
+      '<button id="iq-sort-score" onclick="iqSetSort(\'score\')" style="flex:1;background:var(--blue-b);border:none;border-left:1px solid var(--border);color:#fff;font-family:var(--mono);font-size:8px;padding:4px 6px;cursor:pointer">AI SCORE</button>' +
+      '<button id="iq-sort-buyer" onclick="iqSetSort(\'buyer\')" style="flex:1;background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:8px;padding:4px 6px;cursor:pointer">BUYER $</button>' +
+      '<button id="iq-sort-acct" onclick="iqSetSort(\'acct\')" style="flex:1;background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:8px;padding:4px 6px;cursor:pointer">ACCT $</button>' +
     '</div>';
   aiPanel.appendChild(aiHdr);
 
@@ -5037,6 +5068,7 @@ function renderFollowUpCommandCenter() {
       if (!aiPicks.length) {
         aiList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:11px">Loading recommendations...<br><span style="font-size:10px">Data loads in background</span></div>';
       } else {
+        window._iqLastPicks = aiPicks;
         aiPicks.forEach((c, idx) => aiList.appendChild(renderAiRow(c, idx, false)));
       }
     }

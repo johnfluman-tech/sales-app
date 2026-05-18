@@ -4465,7 +4465,7 @@ function iqReason(c) {
   if (buyerRev && buyerRev > 0) {
     parts.push('Buyer: $' + formatNum(buyerRev) + ' shipped');
   }
-  if (rev > 0) parts.push('Acct: $' + formatNum(rev) + ' lifetime');
+  if (rev > 0) parts.push('Acct: $' + formatNum(rev) + ' since 2020');
 
   if (ds > 180) parts.push('no order in ' + ds + 'd');
   else if (ds > 60) parts.push('going cold — ' + ds + 'd since last order');

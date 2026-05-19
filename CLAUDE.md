@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A single-file SPA sales intelligence dashboard for Intransit Technologies. The entire frontend is `intransit_app.html` (~11,500 lines of vanilla JS/HTML/CSS — no build step, no frameworks). A Python backend script (`C:\scripts\sales_report.py` on INTRANSIT-RDS02) aggregates SQL Server data and writes to Google Sheets and Supabase.
+A single-file SPA sales intelligence dashboard for Intransit Technologies. The entire frontend is `intransit_app.html` (~11,800 lines of vanilla JS/HTML/CSS — no build step, no frameworks). A Python backend script (`C:\scripts\sales_report.py` on INTRANSIT-RDS02) aggregates SQL Server data and writes to Google Sheets and Supabase.
 
 Live: https://johnfluman-tech.github.io/sales-app/intransit_app.html
 
@@ -37,10 +37,19 @@ Google Sign-In (GIS OAuth) → localStorage (it_token, it_anthro_key, it_sb_key)
 | ID | Purpose |
 |----|---------|
 | `1xH_OC_fvSwQWZet95xBlJ951LsaQWru-glv2rkSnDm4` | Main (per-rep tabs, MASTER, _LOG, _COLLECTIONS, _CONTACTS, _OPEN_ORDERS, _CONTACT_NOTES) — **AT 10M CELL LIMIT** |
-| `192ELLBgiEUZ3z6ytkWXbmA24wS2BjHmclJdf_UF_c24` | History (_GP 22K rows, _INVOICE_HISTORY, _SIGNATURES, _ATTACK_PLAN, _NDA_LOG) |
+| `192ELLBgiEUZ3z6ytkWXbmA24wS2BjHmclJdf_UF_c24` | History (_GP 22K rows, _INVOICE_HISTORY, _SIGNATURES, _ATTACK_PLAN, _NDA_LOG, _CONTACT_NOTES, _SUGGESTIONS) |
 | `12dJ0eLFQse-_pi1k6rXc25yTkwwYTjMm32v11tGKeRo` | Activity (_REQS ~21K, _QUOTES ~17K) |
 
 **All new tabs go in the History sheet** — Main is full.
+
+### _CONTACT_NOTES Sheet (CRITICAL — in History, not Main)
+- Lives in `CONFIG.HISTORY_SPREADSHEET_ID` — NOT the Main sheet
+- Columns: `ACCOUNT_NAME, CONTACT_NAME, TYPE, NOTE, DATE, REP` (header in row 1)
+- All reads must use `sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_NOTES'!A1:Z2000")`
+- All writes must pass `CONFIG.HISTORY_SPREADSHEET_ID` as 3rd arg to `sheetsAppend` / `sheetsUpdate`
+- `state.contactNotesCache` must always be an **array** (not dict): `[['ACCOUNT_NAME',...], [row], ...]`
+- Startup loader (inside `loadSupplementalData`) populates `state.contactNotesCache` from this sheet
+- Functions that save and update cache: `saveContactNote`, `saveCollectionsNote`, `iqSaveLog`, `saveContactNoteFromView`
 
 ### Key App State & Cache Pattern
 - `ensureCacheLoaded()` is the entry point for data — never call `loadSupplementalData()` directly
@@ -52,21 +61,47 @@ Google Sign-In (GIS OAuth) → localStorage (it_token, it_anthro_key, it_sb_key)
 ### Views
 My Accounts, Daily Mission (100 AI picks), Dashboard, Collections (138 accts / ~$342K AR), Contacts (7,898), Attack Plan (kanban), Requests (admin), Access Log, Settings, Academy (🎓), Suggestions Board (💡 admin only), Notes Feed (📋 admin/manager/rep), Team Notes (📋 manager only), Team Profile (🏢 manager only)
 
+### Notes Feed (`_renderNotesFeed`)
+- **Sources loaded:**
+  1. `acc.repNote` / `acc.note` from `state.accounts` → type `RepNote`
+  2. Accounts with `followUpDate` but no repNote → type `FollowUp` (purple)
+  3. `_CONTACT_NOTES` sheet (via cache or `sheetsGetFrom` HISTORY) → types: `ContactNote`, `CollectionsNote`, `Outcome`, `ManagerNote`
+- **Access control:**
+  - Admin (not simulating): sees all
+  - Admin simulating manager (`state.viewingAsManager = true`): sees team notes
+  - Real manager: sees own + team notes (uses `getManagerConfig().teamReps`)
+  - `isActuallyTeamView = isTeamView || state.viewAsRep === '__TEAM_ALL__'`
+- **Type colors:** RepNote=#3b82f6, ContactNote=#14b8a6, ManagerNote=#f59e0b, CollectionsNote=#ef4444, Outcome=#22c55e, FollowUp=#8b5cf6
+- **Filter buttons:** ALL, REP, CONTACT, MGR, COLL, OUTCOME, FOLLOW-UP
+- Called as `_renderNotesFeed(false)` for personal, `_renderNotesFeed(true)` for team view
+
 ### Task 7b — Notes Feed, Collections, Attack Plan (v1.50)
-- **Notes Feed**: Two-panel layout (60% list, 40% AI panel); sources: `acc.repNote`, `_CONTACT_NOTES` sheet; auto-analysis with `callAI`; quick-prompt buttons per role; `_nfLinkifyAccounts()` makes AI responses link account names
-- **Collections notes**: `saveCollectionsNote` now saves to `_CONTACT_NOTES` immediately via `sheetsAppend`; updates `state.contactNotesCache` for Notes Feed
+- **Notes Feed**: Two-panel layout (60% list, 40% AI panel); auto-analysis with `callAI`; quick-prompt buttons per role; `_nfLinkifyAccounts()` makes AI responses link account names
+- **Collections notes**: `saveCollectionsNote` saves to `_CONTACT_NOTES` in History sheet via `sheetsAppend(..., CONFIG.HISTORY_SPREADSHEET_ID)`; updates `state.contactNotesCache` array
 - **Attack Plan auto-save**: `apkAutoSave()` saves to `localStorage` immediately + schedules `saveAttackPlan` after 4s debounce; called from `apkMove` on every card move
 - **Pool hide**: `apkHideAccount(name)` / `apkUnhideAccount(name)` persist to `localStorage` key `it_pool_hidden_[repId]`; `_apkUpdateHiddenBtn()` updates badge count
-- **Admin View As dropdown**: `__MGR_X` prefix = simulate manager X personal view; `__TM_X` prefix = simulate manager X team view; handled in `switchViewAs`
 - **APP_VERSION** = `'1.50'`; `CHANGELOG` array; `showChangelog()` popover on version badge click
 
 ### Manager System (Task 6)
 - `MANAGER_CONFIG` constant defines three manager roles: `CKaren` (personal rep + manager), `CMancilla` and `MPerezfreye` (manager-only, no personal accounts, resolved via `sharedWith` email array)
+- All three managers share the same `teamReps`: `['PIan','RMauricio','LMancera','bcastor']`
 - `getManagerRole(repId, email)` — resolves manager role at login by repId or sharedWith email match
 - `getManagerConfig()` — returns `MANAGER_CONFIG[state.managerRole]` or null
 - `state.managerRole` set at login via `getManagerRole()`; `isManager()` now checks `state.managerRole` too
-- `__TEAM_ALL__` is the team-wide view value (replaces `MX_TEAM`); manager-only users auto-select it
+- `__TEAM_ALL__` is the team-wide view value; all Manager View dropdown options now set `state.viewAsRep = '__TEAM_ALL__'`
+- Admin dropdown has **no "Team Views" section** — Manager Views replaced it; `__MGR_X` sets `state.viewAsRep='__TEAM_ALL__'` + `state.managerRole=X` + `state.viewingAsManager=true`
 - Manager dropdown shows "My Accounts" option only when `mgrMid === state.repId`
+
+### Dashboard Team View (`refreshDashboard`)
+- `repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId`
+- When `repFilter === '__TEAM_ALL__'`: resolves `_teamRepsFilter` via `getManagerConfig().teamReps`
+- `repMatchesFn` handles both single-rep and team filter for `accs`, `gpFiltered`, `ordersFiltered`, `reqsFiltered`
+
+### Suggestions Board (`_SUGGESTIONS` in History sheet)
+- Reads/writes all use `CONFIG.HISTORY_SPREADSHEET_ID`
+- Sheet may not have a header row — `renderSuggestionsBoard` detects this and prepends synthetic headers
+- `_rowOffset`: 1 when no sheet headers, 2 when headers present — used for `rowIdx` in `sheetsUpdate` calls
+- `suggUpdateStatus` and `suggSaveReply` fall back to positional column indices (status=5, admin_response=6) when header lookup fails
 
 ### Note Stamps
 - `getNoteStamp()` — returns `"repId · May 18, 2026"` format for prepending to notes
@@ -83,7 +118,6 @@ My Accounts, Daily Mission (100 AI picks), Dashboard, Collections (138 accts / ~
 - `acadLessonWrap` — now includes breadcrumb (`Track N — Title › N. Lesson`) + prev/next arrows at bottom
 - `acadAnswerQuiz` — allows one retry on first wrong answer before locking; first-try correct = +25 XP bonus
 - Lesson content defined for: t1-1, t1-2, t1-3, t1-4, t2-1, t2-2, t2-3, t2-4, t2-5, t2-6, t2-7, t3-2, t3-4, t7-1 through t7-5
-- In Python scripts: apostrophes inside JS single-quoted strings need `\\'` (not `\'`) to produce `\'` in the output file
 
 ## Critical Rules
 
@@ -106,6 +140,12 @@ My Accounts, Daily Mission (100 AI picks), Dashboard, Collections (138 accts / ~
 - In Python scripts: apostrophes inside JS single-quoted strings need `\\'` in triple-quoted Python strings to produce `\'` in JS output (e.g. `"won\\'t"` → `"won\'t"` in file → `won't` in browser)
 - Use `data-n` / `data-lid` / `data-view` attributes + `this.dataset.X` in onclick handlers to avoid quote-escaping issues in dynamically built HTML
 
+### Google Sheets Spreadsheet Routing
+- **Main sheet** (`CONFIG.SPREADSHEET_ID`): per-rep account tabs, MASTER, _LOG, _COLLECTIONS, _CONTACTS, _OPEN_ORDERS — **DO NOT add new data here, it is full**
+- **History sheet** (`CONFIG.HISTORY_SPREADSHEET_ID`): _GP, _INVOICE_HISTORY, _SIGNATURES, _ATTACK_PLAN, _NDA_LOG, _CONTACT_NOTES, _SUGGESTIONS — all new persistent data goes here
+- **Activity sheet** (`CONFIG.ACTIVITY_SPREADSHEET_ID` or 3rd ID): _REQS, _QUOTES
+- `sheetsGet(range)` → Main sheet only; `sheetsGetFrom(id, range)` → any sheet; `sheetsAppend(range, rows, id?)` → optional 3rd arg for non-Main sheets; `sheetsUpdate(range, values, id?)` → same; `sheetsUpdateIn(id, range, values)` → explicit non-Main update
+
 ### Secrets
 - `SUPABASE_SECRET` never in app code or GitHub — server only (`C:\scripts\supabase_config.py`)
 - Supabase publishable key lives in `localStorage` as `it_sb_key`
@@ -117,5 +157,25 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 
 ## Pending / Known Issues
 - Dashboard loads slowly (30s+) — Supabase migration not yet complete (app still reads Sheets)
-- `sales_report.py` not yet scheduled on server (run manually)
+- `sales_report.py` not yet scheduled on server (run manually on INTRANSIT-RDS02)
 - Each rep needs to allow the popup once before first use
+- `_CONTACT_NOTES` tab may need to be manually created in History sheet if notes aren't persisting (create tab, add header row: `ACCOUNT_NAME, CONTACT_NAME, TYPE, NOTE, DATE, REP`)
+- `saveContactNoteFromView` (line ~8508) does not update `state.contactNotesCache` after save — notes from Contacts view only appear in Notes Feed after next reload
+
+## Session Log
+### 2026-05-19
+**Bugs fixed:**
+- Notes Feed (`_renderNotesFeed`): `mgrCfg` was null for real managers (non-admin) — fixed by setting `mgrCfg` when `isMgr || isActuallyTeamView`; contact notes access control now lets managers see full team notes
+- Admin dropdown: removed redundant "Team Views" section; Manager Views (`__MGR_X`) now set `state.viewAsRep='__TEAM_ALL__'` (was setting personal rep ID)
+- `switchViewAs`: `__MGR_X` now sets `state.viewAsRep='__TEAM_ALL__'` so dashboard/notes show combined team data
+- `refreshDashboard`: added `repMatchesFn` helper — `'__TEAM_ALL__'` now resolves team reps and filters GP/orders/reqs correctly (was matching zero records)
+- Suggestions Board: reads were hitting Main sheet (wrong); fixed to use `sheetsGetFrom(HISTORY_SPREADSHEET_ID)`; added header-row detection with synthetic fallback; fixed `_rowOffset` bug (rowIdx off-by-1 caused last card status update to silently fail)
+- `saveCollectionsNote`: was saving to `CONFIG.SPREADSHEET_ID` (Main, at cell limit) — changed to `CONFIG.HISTORY_SPREADSHEET_ID`; this was causing the "sheet error" toast and notes disappearing after reload
+- `saveContactNote` + `iqSaveLog`: were setting `state.contactNotesCache = {}` (dict) after save, corrupting the array format the Notes Feed expects; fixed to maintain `[header, ...rows]` array format
+- Notes Feed fallback read: `sheetsGet` was hitting Main sheet; fixed to `sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, ...)`
+
+**Features added:**
+- Notes Feed: added `FollowUp` type (purple) — accounts with `followUpDate` set but no `repNote` now appear in feed
+- Notes Feed: added FOLLOW-UP filter button to toolbar
+
+**Files created this session:** `implement_t7b_s5.py`, `implement_t7b_s6.py`, `implement_t7b_s7.py`, `implement_t7b_s8.py`

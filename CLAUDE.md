@@ -229,3 +229,19 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **New localStorage keys:** `it_known_ips_[repId]` — array of up to 10 known IPs per rep
 **Worker endpoints added:** `/get-ip` (no auth), `/geoip` (auth required), `ADMIN_EMAILS` const
 **Commits:** `ad59e7d` (5 security items), `ffbf846` (Task 9 all 10 fixes)
+
+### 2026-05-19 (session 5 — Task 10)
+**Features added (all 10 fixes):**
+- Fix 1-5 (History tab): Rewritten `renderHistoryTab(acc)` — groups line items by invoice (from `historyCache`), joins with `gpCache` for GP$/GP%, `collectionsInvoicesCache` for balance/tracking, renders rich invoice cards with tracking links (UPS/FedEx/DHL). Sort buttons (Newest/Oldest/Largest), pagination 20/page with SHOW MORE button using `data-acc`. RFQ + Quote sections also sorted newest-first with full detail.
+- Fix 6 (Panel layout): `.detail-tabs` gets `flex-shrink:0`; `.detail-body` gets `min-height:0`; `.detail-header` gets `flex-shrink:0`. `renderInfoTab(acc)` replaced with SVG bar chart (green=growing, orange=declining, dark=zero) + year table + expanded account detail fields.
+- Fix 7 (Force logout UX): `showForcedLogoutMessage()` replaces full `document.body` with signed-out overlay. Force logout result modal shows ✅ success or ❌ failure with TRY AGAIN. `state.loginTime` now stored to `sessionStorage.it_login_time` at login AND restored in `checkAuth()` on page reload. `checkForceLogout()` called at start of every `switchView()`.
+- Fix 8 (Active Users): `sendHeartbeat()` upserts row in `_ACTIVE_USERS` History sheet tab; `state._heartbeatRow` caches row index; heartbeat runs every 60s after login. `loadActiveUsers()` renders online table + 24h sessions in Settings (admin-only `#active-users-section`). Auto-refresh every 60s while on Settings page.
+- Fix 9 (NDA capture): `acceptNDA()` stores full NDA text to `localStorage` key `it_nda_[repId]_[timestamp]`; key added as column N in `_NDA_LOG`. `viewNDARecord(key)` opens modal with full NDA text (close via `data-mid` pattern). `exportNDALog()` downloads CSV. NDA log table enhanced with Session ID + NDA Version columns.
+- Fix 10 (Pool filter): `hideFromPool !== 'YES'` filter added to all 4 Transfer Candidate queries. Pool removal modal button renamed to "REQUEST REMOVE FROM POOL" with clearer description. `adminSetPoolHide(accName, hide)` new function — updates `HIDE_FROM_POOL` column in sheet + in-memory; shows "HIDE_FROM_POOL column not in sheet" error if column missing. `johnPoolHtml` admin buttons (Hide/Restore) added to Notes tab `renderNoteInput` for admin-only view.
+
+**New functions:** `histShowMore`, `histSetSort`, `renderHistoryTab` (replaced), `renderInfoTab` (replaced), `showForcedLogoutMessage`, `sendHeartbeat`, `loadActiveUsers`, `viewNDARecord`, `exportNDALog`, `adminSetPoolHide`
+**New state fields:** `state._heartbeatRow`, `state._histPage`, `state._histSort`, `state._ndaLogRows`
+**New localStorage keys:** `it_nda_[repId]_[timestamp]` — full NDA text record
+**New sessionStorage keys:** `it_login_time` — loginTime persisted across page reload
+**Pending (manual):** Add `HIDE_FROM_POOL` column to `_MASTER` and rep tabs in Google Sheets; update `sales_report.py` to pass `hideFromPool` field
+**Commit:** `b37798e`

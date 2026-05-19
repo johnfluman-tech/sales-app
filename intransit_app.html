@@ -1662,7 +1662,7 @@ async function saveContactNote(accountName, contactName, safeId) {
 
     // Re-render contacts tab to show new note
     const acc = state.accounts.find(a => a.name === accountName);
-    if (acc) renderDetailPanel(acc, 'contacts');
+    if (acc) { state.activeDetailTab = 'contacts'; renderDetail(acc); }
     promptFollowUp(accountName, contactName);
   } catch(e) {
     showToast('Could not save note — ' + e.message, 'error');

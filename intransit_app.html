@@ -2502,11 +2502,7 @@ function completeLogin() {
       _reps.forEach(function(r){ _admHtml += '<option value="' + r + '">' + r + '</option>'; });
       _admHtml += '<option disabled>── Manager Views ──</option>';
       Object.entries(MANAGER_CONFIG).forEach(function(e){
-        _admHtml += '<option value="__MGR_' + e[0] + '">👔 ' + e[0] + ' (Manager) → ' + e[1].teamName + '</option>';
-      });
-      _admHtml += '<option disabled>── Team Views ──</option>';
-      Object.entries(MANAGER_CONFIG).forEach(function(e){
-        _admHtml += '<option value="__TM_' + e[0] + '">📊 ' + e[1].teamName + ' (All)</option>';
+        _admHtml += '<option value="__MGR_' + e[0] + '">📊 ' + e[1].teamName + ' (All)</option>';
       });
       _admSel.innerHTML = _admHtml;
     }
@@ -6708,7 +6704,7 @@ function switchViewAs(rep) {
   // Handle admin manager-view simulation modes
   if (rep && rep.startsWith('__MGR_')) {
     const mid = rep.slice(6);
-    state.viewAsRep = mid;
+    state.viewAsRep = '__TEAM_ALL__';
     state.managerRole = mid;
     state.viewingAsManager = true;
   } else if (rep && rep.startsWith('__TM_')) {
@@ -11218,7 +11214,7 @@ function acadSignalRow(icon, trigger, label, action, color) {
 
 async function loadSuggestionsBoardBadge() {
   try {
-    const rows = await sheetsGet("'_SUGGESTIONS'!A1:Z200");
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SUGGESTIONS'!A1:Z200");
     if (!rows || rows.length < 2) return;
     const hdrs = rows[0].map(h => (h||'').toLowerCase());
     const statusIdx = hdrs.indexOf('status');
@@ -11235,7 +11231,7 @@ async function renderSuggestionsBoard() {
   const el = document.getElementById('main-content');
   el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font-family:var(--mono);color:var(--text-3)">Loading...</div></div>';
   let rows = [];
-  try { rows = await sheetsGet("'_SUGGESTIONS'!A1:Z500") || []; }
+  try { rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SUGGESTIONS'!A1:Z500") || []; }
   catch(e) { el.innerHTML = '<div style="padding:40px;color:var(--red)">Error: ' + escHtml(e.message) + '</div>'; return; }
   if (rows.length < 2) {
     el.innerHTML = '<div style="padding:60px;text-align:center;color:var(--text-3)"><div style="font-size:40px;margin-bottom:16px">&#128161;</div><div>No suggestions yet</div></div>';
@@ -11311,10 +11307,10 @@ async function renderSuggestionsBoard() {
 
 async function suggUpdateStatus(rowIdx, newStatus) {
   try {
-    const h = (await sheetsGet("'_SUGGESTIONS'!A1:Z1"))[0].map(x => (x||'').toLowerCase());
+    const h = (await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SUGGESTIONS'!A1:Z1"))[0].map(x => (x||'').toLowerCase());
     const col = h.indexOf('status');
     if (col < 0) { showToast('No STATUS column in _SUGGESTIONS', 'error'); return; }
-    await sheetsUpdate("'_SUGGESTIONS'!" + String.fromCharCode(65+col) + rowIdx, [[newStatus]]);
+    await sheetsUpdate("'_SUGGESTIONS'!" + String.fromCharCode(65+col) + rowIdx, [[newStatus]], CONFIG.HISTORY_SPREADSHEET_ID);
     showToast('Status updated', 'success');
     renderSuggestionsBoard();
   } catch(e) { showToast('Failed: ' + e.message, 'error'); }
@@ -11324,10 +11320,10 @@ async function suggSaveReply(rowIdx) {
   const input = document.getElementById('sr-' + rowIdx);
   if (!input) return;
   try {
-    const h = (await sheetsGet("'_SUGGESTIONS'!A1:Z1"))[0].map(x => (x||'').toLowerCase());
+    const h = (await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SUGGESTIONS'!A1:Z1"))[0].map(x => (x||'').toLowerCase());
     const col = h.indexOf('admin_response');
     if (col < 0) { showToast('No ADMIN_RESPONSE column in _SUGGESTIONS', 'error'); return; }
-    await sheetsUpdate("'_SUGGESTIONS'!" + String.fromCharCode(65+col) + rowIdx, [[input.value.trim()]]);
+    await sheetsUpdate("'_SUGGESTIONS'!" + String.fromCharCode(65+col) + rowIdx, [[input.value.trim()]], CONFIG.HISTORY_SPREADSHEET_ID);
     showToast('Reply saved', 'success');
     renderSuggestionsBoard();
   } catch(e) { showToast('Failed: ' + e.message, 'error'); }
@@ -11356,8 +11352,9 @@ async function _renderNotesFeed(isTeamView) {
   const isAdm = isAdmin();
   const isMgr = isManager() && !isAdm;
   const viewingAsMgr = isAdm && state.viewingAsManager;
-  const mgrCfg = viewingAsMgr ? getManagerConfig() : (isTeamView ? getManagerConfig() : null);
-  const teamReps = mgrCfg ? mgrCfg.teamReps : (isMgr && !isTeamView ? null : (mgrCfg ? mgrCfg.teamReps : null));
+  const isActuallyTeamView = isTeamView || state.viewAsRep === '__TEAM_ALL__';
+  const mgrCfg = (viewingAsMgr || isMgr || isActuallyTeamView) ? getManagerConfig() : null;
+  const teamReps = mgrCfg ? mgrCfg.teamReps : null;
   const teamName = mgrCfg ? mgrCfg.teamName : 'All Reps';
   const myRep = state.repId;
 
@@ -11366,14 +11363,12 @@ async function _renderNotesFeed(isTeamView) {
 
   // Apply access control for which accounts to pull notes from
   let noteAccs;
-  if (isAdm && !viewingAsMgr && !isTeamView) {
+  if (isAdm && !viewingAsMgr && !isActuallyTeamView) {
     noteAccs = accs; // admin sees all
-  } else if (teamReps) {
+  } else if (isActuallyTeamView && teamReps) {
     noteAccs = accs.filter(function(a){ return teamReps.includes(a.rep); });
-  } else if (isMgr) {
-    // manager viewing their own (not team all) - their accounts + team accounts
-    const mc = getManagerConfig();
-    const tr = mc ? mc.teamReps : [];
+  } else if (isMgr || viewingAsMgr) {
+    const tr = teamReps || [];
     noteAccs = accs.filter(function(a){ return a.rep === myRep || tr.includes(a.rep); });
   } else {
     noteAccs = accs.filter(function(a){ return a.rep === myRep; }); // regular rep: own only
@@ -11406,9 +11401,15 @@ async function _renderNotesFeed(isTeamView) {
       cnRows.slice(1).filter(function(r){ return r.some(function(c){ return c; }); }).forEach(function(r) {
         const repId = g(r,'rep','rep_id');
         // Access control
-        if (!isAdm || viewingAsMgr || isTeamView) {
-          if (teamReps && !teamReps.includes(repId)) return;
-          if (!teamReps && !isAdm && repId !== myRep) return;
+        if (!isAdm || viewingAsMgr || isActuallyTeamView) {
+          if (isActuallyTeamView && teamReps) {
+            if (!teamReps.includes(repId)) return;
+          } else if (isMgr || viewingAsMgr) {
+            if (teamReps && !teamReps.includes(repId) && repId !== myRep) return;
+            if (!teamReps && repId !== myRep) return;
+          } else {
+            if (repId !== myRep) return;
+          }
         }
         const accName = g(r,'account_name','customer','account');
         const acc = accs.find(function(a){ return a.name.trim()===accName.trim(); });

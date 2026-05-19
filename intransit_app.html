@@ -804,6 +804,7 @@ body::before {
 /* ── TOAST ─────────────────────────────── */
 .toast {
   position: fixed; bottom: 20px; left: 50%;
+  display: flex; align-items: center;
   transform: translateX(-50%) translateY(80px);
   padding: 9px 18px; background: var(--s3); border: 1px solid var(--border-hi);
   border-radius: var(--r2); font-size: 12px; font-family: var(--mono);
@@ -1232,7 +1233,7 @@ body::before {
 </div>
 
 <!-- TOAST -->
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast"><span id="toast-msg"></span><button id="toast-retry" onclick="window._toastRetry&&window._toastRetry()" style="display:none;margin-left:10px;background:transparent;border:1px solid currentColor;color:currentColor;font-family:var(--mono);font-size:9px;padding:2px 8px;cursor:pointer;border-radius:3px;letter-spacing:0.05em">RETRY</button></div>
 
 <script>
 // ══════════════════════════════════════════════════════════
@@ -1358,6 +1359,7 @@ async function loadSupplementalData() {
   try {
     // ── Load GP FIRST — most critical, must not be rate-limited by other fetches ──
     state.gpLoadError = null;
+    _updateLoadProgress('LOADING GP DATA...', 35);
     try {
       const gpRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'");
       if (gpRows && gpRows.length > 1) {
@@ -1379,6 +1381,7 @@ async function loadSupplementalData() {
 
     // ── Fetch in 3 waves of 3 — avoids Worker rate limits ──
     state.ordHistError = null;
+    _updateLoadProgress('LOADING INVOICES & CONTACTS...', 50);
     const [contactRows, invRows, ordHistRows] = await Promise.all([
       sheetsGet("'_CONTACTS'!A1:K50000").catch(() => []),
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L50000").catch(() => []),
@@ -1386,12 +1389,14 @@ async function loadSupplementalData() {
     ]);
     state._ordHistRaw = ordHistRows.length;
     await new Promise(r => setTimeout(r, 1000));
+    _updateLoadProgress('LOADING ORDERS & QUOTES...', 65);
     const [reqRows, quoteRows, collRows] = await Promise.all([
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000").catch(() => []),
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_QUOTES'!A1:P50000").catch(() => []),
       sheetsGet("'_COLLECTIONS'!A1:P5000").catch(() => []),
     ]);
     await new Promise(r => setTimeout(r, 1000));
+    _updateLoadProgress('LOADING COLLECTIONS DATA...', 78);
     const [collInvRows, openOrderRows, sigRowsRaw] = await Promise.all([
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000").catch(() => []),
       sheetsGet("'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
@@ -1666,7 +1671,7 @@ function renderContactsTab(acc) {
       <div class="cnote-form" style="margin-top:8px">
         <div style="display:flex;gap:6px">
           <button onclick="toggleCnoteForm('${safeId}')" style="background:var(--s3);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em">+ ADD NOTE</button>
-          <button onclick="openScheduleModal('${escHtml(accountName)}','${escHtml(contactName)}','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
+          <button onclick="openScheduleModal('${escJs(accountName)}','${escJs(contactName)}','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
         </div>
         <div id="cnote-inline-${safeId}" style="display:none;margin-top:8px">
           <div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start">
@@ -1682,7 +1687,7 @@ function renderContactsTab(acc) {
           </div>
           <div style="display:flex;gap:6px">
             <button onclick="aiGrammarCheck('cnnote-${safeId}', this)" style="background:transparent;border:1px solid var(--border-hi);color:var(--blue-b);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em;flex-shrink:0">&#10022; Check</button>
-            <button class="cnote-save-btn" onclick="saveContactNote('${escHtml(accountName)}','${escHtml(contactName)}','${safeId}')">SAVE</button>
+            <button class="cnote-save-btn" onclick="saveContactNote('${escJs(accountName)}','${escJs(contactName)}','${safeId}')">SAVE</button>
             <button onclick="toggleCnoteForm('${safeId}')" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r)">CANCEL</button>
           </div>
         </div>
@@ -1759,7 +1764,7 @@ async function saveContactNote(accountName, contactName, safeId) {
     if (acc) { state.activeDetailTab = 'contacts'; renderDetail(acc); }
     promptFollowUp(accountName, contactName);
   } catch(e) {
-    showToast('Could not save note — ' + e.message, 'error');
+    showRetryToast('Note not saved — ' + e.message.slice(0,50), () => saveContactNote(accountName, contactName, safeId));
   }
 }
 
@@ -2857,8 +2862,18 @@ function switchView(view) {
   document.getElementById('topbar-title').textContent = titles[view] || view;
 
   const viewRenderers = {
-    dashboard:   () => ensureCacheLoaded().then(() => { if (state.activeView === 'dashboard') renderDashboard(); }),
-    collections: () => ensureCacheLoaded().then(() => { if (state.activeView === 'collections') renderCollectionsView(); }),
+    dashboard: () => {
+      if (!state.cacheLoaded) {
+        document.getElementById('main-content').innerHTML = '<div class="loading-spinner">LOADING DATA — THIS MAY TAKE 30 SECONDS...</div>';
+      }
+      ensureCacheLoaded().then(() => { if (state.activeView === 'dashboard') renderDashboard(); });
+    },
+    collections: () => {
+      if (!state.cacheLoaded) {
+        document.getElementById('main-content').innerHTML = '<div class="loading-spinner">LOADING DATA...</div>';
+      }
+      ensureCacheLoaded().then(() => { if (state.activeView === 'collections') renderCollectionsView(); });
+    },
     contacts:    () => renderContactsView(),
     attack:      () => renderAttackPlan(),
     academy:     () => renderAcademyView(),
@@ -2896,12 +2911,15 @@ function switchView(view) {
   } else if (viewRenderers[view]) {
     viewRenderers[view]();
     setTimeout(restoreSplitPositions, 30);
-    ensureCacheLoaded().then(() => {
-      if (state.activeView === view) {
-        viewRenderers[view]();
-        setTimeout(restoreSplitPositions, 50);
-      }
-    });
+    // Only re-render after cache loads when cache wasn't already ready on entry
+    if (!state.cacheLoaded) {
+      ensureCacheLoaded().then(() => {
+        if (state.activeView === view) {
+          viewRenderers[view]();
+          setTimeout(restoreSplitPositions, 50);
+        }
+      });
+    }
   } else {
     renderAccountsView();
     setTimeout(restoreSplitPositions, 50);
@@ -3329,7 +3347,7 @@ function renderNoteInput(acc) {
           value="${toInputDate(acc.followUpDate || '')}">
         <button onclick="aiGrammarCheck('note-text-input', this)" style="background:transparent;border:1px solid var(--border-hi);color:var(--blue-b);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em;flex-shrink:0">&#10022; Check</button>
         <button class="save-note-btn" onclick="saveNote()">SAVE &amp; LOCK</button>
-        <button onclick="openScheduleModal('${escHtml(acc.name)}','','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
+        <button onclick="openScheduleModal('${escJs(acc.name)}','','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
       </div>
       ${johnApproveHtml}
       ${repRequestsHtml}
@@ -3791,7 +3809,7 @@ async function logAccessEntry(locationClaim) {
   const isoTime  = now.toISOString();
   const email    = state.user?.email || 'unknown';
   const name     = state.user?.name  || 'unknown';
-  const repId    = state.repId || (state.isAdmin ? 'FJohn' : 'unknown');
+  const repId    = state.repId || (isAdmin() ? (state.repId || 'FJohn') : 'unknown');
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
   const ua       = navigator.userAgent.slice(0, 150);
   const lang     = currentLang === 'es' ? 'Spanish' : 'English';
@@ -6146,7 +6164,7 @@ async function iqSaveLog(id, accName, contactName, type) {
     updateBadges();
     setTimeout(function(){ promptFollowUp(accName, contactName); }, 350);
   } catch(e) {
-    showToast('Error: ' + e.message, 'error');
+    showRetryToast('Log not saved — ' + e.message.slice(0,50), () => iqSaveLog(id, accName, contactName, type));
   }
 }
 
@@ -7028,7 +7046,7 @@ function openInEmail() {
 // ══════════════════════════════════════════════════════════
 function renderSettingsView() {
   const content = document.getElementById('main-content');
-  const currentRep = state.isAdmin ? (state.viewAsRep || 'FJohn') : state.repId;
+  const currentRep = state.isAdmin ? (state.viewAsRep || state.repId) : state.repId;
 
   // Build rep list — admin sees all reps, reps see only themselves
   const repOptions = state.isAdmin
@@ -7654,7 +7672,7 @@ function selectCollectionsAccount(name) {
           class="field-input" style="font-family:var(--mono);font-size:11px;margin-bottom:8px">
         <textarea id="coll-note-text" rows="3" spellcheck="true" lang="en-US" placeholder="Collections note — call outcome, promise details, disputes..."
           class="field-input field-textarea" style="margin-bottom:8px">${escHtml(collNote.note||'')}</textarea>
-        <button onclick="saveCollectionsNote('${escHtml(name)}')" class="btn btn-primary">SAVE NOTE</button>
+        <button onclick="saveCollectionsNote('${escJs(name)}')" class="btn btn-primary">SAVE NOTE</button>
       </div>
 
       <!-- AI EMAIL GENERATION -->
@@ -7734,7 +7752,7 @@ async function saveCollectionsNote(name) {
       state.contactNotesCache.push([name, '', 'CollectionsNote', note, dateISO, repId]);
       showToast('Note saved ✓', 'success');
     } catch(e) {
-      showToast('Saved locally (sheet error: ' + e.message.slice(0,40) + ')', 'error');
+      showRetryToast('Note NOT saved to sheet — tap RETRY', () => saveCollectionsNote(name));
     } finally {
       saveBtns.forEach(function(b){ b.disabled=false; b.textContent='SAVE NOTE'; });
     }
@@ -8339,7 +8357,7 @@ function selectContactCard(el, accountName, contactName) {
         <div style="margin-bottom:14px">
           <div style="display:flex;gap:6px;align-items:center">
             <button onclick="toggleCnoteForm('cv-${safeId}')" style="background:var(--s3);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em">+ ADD NOTE</button>
-            <button onclick="openScheduleModal('${escHtml(accountName)}','${escHtml(contactName||'')}','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
+            <button onclick="openScheduleModal('${escJs(accountName)}','${escJs(contactName||'')}','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
           </div>
           <div id="cnote-inline-cv-${safeId}" style="display:none;margin-top:8px">
             <div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start">
@@ -8354,7 +8372,7 @@ function selectContactCard(el, accountName, contactName) {
                 style="font-size:12px;line-height:1.5;resize:vertical;min-height:52px;flex:1"></textarea>
             </div>
             <div style="display:flex;gap:6px">
-              <button class="btn btn-primary btn-sm" onclick="saveContactNoteFromView('${escHtml(accountName)}','${escHtml(contactName||'')}','cv-${safeId}')">SAVE</button>
+              <button class="btn btn-primary btn-sm" onclick="saveContactNoteFromView('${escJs(accountName)}','${escJs(contactName||'')}','cv-${safeId}')">SAVE</button>
               <button onclick="toggleCnoteForm('cv-${safeId}')" class="btn btn-ghost btn-sm">CANCEL</button>
             </div>
           </div>
@@ -8523,7 +8541,9 @@ async function saveContactNoteFromView(accountName, contactName, safeId) {
     const card = document.querySelector(`.contact-card[data-ctname="${CSS.escape(contactName)}"]`);
     selectContactCard(card || document.querySelector('.contact-card[style*="navy-mid"]'), accountName, contactName);
     promptFollowUp(accountName, contactName);
-  } catch(e) { showToast('Could not save: ' + e.message, 'error'); }
+  } catch(e) {
+    showRetryToast('Note not saved — tap RETRY', () => saveContactNoteFromView(accountName, contactName, safeId));
+  }
 }
 
 function filterContactsView(type, btn) {
@@ -8592,7 +8612,11 @@ function formatNum(n) {
 }
 
 function escHtml(str) {
-  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+// Use escJs() for values placed inside JS string literals in onclick="func('...')" attributes
+function escJs(str) {
+  return String(str || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"').replace(/\r/g,'\\r').replace(/\n/g,'\\n');
 }
 
 function toInputDate(str) {
@@ -8609,12 +8633,34 @@ function setLoading(show, msg, pct) {
   if (pct !== undefined) document.getElementById('loading-bar').style.width = pct + '%';
 }
 
+// Only updates the loading bar if the loading screen is already visible
+function _updateLoadProgress(msg, pct) {
+  const el = document.getElementById('loading-screen');
+  if (el && el.classList.contains('visible')) setLoading(true, msg, pct);
+}
+
 function showToast(msg, type='') {
   const t = document.getElementById('toast');
-  t.textContent = msg;
+  const msgEl = document.getElementById('toast-msg');
+  const retryEl = document.getElementById('toast-retry');
+  if (msgEl) { msgEl.textContent = msg; } else { t.textContent = msg; }
+  if (retryEl) retryEl.style.display = 'none';
+  window._toastRetry = null;
   t.className = 'toast show' + (type ? ' ' + type : '');
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+function showRetryToast(msg, retryFn) {
+  const t = document.getElementById('toast');
+  const msgEl = document.getElementById('toast-msg');
+  const retryEl = document.getElementById('toast-retry');
+  if (msgEl) { msgEl.textContent = msg; } else { t.textContent = msg; }
+  if (retryEl) retryEl.style.display = '';
+  window._toastRetry = retryFn;
+  t.className = 'toast show error';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.classList.remove('show'); window._toastRetry = null; }, 7000);
 }
 
 function updateBadges() {
@@ -8858,10 +8904,9 @@ async function saveAttackPlan(rep, cards) {
     localStorage.setItem('it_attackplan_' + rep, JSON.stringify(cards));
     showToast('Attack plan saved ✓ (' + cards.length + ' accounts)', 'success');
   } catch(e) {
-    // Still save to localStorage even if Sheets fails
     localStorage.setItem('it_attackplan_' + rep, JSON.stringify(cards));
-    showToast('Saved locally (Sheet error: ' + e.message.slice(0,40) + ')', 'error');
     console.error('saveAttackPlan error:', e);
+    showRetryToast('Saved locally only — sheet error. Tap RETRY to sync.', () => saveAttackPlan(rep, cards));
   } finally {
     saveBtns.forEach(b => { b.disabled=false; b.textContent='SAVE PLAN'; });
   }
@@ -9768,7 +9813,7 @@ async function apkApproveGlobalRemove(name, reason, requestRow) {
       } catch(ce) { /* tab may have been created by another call */ }
     }
 
-    rows.push([name, requestRow || '—', reason || '—', 'FJohn/Admin', now]);
+    rows.push([name, requestRow || '—', reason || '—', (state.repId || 'Admin') + '/Admin', now]);
     await sheetsUpdateIn(sid, "'_POOL_REMOVED'!A1:E" + rows.length, rows);
     state.globallyRemovedFromPool.add(name);
     showToast(name.slice(0,24) + ' removed from all pools ✓', 'success');
@@ -11304,7 +11349,7 @@ async function renderSuggestionsBoard() {
           ['New','In Progress','Done',"Won\'t Do"].map(st => '<option' + (s.status===st?' selected':'') + '>' + escHtml(st) + '</option>').join('') +
         '</select>' +
       '</div>' +
-      (s.adminResponse ? '<div style="margin-top:10px;padding:10px;background:rgba(59,130,246,0.1);border-left:3px solid var(--blue-b);border-radius:var(--r);font-size:12px"><strong>FJohn replied:</strong> ' + escHtml(s.adminResponse) + '</div>' : '') +
+      (s.adminResponse ? '<div style="margin-top:10px;padding:10px;background:rgba(59,130,246,0.1);border-left:3px solid var(--blue-b);border-radius:var(--r);font-size:12px"><strong>' + escHtml(CONFIG.REPS_DISPLAY[state.repId] || state.repId || 'Admin') + ' replied:</strong> ' + escHtml(s.adminResponse) + '</div>' : '') +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
         '<input type="text" id="sr-' + row + '" placeholder="Admin reply..." value="' + escHtml(s.adminResponse||'') + '" style="flex:1;background:var(--s1);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;padding:6px 10px;outline:none;border-radius:var(--r)">' +
         '<button onclick="suggSaveReply(' + row + ')" style="padding:6px 12px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">SAVE REPLY</button>' +

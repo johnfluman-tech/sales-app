@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://intransit-worker.intransit-sales.workers.dev https://hutmehcaijdxbqchuivh.supabase.co https://accounts.google.com; frame-src https://accounts.google.com https://www.youtube.com; img-src 'self' data: https:; object-src 'none'; base-uri 'self';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Intransit Sales Intelligence v1.50</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2354,6 +2355,9 @@ async function acceptNDA() {
     // Don't block the user — just log the failure silently
     console.warn('NDA log write failed (non-blocking):', e.message);
   }
+  // Log access entry immediately — captures login even if location modal is abandoned
+  // confirmLocation() will update this row with the actual location claim
+  logAccessEntry('PENDING').catch(e => console.warn('Access log (pending) failed:', e));
 }
 
 async function declineNDA() {
@@ -3974,8 +3978,15 @@ async function confirmLocation() {
     : _selectedLocation;
 
   document.getElementById('location-modal').style.display = 'none';
-  // Log the access entry (non-blocking)
-  logAccessEntry(locationClaim).catch(e => console.warn('Access log failed:', e));
+  // Update the PENDING row written at NDA accept, or fall back to a full new entry
+  if (window._accessLogPendingRow) {
+    const rowNum = window._accessLogPendingRow;
+    window._accessLogPendingRow = null;
+    sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!F" + rowNum, [[locationClaim]])
+      .catch(e => console.warn('Access log location update failed:', e));
+  } else {
+    logAccessEntry(locationClaim).catch(e => console.warn('Access log failed:', e));
+  }
   // Now complete the real login flow
   loadAllAccounts();
   showNDA_or_complete();
@@ -4010,7 +4021,7 @@ async function logAccessEntry(locationClaim) {
   const browserMatch = ua.match(/(Chrome|Firefox|Safari|Edge|OPR)[\/]([\d.]+)/);
   const browser = browserMatch ? browserMatch[1] + ' ' + browserMatch[2].split('.')[0] : 'Unknown';
 
-  // IP lookup via free public API (non-blocking, no auth needed)
+  // IP/geo lookup via Worker (uses CF-Connecting-IP + Cloudflare geo — no rate limits)
   let ipAddress = 'unknown';
   let ipCity    = 'unknown';
   let ipCountry = 'unknown';
@@ -4019,26 +4030,27 @@ async function logAccessEntry(locationClaim) {
   let suspicionReason = '';
 
   try {
-    const ipRes = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(4000) });
-    if (ipRes.ok) {
-      const ipData = await ipRes.json();
-      ipAddress = ipData.ip        || 'unknown';
-      ipCity    = ipData.city      || 'unknown';
-      ipCountry = ipData.country_name || 'unknown';
-      ipOrg     = ipData.org       || 'unknown';
+    const geoRes = await fetch(CONFIG.WORKER_URL + '/geoip', {
+      headers: { 'X-Google-Token': state.accessToken },
+      signal: AbortSignal.timeout(4000)
+    });
+    if (geoRes.ok) {
+      const geoData = await geoRes.json();
+      ipAddress = geoData.ip      || 'unknown';
+      ipCity    = geoData.city    || 'unknown';
+      ipCountry = geoData.country || 'unknown';
+      ipOrg     = geoData.org     || 'unknown';
 
-      // Suspicion checks
-      const isVPN    = ipData.org && /(vpn|proxy|hosting|cloud|digital ocean|linode|vultr|aws|azure|google cloud)/i.test(ipData.org);
-      const isOddCountry = ipData.country_code && !['US', 'MX', 'CA'].includes(ipData.country_code);
-      if (isVPN) { isSuspicious = true; suspicionReason = 'VPN/Hosting IP detected: ' + ipData.org; }
-      else if (isOddCountry) { isSuspicious = true; suspicionReason = 'Unusual country: ' + ipData.country_name; }
+      // Suspicion checks (CF country is a 2-letter code)
+      const isVPN = ipOrg && /(vpn|proxy|hosting|cloud|digital ocean|linode|vultr|aws|azure|google cloud)/i.test(ipOrg);
+      const isOddCountry = ipCountry && ipCountry !== 'unknown' && !['US', 'MX', 'CA'].includes(ipCountry);
+      if (isVPN) { isSuspicious = true; suspicionReason = 'VPN/Hosting IP: ' + ipOrg; }
+      else if (isOddCountry) { isSuspicious = true; suspicionReason = 'Unusual country: ' + ipCountry; }
     }
-  } catch(e) { /* IP lookup failed — non-blocking */ }
+  } catch(e) { /* geo lookup failed — non-blocking */ }
 
   // Cross-check: location claim vs. IP geo
-  let claimMismatch = false;
-  if (locationClaim === 'Office' && ipCity && !['Rancho Santa Margarita','Irvine','Mission Viejo','Lake Forest','Foothill Ranch'].includes(ipCity)) {
-    claimMismatch = true;
+  if (locationClaim !== 'PENDING' && locationClaim === 'Office' && ipCity && !['Rancho Santa Margarita','Irvine','Mission Viejo','Lake Forest','Foothill Ranch'].includes(ipCity)) {
     if (!isSuspicious) { isSuspicious = true; suspicionReason = 'Claims Office but IP is in ' + ipCity + ', ' + ipCountry; }
   }
 
@@ -4088,13 +4100,22 @@ async function logAccessEntry(locationClaim) {
   };
 
   await ensureHeader();
-  await sheetsAppend("'_ACCESS_LOG'!A1", [[
+  const _appendResult = await sheetsAppend("'_ACCESS_LOG'!A1", [[
     timestamp, isoTime, email, name, repId, locationClaim,
     ipAddress, ipCity, ipCountry, ipOrg, deviceType, browser,
     timezone, lang,
     isSuspicious ? 'YES' : 'NO',
     suspicionReason || ''
   ]], CONFIG.HISTORY_SPREADSHEET_ID);
+
+  // Store row number so confirmLocation() can patch in the actual location claim
+  if (locationClaim === 'PENDING') {
+    try {
+      const rangeStr = _appendResult?.updates?.updatedRange || '';
+      const rowMatch = rangeStr.match(/(\d+)$/);
+      if (rowMatch) window._accessLogPendingRow = parseInt(rowMatch[1], 10);
+    } catch(e) {}
+  }
 }
 
 // Called after location confirmed — equivalent to original completeLogin path

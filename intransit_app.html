@@ -1209,8 +1209,8 @@ body::before {
       <button class="filter-btn" id="filter-inactive-btn" onclick="setFilter('inactive')">INACTIVE</button>
       <button class="filter-btn" id="filter-declining" onclick="setFilter('declining')">DECLINING</button>
       <button onclick="openSuggestionModal()" title="Suggest an improvement" class="filter-btn" style="margin-left:auto;padding:6px 12px;font-size:10px;letter-spacing:0.08em;display:flex;align-items:center;gap:5px">&#128161; SUGGEST</button>
-      <button class="help-btn" onclick="showHelp()" title="Help &amp; AI Assistant" style="">
-        <span style="font-size:15px">?</span>
+      <button class="help-btn" onclick="showHelp()" title="Ask AI — any question about this page" style="width:auto;padding:0 12px;border-radius:var(--r);font-size:11px;gap:5px;letter-spacing:0.06em;font-family:var(--mono)">
+        <span style="font-size:13px">✦</span> ASK AI
       </button>
     </div>
 
@@ -6468,7 +6468,7 @@ function renderDashboard() {
           style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:6px 8px;outline:none"
           onchange="refreshDashboard()">
         <div style="margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--accent)">${repLabel}</div>
-        ${state.isAdmin ? `<button onclick="toggleDashDiag()" style="background:transparent;border:1px solid #c9a84c;color:#c9a84c;font-family:monospace;font-size:9px;padding:4px 10px;cursor:pointer;border-radius:3px;letter-spacing:0.08em;margin-left:8px">⚙ DIAG</button>` : ''}
+        ${isAdmin() && !state.viewAsRep ? `<button onclick="toggleDashDiag()" style="background:transparent;border:1px solid #c9a84c;color:#c9a84c;font-family:monospace;font-size:9px;padding:4px 10px;cursor:pointer;border-radius:3px;letter-spacing:0.08em;margin-left:8px">⚙ DIAG</button>` : ''}
       </div>
       <div id="dash-diag-panel" style="display:none;background:#0a1628;border:1px solid #c9a84c;border-left:3px solid #c9a84c;border-radius:4px;padding:14px 16px;margin-bottom:16px;font-family:monospace;font-size:11px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -12057,8 +12057,8 @@ function showHelp() {
       💡 Switch to the <strong>✦ ASK AI</strong> tab to ask anything not covered above.
     </div>`;
 
-  // Reset to guide tab
-  showHelpTab('guide');
+  // Open on AI tab by default — guide tab still accessible
+  showHelpTab('ai');
 }
 
 function showHelpTab(tab) {

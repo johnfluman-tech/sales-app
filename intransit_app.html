@@ -7349,6 +7349,10 @@ function getDisclaimer() {
 function renderCollectionsView() {
   const content = document.getElementById('main-content');
   const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
+  const _collTeamReps = (repFilter === '__TEAM_ALL__') ?
+    (function(){ const mc = getManagerConfig(); return mc ? mc.teamReps : null; })() : null;
+  const _collRepMatch = !repFilter ? function(){ return true; } :
+    (_collTeamReps ? function(r){ return _collTeamReps.includes(r); } : function(r){ return r === repFilter; });
 
   // Build collections list from cache, filtered by rep
   let collList = Object.entries(state.collectionsCache).map(([name, c]) => {
@@ -7356,7 +7360,7 @@ function renderCollectionsView() {
     return { name, ...c, rep: acc?.rep || '', accObj: acc };
   }).filter(c => c.balance > 0);
 
-  if (repFilter) collList = collList.filter(c => c.rep === repFilter);
+  if (repFilter) collList = collList.filter(c => _collRepMatch(c.rep));
   collList.sort((a, b) => b.balance - a.balance);
 
   const totalAR    = collList.reduce((s, c) => s + c.balance, 0);

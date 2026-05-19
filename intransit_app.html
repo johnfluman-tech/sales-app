@@ -1748,10 +1748,11 @@ async function saveContactNote(accountName, contactName, safeId) {
     showToast('Note saved ✓', 'success');
     noteEl.value = '';
 
-    // Update local cache
-    if (!state.contactNotesCache) state.contactNotesCache = {};
-    if (!state.contactNotesCache[accountName]) state.contactNotesCache[accountName] = [];
-    state.contactNotesCache[accountName].push({ contact: contactName, type, note, date: dateStr, rep });
+    // Update local cache (array format matching startup loader)
+    if (!state.contactNotesCache || !Array.isArray(state.contactNotesCache)) {
+      state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
+    }
+    state.contactNotesCache.push([accountName, contactName, type, note, dateStr, rep]);
 
     // Re-render contacts tab to show new note
     const acc = state.accounts.find(a => a.name === accountName);
@@ -6134,9 +6135,10 @@ async function iqSaveLog(id, accName, contactName, type) {
   try {
     try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT','CONTACT','TYPE','NOTE','DATE','REP']], CONFIG.HISTORY_SPREADSHEET_ID); } catch(e2) {}
     await sheetsAppend("'_CONTACT_NOTES'!A2", [[accName, contactName, outcome, logNote, dateStr, rep]], CONFIG.HISTORY_SPREADSHEET_ID);
-    if (!state.contactNotesCache) state.contactNotesCache = {};
-    if (!state.contactNotesCache[accName]) state.contactNotesCache[accName] = [];
-    state.contactNotesCache[accName].push({ contact: contactName, type: outcome, note: logNote, date: dateStr, rep });
+    if (!state.contactNotesCache || !Array.isArray(state.contactNotesCache)) {
+      state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
+    }
+    state.contactNotesCache.push([accName, contactName, outcome, logNote, dateStr, rep]);
     schedMarkDone(id);
     showToast('Logged & done ✓', 'success');
     const row = document.getElementById('iq-ev-' + id);
@@ -7718,7 +7720,7 @@ async function saveCollectionsNote(name) {
     saveBtns.forEach(function(b){ b.disabled=true; b.textContent='SAVING...'; });
     try {
       const repId = state.repId || '';
-      await sheetsAppend("'_CONTACT_NOTES'!A:F", [[name, '', 'CollectionsNote', note, dateISO, repId]], CONFIG.SPREADSHEET_ID);
+      await sheetsAppend("'_CONTACT_NOTES'!A2", [[name, '', 'CollectionsNote', note, dateISO, repId]], CONFIG.HISTORY_SPREADSHEET_ID);
       // Cache the note for Notes Feed
       if (!state.contactNotesCache) state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
       if (!Array.isArray(state.contactNotesCache[0])) state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
@@ -11407,7 +11409,7 @@ async function _renderNotesFeed(isTeamView) {
     if (state.contactNotesCache && state.contactNotesCache.length > 1) {
       cnRows = state.contactNotesCache;
     } else {
-      cnRows = await sheetsGet("'_CONTACT_NOTES'!A1:Z1000") || [];
+      cnRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_NOTES'!A1:Z2000") || [];
     }
     if (cnRows.length > 1) {
       const h = cnRows[0].map(function(x){ return (x||'').toLowerCase(); });

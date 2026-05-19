@@ -2828,7 +2828,12 @@ function requestSheetsToken() {
 }
 function completeLogin() {
   console.log('completeLogin called for:', state.user ? state.user.email : 'unknown', state.repId);
-  if (state._loginComplete) return; // prevent double-init from location modal flow
+  if (state._loginComplete) return; // prevent double-init
+  // NDA must be accepted before ANY app content is shown
+  if (!sessionStorage.getItem('it_nda_accepted')) {
+    showNDA();
+    return; // re-called by completeLoginAfterLocation() after NDA + location flow
+  }
   if (!sessionStorage.getItem('it_session_id')) {
     sessionStorage.setItem('it_session_id', generateSessionId());
   }
@@ -4491,22 +4496,27 @@ async function getUserIP() {
 }
 
 async function logLoginEvent(userData) {
+  console.log('logLoginEvent called for', userData ? userData.email : '?', userData ? userData.repId : '?');
   for (var _i = 0; _i < 3; _i++) {
     try {
       var _ip = await getUserIP();
       var _now = new Date();
+      console.log('logLoginEvent attempt', _i + 1, 'ip:', _ip);
       await sheetsAppend("'_LOG'!A1", [[
         _now.toISOString(),
-        userData.email || 'unknown',
         'LOGIN',
-        'Rep ' + (userData.repId || 'unknown') + ' logged in from IP ' + _ip,
+        userData.email || 'unknown',
+        userData.repId || 'unknown',
+        _ip,
+        'PENDING',
         navigator.userAgent.slice(0, 120),
+        'NORMAL',
         sessionStorage.getItem('it_session_id') || 'unknown'
       ]]);
       console.log('Login logged ✓ for', userData.email);
       return;
     } catch(e) {
-      console.warn('Login log attempt ' + (_i + 1) + ' failed:', e.message || e);
+      console.warn('Login log attempt ' + (_i + 1) + ' failed:', e.message || e, e);
       if (_i < 2) await new Promise(function(r){ setTimeout(r, 1000); });
     }
   }
@@ -5787,13 +5797,21 @@ function renderFollowUpCommandCenter() {
   const repEmail = state.user?.email || '';
   const isAdmin = state.isAdmin;
   const viewAsRep = state.viewAsRep;
-  if (!isAdmin) events = events.filter(e => e.rep === repEmail);
-  else if (viewAsRep) {
+  const repEmailMap = { CKaren:'kmancebo@intransittech.com', BillP:'bill.pratt@intransittech.com',
+    PIan:'ian.pitman@intransittech.com', RMauricio:'mrangel@intransittech.com',
+    LMancera:'lmancera@intransittech.com', bcastor:'brandonar@intransittech.com',
+    FJohn:'john.fluman@intransittech.com', Anolan:'anolan@intransittech.com' };
+  const _isManagerTeamView = !!state.managerRole && viewAsRep === '__TEAM_ALL__';
+  const _mgrTeamReps = _isManagerTeamView
+    ? ((MANAGER_CONFIG[state.managerRole] || {}).teamReps || [])
+    : [];
+  if (_isManagerTeamView) {
+    const _mgrTeamEmails = _mgrTeamReps.map(r => repEmailMap[r]).filter(Boolean);
+    events = events.filter(e => _mgrTeamEmails.includes(e.rep));
+  } else if (!isAdmin) {
+    events = events.filter(e => e.rep === repEmail);
+  } else if (viewAsRep) {
     // Admin viewing as rep — show that rep's events
-    const repEmailMap = { CKaren:'kmancebo@intransittech.com', BillP:'bill.pratt@intransittech.com',
-      PIan:'ian.pitman@intransittech.com', RMauricio:'mrangel@intransittech.com',
-      LMancera:'lmancera@intransittech.com', bcastor:'brandonar@intransittech.com',
-      FJohn:'john.fluman@intransittech.com', Anolan:'anolan@intransittech.com' };
     const filterEmail = repEmailMap[viewAsRep] || '';
     if (filterEmail) events = events.filter(e => e.rep === filterEmail);
   }
@@ -5806,8 +5824,13 @@ function renderFollowUpCommandCenter() {
 
   // Build contact intelligence for AI recommendations
   let repAccounts = [...state.accounts];
-  if (isAdmin && viewAsRep) repAccounts = repAccounts.filter(a => a.rep === viewAsRep);
-  else if (!isAdmin) repAccounts = repAccounts.filter(a => a.rep === state.repId);
+  if (_isManagerTeamView) {
+    repAccounts = repAccounts.filter(a => _mgrTeamReps.includes(a.rep));
+  } else if (isAdmin && viewAsRep) {
+    repAccounts = repAccounts.filter(a => a.rep === viewAsRep);
+  } else if (!isAdmin) {
+    repAccounts = repAccounts.filter(a => a.rep === state.repId);
+  }
 
   // Hidden suggestions (stored per rep)
   const repKey = viewAsRep || state.repId || 'admin';
@@ -9867,7 +9890,11 @@ async function showTransferRequests() {
 }
 
 function canSeeTransferCandidates() {
-  return isAdmin() || !!state.managerRole || (state.user && state.user.repId === 'BillP');
+  const repId = state.repId;
+  return isAdmin() ||
+         !!state.managerRole ||
+         repId === 'BillP' ||
+         repId === 'CKaren';
 }
 
 async function renderAttackPlan() {

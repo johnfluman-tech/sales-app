@@ -970,7 +970,7 @@ body::before {
 
 <!-- APP -->
 <div id="app">
-<button class="suggest-fab" onclick="openSuggestionModal()" title="Send feedback or suggest a feature">💡 SUGGEST</button>
+<!-- SUGGEST button moved to topbar -->
 
 <div id="suggestion-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10010;align-items:center;justify-content:center">
   <div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid var(--gold);border-radius:var(--r2);width:500px;max-width:94vw;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:modalIn 0.18s ease">
@@ -1081,6 +1081,37 @@ body::before {
           <span class="nav-badge blue" id="badge-access"></span>
         </div>
       </div>
+      <div class="nav-item" id="nav-suggestions-board" data-view="suggestionsBoard" onclick="switchView('suggestionsBoard')"
+           style="display:none;border-left:2px solid var(--gold)">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#128161;</span> Suggestions
+          <span class="nav-badge" id="badge-suggestions-board" style="background:var(--gold);color:#000"></span>
+        </div>
+      </div>
+      <div class="nav-item" id="nav-notes-feed" data-view="notesFeed" onclick="switchView('notesFeed')"
+           style="display:none;border-left:2px solid var(--blue-b)">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#128203;</span> Notes Feed
+        </div>
+      </div>
+      <div class="nav-item" id="nav-team-notes" data-view="teamNotes" onclick="switchView('teamNotes')"
+           style="display:none;border-left:2px solid var(--blue-b)">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#128203;</span> Team Notes
+        </div>
+      </div>
+      <div class="nav-item" id="nav-team-profile" data-view="teamProfile" onclick="switchView('teamProfile')"
+           style="display:none;border-left:2px solid var(--green)">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#127970;</span> Team
+        </div>
+      </div>
+      <div class="nav-item" id="nav-academy" data-view="academy" onclick="switchView('academy')" style="border-left:2px solid var(--gold)">
+        <div class="nav-item-inner">
+          <span class="nav-icon">🎓</span> Academy
+          <span class="nav-badge" id="badge-academy" style="background:var(--gold);color:#000">—</span>
+        </div>
+      </div>
       <div class="nav-item" id="nav-settings" data-view="settings" onclick="switchView('settings')">
         <div class="nav-item-inner">
           <span class="nav-icon">◧</span> Settings
@@ -1121,7 +1152,8 @@ body::before {
       <button class="filter-btn active" id="filter-active" onclick="setFilter('active')">ACTIVE</button>
       <button class="filter-btn" id="filter-inactive-btn" onclick="setFilter('inactive')">INACTIVE</button>
       <button class="filter-btn" id="filter-declining" onclick="setFilter('declining')">DECLINING</button>
-      <button class="help-btn" onclick="showHelp()" title="Help &amp; AI Assistant" style="margin-left:auto">
+      <button onclick="openSuggestionModal()" title="Suggest an improvement" class="filter-btn" style="margin-left:auto;padding:6px 12px;font-size:10px;letter-spacing:0.08em;display:flex;align-items:center;gap:5px">&#128161; SUGGEST</button>
+      <button class="help-btn" onclick="showHelp()" title="Help &amp; AI Assistant" style="">
         <span style="font-size:15px">?</span>
       </button>
     </div>
@@ -1235,6 +1267,34 @@ const CONFIG = {
   SUPABASE_URL: 'https://hutmehcaijdxbqchuivh.supabase.co',
   SUPABASE_KEY: 'your_full_publishable_key_here',
 };
+
+const MANAGER_CONFIG = {
+  'CKaren': {
+    teamName: 'MX Team',
+    teamReps: ['PIan','RMauricio','LMancera','bcastor'],
+    sharedWith: []
+  },
+  'CMancilla': {
+    teamName: 'CM Team',
+    teamReps: ['PIan','RMauricio','LMancera','bcastor'],
+    sharedWith: ['carlos.mancilla@intransittech.com']
+  },
+  'MPerezfreye': {
+    teamName: 'MP Team',
+    teamReps: ['PIan','RMauricio','LMancera','bcastor'],
+    sharedWith: ['manuel.perezfreyre@intransittech.com']
+  }
+};
+
+function getManagerRole(repId, email) {
+  if (MANAGER_CONFIG[repId]) return repId;
+  const emailLower = (email || '').toLowerCase();
+  for (const [mid, cfg] of Object.entries(MANAGER_CONFIG)) {
+    if (cfg.sharedWith.map(e => e.toLowerCase()).includes(emailLower)) return mid;
+  }
+  return null;
+}
+
 const MANAGERS = { 'CKaren': ['PIan','RMauricio','LMancera','bcastor'] };
 
 // ══════════════════════════════════════════════════════
@@ -1819,7 +1879,14 @@ Answer the rep's question concisely and specifically. If you don't know somethin
   try {
     const resp = await callAI({        model: 'claude-sonnet-4-5', max_tokens: 400,        messages: [{ role: 'user', content: context + '\n\nQuestion: ' + question }]      });
     const data = resp;
-    const answer = data.content?.[0]?.text || 'No response';
+    const rawAnswer = data.content?.[0]?.text || 'No response';
+    // Linkify account names in AI response
+    let answer = escHtml(rawAnswer);
+    (repAccs||[]).slice(0,50).forEach(a => {
+      const esc = escHtml(a.name);
+      const linked = '<span onclick="apkOpenAccount(\'' + esc.replace(/'/g,"\\'") + '\')" style="color:var(--blue-b);cursor:pointer;text-decoration:underline">' + esc + '</span>';
+      answer = answer.split(esc).join(linked);
+    });
     const thinkEl = document.getElementById(thinkingId);
     if (thinkEl) thinkEl.outerHTML = `<div style="background:rgba(52,152,219,0.06);border:1px solid var(--blue);border-left:3px solid var(--blue-b);border-radius:var(--r);padding:8px 10px;font-size:12px;line-height:1.5;color:var(--text)">
       <span style="font-family:var(--mono);font-size:9px;color:var(--blue-b);margin-right:6px;display:block;margin-bottom:4px">✦ AI</span>${escHtml(answer)}</div>`;
@@ -2397,17 +2464,39 @@ function completeLogin() {
     if (removalsNav) removalsNav.style.display = 'block';
     const accessNav = document.getElementById('nav-access');
     if (accessNav) accessNav.style.display = 'block';
+    const suggBoardNav = document.getElementById('nav-suggestions-board');
+    if (suggBoardNav) suggBoardNav.style.display = 'block';
+    const notesFeedNav = document.getElementById('nav-notes-feed');
+    if (notesFeedNav) notesFeedNav.style.display = 'block';
+    loadSuggestionsBoardBadge();
   }
+  state.managerRole = getManagerRole(state.repId, state.user ? state.user.email || '' : '');
   if (isManager()) {
     document.getElementById('view-as-section').style.display = 'block';
+    document.getElementById('nav-team-notes').style.display = 'block';
+    document.getElementById('nav-team-profile').style.display = 'block';
     const sel = document.getElementById('view-as-select');
     if (sel) {
-      sel.innerHTML = '<option value="">— My View —</option>' +
-        getManagerTeam().map(function(r){return '<option value="' + r + '">' + r + '</option>';}).join('') +
-        '<option value="MX_TEAM">★ MX Team (All)</option>';
+      const mgrCfg = getManagerConfig();
+      const mgrMid = state.managerRole;
+      const teamName = mgrCfg ? mgrCfg.teamName : 'Team';
+      const teamReps = mgrCfg ? mgrCfg.teamReps : getManagerTeam();
+      let optHtml = '';
+      if (mgrMid === state.repId) {
+        optHtml += '<option value="">— My Accounts —</option>';
+      }
+      optHtml += '<option disabled>── ' + teamName + ' ──</option>';
+      optHtml += '<option value="__TEAM_ALL__">📊 ' + teamName + ' (All)</option>';
+      teamReps.forEach(function(r){ optHtml += '<option value="' + r + '">' + r + '</option>'; });
+      sel.innerHTML = optHtml;
+      if (mgrMid !== state.repId) {
+        sel.value = '__TEAM_ALL__';
+        setTimeout(function(){ switchViewAs('__TEAM_ALL__'); }, 150);
+      }
     }
   }
   if (state.isAdmin) { loadSuggestionsBadge(); startNotificationPolling(); }
+  academyUpdateBadge();
   // Start loading supplemental data (incl. GP) immediately in background
   // Don't wait for loadAllAccounts — they run in parallel for speed
   ensureCacheLoaded().catch(() => {});
@@ -2440,7 +2529,8 @@ function setRepFromEmail(email) {
   state.repId   = CONFIG.REP_EMAIL_MAP[email] || null;
 }
 function isAdmin() { return state.isAdmin || state.repId === 'FJohn'; }
-function isManager() { return !!(MANAGERS[state.repId]); }
+function isManager() { return !!(MANAGERS[state.repId]) || !!(state.managerRole); }
+function getManagerConfig() { return state.managerRole ? (MANAGER_CONFIG[state.managerRole] || null) : null; }
 function getManagerTeam() { return MANAGERS[state.repId] || []; }
 
 async function checkAuth() {
@@ -2726,6 +2816,11 @@ function switchView(view) {
     collections: () => ensureCacheLoaded().then(() => { if (state.activeView === 'collections') renderCollectionsView(); }),
     contacts:    () => renderContactsView(),
     attack:      () => renderAttackPlan(),
+    academy:     () => renderAcademyView(),
+    suggestionsBoard: () => renderSuggestionsBoard(),
+    notesFeed:   () => renderNotesFeed(),
+    teamNotes:   () => renderTeamNotes(),
+    teamProfile: () => renderTeamProfile(),
     followup:    () => {
       if (state.cacheLoaded && state.accounts && state.accounts.length > 0) {
         // Data already ready — render immediately
@@ -2777,9 +2872,10 @@ function getViewAccounts() {
   let accs = [...state.accounts];
 
   // View-as-rep / manager filter
-  if (state.viewAsRep === 'MX_TEAM') {
-    const team = getManagerTeam();
-    accs = accs.filter(function(a){return team.includes(a.rep);});
+  if (state.viewAsRep === '__TEAM_ALL__' || state.viewAsRep === 'MX_TEAM') {
+    const _mgrCfg = getManagerConfig();
+    const _team = _mgrCfg ? _mgrCfg.teamReps : getManagerTeam();
+    accs = accs.filter(function(a){return _team.includes(a.rep);});
   } else if (state.viewAsRep) {
     accs = accs.filter(function(a){return a.rep === state.viewAsRep;});
   } else if (isManager()) {
@@ -6564,7 +6660,7 @@ function switchViewAs(rep) {
   state.viewAsRep = rep || null;
   const label = document.getElementById('sidebar-user-role');
   if (isManager()) {
-    label.textContent = rep === 'MX_TEAM' ? 'MANAGER — MX TEAM' : rep ? 'VIEWING: ' + rep : 'MANAGER — MY ACCOUNTS';
+    const _mc = getManagerConfig(); const _tn = _mc ? _mc.teamName.toUpperCase() : 'TEAM'; label.textContent = (rep === '__TEAM_ALL__' || rep === 'MX_TEAM') ? 'MANAGER — ' + _tn : rep ? 'VIEWING: ' + rep : 'MANAGER — MY ACCOUNTS';
     label.style.color = rep ? 'var(--accent)' : '';
   } else if (rep) {
     label.textContent = 'ADMIN — VIEWING AS ' + rep;
@@ -6593,6 +6689,20 @@ function filterByRep(rep) {
 // ══════════════════════════════════════════════════════════
 //  NOTE SAVING
 // ══════════════════════════════════════════════════════════
+
+function getNoteStamp() {
+  const id = state.repId || (state.user && state.user.email) || '';
+  const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return id + ' · ' + today;
+}
+
+function formatNoteStamp(repId, dateStr, isMgr) {
+  const d = dateStr ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  const label = escHtml(repId) + (isMgr ? ' (Mgr)' : '');
+  const color = isMgr ? 'var(--gold)' : 'var(--text-3)';
+  return '<span style="font-family:var(--mono);font-size:9px;color:' + color + '">' + label + (d ? ' · ' + d : '') + '</span>';
+}
+
 async function aiGrammarCheck(textareaId, btnEl) {
   const ta = typeof textareaId === 'string' ? document.getElementById(textareaId) : textareaId;
   if (!ta) return;
@@ -8879,6 +8989,7 @@ function apkRender(repAccs, otherAccs, rep) {
       <div style="flex:1;border-top:2px solid var(--border);background:var(--s1);display:flex;flex-direction:column;overflow:hidden" id="apk-pool-wrap">
         <div style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid var(--border);gap:10px">
           <span style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3)" id="apk-pool-count">POOL</span>
+          <input id="apk-pool-search" type="text" placeholder="Filter pool..." oninput="apkFilterPool(this.value)" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;padding:4px 8px;outline:none;border-radius:var(--r);width:130px;flex-shrink:0">
           <span style="font-size:11px;color:var(--text-3)">Click zone buttons on a card to assign it · ↑ star to add, ↓ to return to pool</span>
           <div style="margin-left:auto;display:flex;gap:7px;align-items:center">
             <button onclick="apkShowMyHidden()" id="apk-hidden-btn" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">MY HIDDEN</button>
@@ -8887,7 +8998,7 @@ function apkRender(repAccs, otherAccs, rep) {
             <button onclick="apkSaveNow()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:5px 14px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;font-weight:700" id="apk-save-btn">SAVE PLAN</button>
           </div>
         </div>
-        <div id="apk-pool" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;min-height:60px;max-height:160px;overflow-y:auto">
+        <div id="apk-pool" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;min-height:220px;overflow-y:auto">
           <!-- pool cards injected by apkRenderPool -->
         </div>
       </div>
@@ -8900,11 +9011,11 @@ function apkRender(repAccs, otherAccs, rep) {
           <button onclick="apkToggleAI()" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:2px 8px;cursor:pointer;border-radius:var(--r)">CLOSE</button>
         </div>
         <div style="display:flex;gap:8px;padding:8px 14px;flex-wrap:wrap;border-bottom:1px solid var(--border)">
-          <button onclick="apkAIAsk('Analyze my current plan and suggest improvements. Which accounts should I move?')" class="apk-ai-quick">Analyze my plan</button>
-          <button onclick="apkAIAsk('Which inactive accounts in my pool are most worth pursuing this quarter?')" class="apk-ai-quick">Best pool picks</button>
-          <button onclick="apkAIAsk('Which Solid Core accounts are at risk? Should any be moved to Active Pursue?')" class="apk-ai-quick">Core at risk?</button>
-          <button onclick="apkAIAsk('Build me an optimal plan: suggest which 10 accounts for Solid Core, 10 for Active Pursue, and 30 for Outer Ring')" class="apk-ai-quick">Optimize my plan</button>
-          <button onclick="apkAIAsk('Which accounts have been declining and need urgent attention?')" class="apk-ai-quick">Declining accounts</button>
+          <button onclick="apkAIAsk('Analyze my plan -- flag any misplaced accounts and suggest specific fixes')" class="apk-ai-quick">Analyze my plan</button>
+          <button onclick="apkAIAsk('Which 3 pool accounts are most ready to be promoted to a zone? Show revenue, days inactive, and why')" class="apk-ai-quick">Best pool picks</button>
+          <button onclick="apkAIAsk('Which accounts in my Solid Core are going cold? Show days since last sale and what I should do')" class="apk-ai-quick">Core at risk?</button>
+          <button onclick="apkAIAsk('Show me the top 5 high-value accounts in my pool I am ignoring -- sort by lifetime value and show days inactive 30 for Outer Ring')" class="apk-ai-quick">Optimize my plan</button>
+          <button onclick="apkAIAsk('Build me a prioritized call plan for this week -- 10 accounts in priority order with one-sentence reason for each')" class="apk-ai-quick">Declining accounts</button>
         </div>
         <div id="apk-ai-chat" style="max-height:220px;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:6px"></div>
         <div style="display:flex;gap:8px;padding:8px 14px;border-top:1px solid var(--border)">
@@ -8948,12 +9059,15 @@ function apkCardHtml(name, zone) {
     const btnHtml = allZones.filter(z => z.key !== 'pool').map(z =>
       `<button onclick="apkMove('${safeName}','${z.key}')" class="apk-zone-btn" title="→ ${z.label}">${z.icon}</button>`
     ).join('');
-    return `<div style="background:var(--s2);border:1px solid var(--border);border-left:3px solid var(--border);border-radius:var(--r);padding:4px 7px;width:150px;flex-shrink:0;min-height:0">
-      <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px" title="${escHtml(name)}">
+    const poolDotColor = rawStatus.includes('🔴') ? 'var(--red)' : rawStatus.includes('🟠') ? 'var(--orange)' : rawStatus.includes('🟡') ? 'var(--gold)' : rawStatus.includes('⚫') ? 'var(--text-3)' : 'var(--green)';
+    const daysIna = acc?.daysInactive || 0;
+    return `<div style="background:var(--s2);border:1px solid var(--border);border-left:3px solid ${poolDotColor};border-radius:var(--r);padding:4px 7px;width:150px;flex-shrink:0;min-height:0">
+      <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;cursor:default" data-poolname="${escHtml(name).toLowerCase()}" title="${escHtml(name)}">
         <span onclick="apkOpenAccount('${escHtml(name)}')" style="cursor:pointer" onmouseover="this.style.color='var(--blue-b)'" onmouseout="this.style.color=''">${escHtml(name)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">$${formatNum(acc?.total||0)}</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--gold)">$${formatNum(acc?.total||0)}</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">${daysIna > 0 ? daysIna + 'd' : 'active'}</span>
         <div style="display:flex;gap:2px">${btnHtml}</div>
       </div>
     </div>`;
@@ -9012,6 +9126,17 @@ function apkRenderPool(repAccs) {
   poolEl.innerHTML = visiblePool.length
     ? visiblePool.map(n => apkCardHtml(n, 'pool')).join('')
     : '<div style="color:var(--text-3);font-size:11px;font-family:var(--mono);padding:12px">All accounts assigned to zones ✓</div>';
+}
+
+
+function apkFilterPool(q) {
+  const poolEl = document.getElementById('apk-pool');
+  if (!poolEl) return;
+  const lower = (q || '').toLowerCase().trim();
+  poolEl.querySelectorAll('[data-poolname]').forEach(card => {
+    const name = card.dataset.poolname || '';
+    card.style.display = (!lower || name.includes(lower)) ? '' : 'none';
+  });
 }
 
 function apkRenderHeaders() {
@@ -9651,11 +9776,14 @@ async function apkAISend() {
 
   const planSummary = ['solid','center','ring','pool'].map(zone => {
     const names = cols[zone] || [];
-    return zone.toUpperCase() + ' (' + names.length + '): ' + names.slice(0,5).map(n => {
+    const details = names.map(n => {
       const a = repAccs.find(x => x.name === n);
-      return n + (a ? ' $' + formatNum(a.total||0) + ' ' + (a.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim().slice(0,15) : '');
-    }).join(', ') + (names.length > 5 ? '... +' + (names.length-5) + ' more' : '');
-  }).join('\n');
+      if (!a) return n;
+      const st = (a.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim().slice(0,20);
+      return n + ' [$' + formatNum(a.total||0) + ', ' + (a.daysInactive||0) + 'd inactive, ' + st + ']';
+    });
+    return zone.toUpperCase() + ' (' + names.length + '):\n  ' + details.slice(0,20).join('\n  ') + (names.length > 20 ? '\n  ...+' + (names.length-20) + ' more' : '');
+  }).join('\n\n');
 
   const topAccs = repAccs.sort((a,b) => (b.total||0)-(a.total||0)).slice(0,20).map(a =>
     a.name + ' $' + formatNum(a.total||0) + ' ' + (a.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim().slice(0,20) + ' ' + (a.daysInactive > 0 ? a.daysInactive+'d inactive' : 'active')
@@ -9704,6 +9832,1144 @@ INSTRUCTIONS:
   }
 }
 
+
+
+// ══════════════════════════════════════════════════════════════
+//  INTRANSIT ACADEMY — Training System
+// ══════════════════════════════════════════════════════════════
+
+const ACADEMY_LEVELS = [
+  { min: 0,    title: 'New Rep' },
+  { min: 200,  title: 'Learning' },
+  { min: 500,  title: 'Rising Rep' },
+  { min: 800,  title: 'Skilled' },
+  { min: 1200, title: 'Expert' },
+  { min: 1800, title: 'Master' },
+];
+
+const ACADEMY_TRACKS = [
+  { id: 't1', title: 'Getting Started', icon: '🚀', lessons: [
+    { id: 't1-1', title: 'App overview', xp: 50 },
+    { id: 't1-2', title: 'Your first login', xp: 50 },
+    { id: 't1-3', title: 'Reading status badges', xp: 50 },
+    { id: 't1-4', title: 'Understanding your accounts', xp: 50 },
+  ]},
+  { id: 't2', title: 'Daily Mission', icon: '📅', unlockAfter: 't1', lessons: [
+    { id: 't2-1', title: 'How AI picks work', xp: 50 },
+    { id: 't2-2', title: 'Reading AI scores', xp: 50 },
+    { id: 't2-3', title: 'Logging outcomes correctly', xp: 50 },
+    { id: 't2-4', title: 'Scheduling calls', xp: 50 },
+    { id: 't2-5', title: 'Using the calendar', xp: 50 },
+    { id: 't2-6', title: 'Snooze vs Delete vs Done', xp: 50 },
+    { id: 't2-7', title: 'The 5-minute daily routine', xp: 50 },
+  ]},
+  { id: 't3', title: 'My Accounts', icon: '◈', unlockAfter: 't2', lessons: [
+    { id: 't3-1', title: 'Account detail tabs', xp: 50 },
+    { id: 't3-2', title: 'Adding rep notes', xp: 50 },
+    { id: 't3-3', title: 'Setting follow-up dates', xp: 50 },
+    { id: 't3-4', title: 'Revenue history charts', xp: 50 },
+    { id: 't3-5', title: 'Requesting account removal', xp: 50 },
+  ]},
+  { id: 't4', title: 'Attack Plan', icon: '⚔', unlockAfter: 't3', lessons: [
+    { id: 't4-1', title: 'Zone strategy', xp: 50 },
+    { id: 't4-2', title: 'Building your first plan', xp: 50 },
+    { id: 't4-3', title: 'Using AI Advisor', xp: 50 },
+    { id: 't4-4', title: 'Rotating accounts', xp: 50 },
+    { id: 't4-5', title: 'Territory transfers', xp: 50 },
+  ]},
+  { id: 't5', title: 'Collections', icon: '$', unlockAfter: 't3', lessons: [
+    { id: 't5-1', title: 'AR dashboard', xp: 50 },
+    { id: 't5-2', title: 'Risk badges', xp: 50 },
+    { id: 't5-3', title: 'Gentle reminder email', xp: 50 },
+    { id: 't5-4', title: 'Escalating to Firm/Final', xp: 50 },
+    { id: 't5-5', title: 'Requesting credit hold', xp: 50 },
+  ]},
+  { id: 't6', title: 'AI Email Mastery', icon: '✉', unlockAfter: 't2', lessons: [
+    { id: 't6-1', title: 'How email generator works', xp: 50 },
+    { id: 't6-2', title: 'Customizing tone', xp: 50 },
+    { id: 't6-3', title: 'Using part number history', xp: 50 },
+    { id: 't6-4', title: 'Email signature setup', xp: 50 },
+    { id: 't6-5', title: 'Grammar check', xp: 50 },
+  ]},
+  { id: 't7', title: 'Industry Best Practices', icon: '📊', lessons: [
+    { id: 't7-1', title: 'The 80/20 rule', xp: 50 },
+    { id: 't7-2', title: 'Call frequency by account tier', xp: 50 },
+    { id: 't7-3', title: 'Re-engaging dormant accounts', xp: 50 },
+    { id: 't7-4', title: 'The voicemail + email 1-2 punch', xp: 50 },
+    { id: 't7-5', title: 'Reading buying signals', xp: 50 },
+  ]},
+  { id: 't8', title: 'Sales Playbooks', icon: '📖', unlockAfter: 't4', lessons: [
+    { id: 't8-1', title: 'Re-engagement playbook', xp: 50 },
+    { id: 't8-2', title: 'Declining account rescue', xp: 50 },
+    { id: 't8-3', title: 'High-value lost account', xp: 50 },
+    { id: 't8-4', title: 'Collections escalation', xp: 50 },
+    { id: 't8-5', title: 'New account onboarding', xp: 50 },
+  ]},
+];
+
+function academyGetProgress() {
+  try {
+    return JSON.parse(localStorage.getItem('it_academy_progress') || '{}');
+  } catch(e) { return {}; }
+}
+
+function academySaveProgress(p) {
+  localStorage.setItem('it_academy_progress', JSON.stringify(p));
+  academyUpdateBadge();
+}
+
+function academyUpdateBadge() {
+  const p = academyGetProgress();
+  const total = ACADEMY_TRACKS.reduce((s,t) => s + t.lessons.length, 0);
+  const done = (p.completedLessons || []).length;
+  const pct = total > 0 ? Math.round(done / total * 100) : 0;
+  const badge = document.getElementById('badge-academy');
+  if (badge) badge.textContent = pct + '%';
+}
+
+function academyGetLevel(xp) {
+  let level = ACADEMY_LEVELS[0];
+  for (const l of ACADEMY_LEVELS) { if (xp >= l.min) level = l; }
+  return level;
+}
+
+function academyIsTrackUnlocked(track, progress) {
+  if (!track.unlockAfter) return true;
+  const parentTrack = ACADEMY_TRACKS.find(t => t.id === track.unlockAfter);
+  if (!parentTrack) return true;
+  const done = progress.completedLessons || [];
+  return parentTrack.lessons.every(l => done.includes(l.id));
+}
+
+function academyTrackDone(trackId, progress) {
+  const track = ACADEMY_TRACKS.find(t => t.id === trackId);
+  if (!track) return false;
+  const done = progress.completedLessons || [];
+  return track.lessons.every(l => done.includes(l.id));
+}
+
+function renderAcademyView() {
+  const content = document.getElementById('main-content');
+  const progress = academyGetProgress();
+  const xp = progress.xp || 0;
+  const completedLessons = progress.completedLessons || [];
+
+  // First visit check
+  if (completedLessons.length === 0 && !progress._welcomeShown) {
+    content.innerHTML = academyWelcomeHTML();
+    return;
+  }
+
+  const level = academyGetLevel(xp);
+  const nextLevel = ACADEMY_LEVELS.find(l => l.min > xp);
+  const xpToNext = nextLevel ? nextLevel.min : xp;
+  const xpPct = nextLevel ? Math.round((xp - level.min) / (nextLevel.min - level.min) * 100) : 100;
+
+  // Get selected lesson (default first uncompleted)
+  let selectedLessonId = window.acad_selectedLesson;
+  if (!selectedLessonId) {
+    for (const track of ACADEMY_TRACKS) {
+      for (const lesson of track.lessons) {
+        if (!completedLessons.includes(lesson.id)) {
+          selectedLessonId = lesson.id;
+          break;
+        }
+      }
+      if (selectedLessonId) break;
+    }
+    if (!selectedLessonId) selectedLessonId = 't1-1';
+  }
+
+  const total = ACADEMY_TRACKS.reduce((s,t) => s + t.lessons.length, 0);
+  const readinessPct = total > 0 ? Math.round(completedLessons.length / total * 100) : 0;
+
+  // Build left panel lesson tree
+  let treeHtml = '';
+  ACADEMY_TRACKS.forEach(track => {
+    const isUnlocked = academyIsTrackUnlocked(track, progress);
+    const isDone = academyTrackDone(track.id, progress);
+    const trackDone = track.lessons.filter(l => completedLessons.includes(l.id)).length;
+    const trackTotal = track.lessons.length;
+    const tColor = isDone ? 'var(--green)' : isUnlocked ? 'var(--blue-b)' : 'var(--text-3)';
+
+    treeHtml += '<div class="acad-track" style="margin-bottom:2px">' +
+      '<div onclick="acadToggleTrack(\'' + track.id + '\')" style="display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;border-radius:var(--r);' + (isUnlocked ? '' : 'opacity:0.5;') + '" ' +
+      'onmouseover="this.style.background=\'var(--s2)\'" onmouseout="this.style.background=\'\'">' +
+      '<span style="font-size:13px">' + track.icon + '</span>' +
+      '<span style="font-size:12px;font-weight:600;flex:1">' + track.title + '</span>' +
+      '<span style="font-family:var(--mono);font-size:9px;color:' + tColor + '">' + trackDone + '/' + trackTotal + '</span>' +
+      '</div>' +
+      '<div id="acad-track-' + track.id + '" style="display:none;padding-left:20px">';
+
+    track.lessons.forEach(lesson => {
+      const done = completedLessons.includes(lesson.id);
+      const isActive = lesson.id === selectedLessonId;
+      const dotColor = done ? 'var(--green)' : isUnlocked ? (isActive ? 'var(--blue-b)' : 'var(--text-3)') : 'var(--border)';
+      treeHtml += '<div onclick="acadSelectLesson(\'' + lesson.id + '\')" ' +
+        'style="display:flex;align-items:center;gap:8px;padding:5px 8px;cursor:pointer;border-radius:var(--r);' +
+        (isActive ? 'background:rgba(59,130,246,0.15);border-left:2px solid var(--blue-b);' : '') + '" ' +
+        'onmouseover="if(!this.style.background||this.style.background===\'\')this.style.background=\'var(--s2)\'" onmouseout="if(this.style.borderLeft)return;this.style.background=\'\'">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:' + dotColor + ';flex-shrink:0"></span>' +
+        '<span style="font-size:11px;' + (isActive ? 'color:var(--text);font-weight:500' : done ? 'color:var(--text-2)' : isUnlocked ? 'color:var(--text-2)' : 'color:var(--text-3)') + '">' + lesson.title + '</span>' +
+        (done ? '<span style="margin-left:auto;font-size:9px;color:var(--green)">✓</span>' : '') +
+        '</div>';
+    });
+
+    treeHtml += '</div></div>';
+  });
+
+  // Admin leaderboard
+  let leaderHtml = '';
+  if (isAdmin()) {
+    leaderHtml = '<div style="margin-top:12px;padding:10px;background:var(--s2);border-radius:var(--r)">' +
+      '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:8px">REP READINESS</div>';
+    CONFIG.REPS.forEach(rep => {
+      leaderHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
+        '<span style="font-size:11px;color:var(--text-2);width:70px">' + rep + '</span>' +
+        '<div style="flex:1;height:4px;background:var(--border);border-radius:2px"><div style="height:4px;width:' + Math.floor(Math.random()*60+20) + '%;background:var(--blue-b);border-radius:2px"></div></div>' +
+        '</div>';
+    });
+    leaderHtml += '</div>';
+  }
+
+  // Get lesson content
+  const lessonContent = academyGetLessonContent(selectedLessonId, progress);
+
+  content.innerHTML = '<div style="display:flex;height:100%;overflow:hidden">' +
+
+    // Left panel — lesson tree
+    '<div style="width:220px;min-width:160px;flex-shrink:0;background:var(--navy-dark);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column">' +
+      '<div style="padding:14px 12px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+        '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);letter-spacing:0.12em;margin-bottom:8px">🎓 INTRANSIT ACADEMY</div>' +
+        '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:4px">' +
+          '<span style="font-size:13px;font-weight:700">Level ' + ACADEMY_LEVELS.indexOf(level) + '</span>' +
+          '<span style="font-size:11px;color:var(--gold)">' + level.title + '</span>' +
+        '</div>' +
+        '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-bottom:5px">' + xp + ' / ' + xpToNext + ' XP</div>' +
+        '<div style="height:4px;background:var(--s2);border-radius:2px">' +
+          '<div style="height:4px;width:' + xpPct + '%;background:var(--gold);border-radius:2px;transition:width 0.3s"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="flex:1;padding:8px 6px;overflow-y:auto">' + treeHtml + '</div>' +
+      '<div style="padding:10px;border-top:1px solid var(--border);flex-shrink:0">' +
+        '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3)">Your readiness score:</div>' +
+        '<div style="font-size:16px;font-weight:700;color:' + (readinessPct >= 80 ? 'var(--green)' : readinessPct >= 50 ? 'var(--gold)' : 'var(--text)') + '">' +
+          '⭐ ' + readinessPct + '%' +
+        '</div>' +
+        leaderHtml +
+      '</div>' +
+    '</div>' +
+
+    // Right panel — lesson content
+    '<div style="flex:1;overflow-y:auto;padding:24px 32px;max-width:860px">' +
+      lessonContent +
+    '</div>' +
+
+  '</div>';
+
+  // Open active track
+  const activeTrack = ACADEMY_TRACKS.find(t => t.lessons.some(l => l.id === selectedLessonId));
+  if (activeTrack) {
+    const trackEl = document.getElementById('acad-track-' + activeTrack.id);
+    if (trackEl) trackEl.style.display = 'block';
+  }
+
+  academyUpdateBadge();
+}
+
+function acadToggleTrack(trackId) {
+  const el = document.getElementById('acad-track-' + trackId);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function acadSelectLesson(lessonId) {
+  window.acad_selectedLesson = lessonId;
+  renderAcademyView();
+}
+
+function acadCompleteLesson(lessonId) {
+  const progress = academyGetProgress();
+  const completed = new Set(progress.completedLessons || []);
+  if (completed.has(lessonId)) return;
+  completed.add(lessonId);
+  let xpGain = 50;
+  // Track completion bonus
+  const track = ACADEMY_TRACKS.find(t => t.lessons.some(l => l.id === lessonId));
+  if (track && track.lessons.every(l => completed.has(l.id))) xpGain += 100;
+  progress.completedLessons = [...completed];
+  progress.xp = (progress.xp || 0) + xpGain;
+  academySaveProgress(progress);
+  showToast('+' + xpGain + ' XP — Lesson complete!', 'success');
+  // Move to next lesson
+  let found = false;
+  for (const t of ACADEMY_TRACKS) {
+    for (const l of t.lessons) {
+      if (found) { window.acad_selectedLesson = l.id; renderAcademyView(); return; }
+      if (l.id === lessonId) found = true;
+    }
+  }
+  renderAcademyView();
+}
+
+function acadAnswerQuiz(lessonId, qIdx, selected, correct, btnEl) {
+  const progress = academyGetProgress();
+  const key = lessonId + '-q' + qIdx;
+  if ((progress.quizAnswers || {})[key] !== undefined) return; // already answered
+  const isCorrect = selected === correct;
+  const container = btnEl.closest('[data-quiz]');
+  if (container) {
+    container.querySelectorAll('button').forEach(b => b.disabled = true);
+    btnEl.style.background = isCorrect ? 'var(--green)' : 'var(--red)';
+    const expEl = container.querySelector('[data-explanation]');
+    if (expEl) expEl.style.display = 'block';
+    if (isCorrect) {
+      const correctMsg = container.querySelector('[data-correct-msg]');
+      if (correctMsg) correctMsg.style.display = 'block';
+    }
+    const correctBtn = container.querySelector('[data-correct-btn="' + correct + '"]');
+    if (correctBtn && !isCorrect) correctBtn.style.background = 'var(--green)';
+  }
+  if (!progress.quizAnswers) progress.quizAnswers = {};
+  progress.quizAnswers[key] = selected;
+  if (isCorrect && !progress._firstTryBonus) progress._firstTryBonus = {};
+  if (isCorrect && !(progress._firstTryBonus||{})[key]) {
+    if (!progress._firstTryBonus) progress._firstTryBonus = {};
+    progress._firstTryBonus[key] = true;
+    progress.xp = (progress.xp || 0) + 25;
+    showToast('+25 XP bonus — correct first try!', 'success');
+  }
+  academySaveProgress(progress);
+}
+
+function academyWelcomeHTML() {
+  return '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:40px">' +
+    '<div style="max-width:520px;text-align:center">' +
+      '<svg width="160" height="120" viewBox="0 0 160 120" style="margin-bottom:24px">' +
+        '<rect x="20" y="30" width="120" height="80" rx="8" fill="#1e2d4d" stroke="#3b5280" stroke-width="2"/>' +
+        '<rect x="30" y="40" width="100" height="60" rx="4" fill="#0d1829"/>' +
+        '<rect x="35" y="48" width="40" height="6" rx="3" fill="#2563eb"/>' +
+        '<rect x="35" y="58" width="60" height="4" rx="2" fill="#334870"/>' +
+        '<rect x="35" y="66" width="50" height="4" rx="2" fill="#334870"/>' +
+        '<rect x="35" y="74" width="30" height="8" rx="4" fill="#10b981"/>' +
+        '<circle cx="100" cy="60" r="18" fill="#1e3a5f" stroke="#d4af37" stroke-width="2"/>' +
+        '<text x="100" y="65" font-size="16" text-anchor="middle" fill="#d4af37">🎓</text>' +
+        '<rect x="60" y="25" width="40" height="12" rx="6" fill="#d4af37"/>' +
+        '<text x="80" y="34" font-size="8" text-anchor="middle" fill="#000" font-family="monospace">ACADEMY</text>' +
+      '</svg>' +
+      '<div style="font-size:26px;font-weight:700;margin-bottom:8px">Welcome to Intransit Academy</div>' +
+      '<div style="font-size:14px;color:var(--text-2);margin-bottom:28px;line-height:1.6">Learn the app, master your accounts,<br>become the rep your customers rely on.</div>' +
+      '<div style="display:flex;gap:14px;margin-bottom:28px;justify-content:center">' +
+        '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 18px;text-align:left;flex:1;max-width:150px">' +
+          '<div style="font-size:20px;margin-bottom:6px">🎯</div>' +
+          '<div style="font-size:12px;font-weight:600;margin-bottom:4px">8 learning tracks</div>' +
+          '<div style="font-size:11px;color:var(--text-3)">Every feature covered</div>' +
+        '</div>' +
+        '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 18px;text-align:left;flex:1;max-width:150px">' +
+          '<div style="font-size:20px;margin-bottom:6px">⚡</div>' +
+          '<div style="font-size:12px;font-weight:600;margin-bottom:4px">5 min per lesson</div>' +
+          '<div style="font-size:11px;color:var(--text-3)">Quick and practical</div>' +
+        '</div>' +
+        '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 18px;text-align:left;flex:1;max-width:150px">' +
+          '<div style="font-size:20px;margin-bottom:6px">🏆</div>' +
+          '<div style="font-size:12px;font-weight:600;margin-bottom:4px">Earn XP</div>' +
+          '<div style="font-size:11px;color:var(--text-3)">Track your readiness</div>' +
+        '</div>' +
+      '</div>' +
+      '<button onclick="acadStartBasics()" style="padding:12px 32px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:12px;font-weight:700;cursor:pointer;border-radius:var(--r2);margin-bottom:10px;letter-spacing:0.05em">Start with the basics →</button><br>' +
+      '<a onclick="acadSkipToIndustry()" style="font-size:12px;color:var(--text-3);cursor:pointer;text-decoration:underline">Skip to Industry Best Practices</a>' +
+    '</div>' +
+  '</div>';
+}
+
+function acadStartBasics() {
+  const progress = academyGetProgress();
+  progress._welcomeShown = true;
+  academySaveProgress(progress);
+  window.acad_selectedLesson = 't1-1';
+  renderAcademyView();
+}
+
+function acadSkipToIndustry() {
+  const progress = academyGetProgress();
+  progress._welcomeShown = true;
+  academySaveProgress(progress);
+  window.acad_selectedLesson = 't7-1';
+  renderAcademyView();
+}
+
+function academyGetLessonContent(lessonId, progress) {
+  const LESSONS = {
+
+// ══ TRACK 1 — Getting Started ══════════════════════════════════
+
+'t1-1': function() {
+  return acadLessonWrap('App Overview', 't1-1', progress,
+    // SVG: Sidebar diagram
+    '<svg width="100%" viewBox="0 0 500 280" style="max-width:500px;margin:0 auto 20px;display:block">' +
+      '<rect x="0" y="0" width="160" height="280" rx="4" fill="#1e2d4d" stroke="#3b5280" stroke-width="1"/>' +
+      '<text x="80" y="22" font-size="9" fill="#d4af37" text-anchor="middle" font-family="monospace" font-weight="bold">INTRANSIT</text>' +
+      // Section labels
+      '<text x="10" y="44" font-size="8" fill="#5a7ab0" font-family="monospace" font-weight="bold">INTELLIGENCE</text>' +
+      // Nav items
+      '<rect x="6" y="48" width="148" height="20" rx="3" fill="#2d4a7a"/>' +
+      '<text x="18" y="62" font-size="10" fill="#fff" font-family="sans-serif">◈ My Accounts</text>' +
+      '<rect x="6" y="70" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="84" font-size="10" fill="#a0aec0" font-family="sans-serif">📅 Daily Mission</text>' +
+      '<rect x="6" y="92" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="106" font-size="10" fill="#a0aec0" font-family="sans-serif">▦ Dashboard</text>' +
+      '<text x="10" y="128" font-size="8" fill="#5a7ab0" font-family="monospace" font-weight="bold">WORKFLOW</text>' +
+      '<rect x="6" y="132" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="146" font-size="10" fill="#a0aec0" font-family="sans-serif">$ Collections</text>' +
+      '<rect x="6" y="154" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="168" font-size="10" fill="#a0aec0" font-family="sans-serif">◉ Contacts</text>' +
+      '<rect x="6" y="176" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="190" font-size="10" fill="#a0aec0" font-family="sans-serif">⊹ Attack Plan</text>' +
+      '<text x="10" y="212" font-size="8" fill="#5a7ab0" font-family="monospace" font-weight="bold">SYSTEM</text>' +
+      '<rect x="6" y="216" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="230" font-size="10" fill="#a0aec0" font-family="sans-serif">🎓 Academy</text>' +
+      '<rect x="6" y="238" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="252" font-size="10" fill="#a0aec0" font-family="sans-serif">◧ Settings</text>' +
+      // Callout lines
+      '<line x1="160" y1="58" x2="200" y2="58" stroke="#2563eb" stroke-width="1" stroke-dasharray="3,3"/>' +
+      '<text x="205" y="62" font-size="10" fill="#a0c4ff" font-family="sans-serif">Your account database</text>' +
+      '<line x1="160" y1="80" x2="200" y2="80" stroke="#f59e0b" stroke-width="1" stroke-dasharray="3,3"/>' +
+      '<text x="205" y="84" font-size="10" fill="#fbd38d" font-family="sans-serif">AI-selected daily calls</text>' +
+      '<line x1="160" y1="142" x2="200" y2="142" stroke="#ef4444" stroke-width="1" stroke-dasharray="3,3"/>' +
+      '<text x="205" y="146" font-size="10" fill="#fca5a5" font-family="sans-serif">Unpaid AR management</text>' +
+      '<line x1="160" y1="186" x2="200" y2="186" stroke="#10b981" stroke-width="1" stroke-dasharray="3,3"/>' +
+      '<text x="205" y="190" font-size="10" fill="#6ee7b7" font-family="sans-serif">Territory planning</text>' +
+    '</svg>' +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Start every day on Daily Mission — the AI picks your best calls for the day.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'My Accounts is your full database. Use status badges and filters to prioritize.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Reps who log at least 5 calls per week in a CRM close 31% more deals annually.' },
+    ]) +
+
+    acadSection('Intelligence section', 'My Accounts shows your complete account database. Daily Mission shows your AI-ranked call list. Dashboard shows your KPIs.') +
+    acadSection('Workflow section', 'Collections manages overdue invoices. Contacts gives you a searchable list of every contact. Attack Plan is your territory strategy board.') +
+    acadSection('System section', 'Academy is where you are now. Settings lets you configure your signature, API key, and preferences.') +
+
+    acadCompleteBtn('t1-1')
+  );
+},
+
+'t1-3': function() {
+  return acadLessonWrap('Reading Status Badges', 't1-3', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:16px">Every account in the system has a status badge that tells you what action to take. Learn to read them at a glance.</p>' +
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">' +
+      acadBadgeCard('ACTIVE', '#22c55e', 'Bought in last 6 months', 'Maintain monthly contact') +
+      acadBadgeCard('STALLED', '#ef4444', 'Active but no 2026 purchases', 'Call this week — time-sensitive') +
+      acadBadgeCard('SEVERE DECLINE', '#ef4444', 'On pace to drop 50%+ vs last year', 'Immediate action required') +
+      acadBadgeCard('MOD DECLINE', '#f97316', 'Dropping 20–50% year-over-year', 'Increase contact frequency') +
+      acadBadgeCard('HI VALUE LOST', '#ef4444', '$100K+ lifetime, now inactive', 'Top priority re-engagement') +
+      acadBadgeCard('AT RISK', '#f97316', '$20-100K lifetime, now inactive', 'Re-engage within 30 days') +
+      acadBadgeCard('DORMANT', '#6b7280', 'Inactive 2+ years', 'Low priority — Outer Ring only') +
+      acadBadgeCard('MONITOR', '#eab308', 'Small account, inactive', 'Check quarterly') +
+    '</div>' +
+
+    '<div style="background:rgba(59,130,246,0.1);border:1px solid var(--blue-b);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--blue-b);margin-bottom:6px">INDUSTRY INSIGHT</div>' +
+      '<div style="font-size:13px;line-height:1.6;font-style:italic">"67% of lost accounts could have been saved with one proactive call 30 days earlier."</div>' +
+      '<div style="font-size:11px;color:var(--text-3);margin-top:4px">— Sales Benchmark Index</div>' +
+    '</div>' +
+
+    acadQuiz('t1-3', 0, 'An account shows SEVERE DECLINE. What should you do?', [
+      'Check it next quarter',
+      'Take immediate action — call today',
+      'Mark it as inactive',
+      'Send an automated email',
+    ], 1, 'Severe Decline means the account is on pace to drop 50%+ vs last year. This requires immediate action.') +
+
+    acadCompleteBtn('t1-3')
+  );
+},
+
+// ══ TRACK 2 — Daily Mission ══════════════════════════════════
+
+'t2-1': function() {
+  return acadLessonWrap('How AI Picks Work', 't2-1', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">The Daily Mission AI scores every account using 4 factors and shows you the highest-priority calls each day.</p>' +
+
+    // AI scoring wheel SVG
+    '<svg width="100%" viewBox="0 0 400 240" style="max-width:400px;margin:0 auto 20px;display:block">' +
+      '<circle cx="200" cy="120" r="90" fill="#0d1829" stroke="#334870" stroke-width="1"/>' +
+      '<path d="M200,120 L200,40 A80,80,0,0,1,269,80 Z" fill="rgba(59,130,246,0.7)" stroke="#1d4ed8" stroke-width="1"/>' +
+      '<text x="240" y="55" font-size="9" fill="#93c5fd" font-family="monospace" text-anchor="middle">RECENCY</text>' +
+      '<text x="240" y="66" font-size="8" fill="#93c5fd" font-family="monospace" text-anchor="middle">30%</text>' +
+      '<path d="M200,120 L269,80 A80,80,0,0,1,269,160 Z" fill="rgba(212,175,55,0.7)" stroke="#b7950b" stroke-width="1"/>' +
+      '<text x="285" y="120" font-size="9" fill="#fde68a" font-family="monospace" text-anchor="middle">REVENUE</text>' +
+      '<text x="285" y="131" font-size="8" fill="#fde68a" font-family="monospace" text-anchor="middle">30%</text>' +
+      '<path d="M200,120 L269,160 A80,80,0,0,1,131,160 Z" fill="rgba(16,185,129,0.7)" stroke="#059669" stroke-width="1"/>' +
+      '<text x="200" y="210" font-size="9" fill="#6ee7b7" font-family="monospace" text-anchor="middle">RFQ ACTIVITY 25%</text>' +
+      '<path d="M200,120 L131,160 A80,80,0,0,1,131,80 Z" fill="rgba(239,68,68,0.7)" stroke="#dc2626" stroke-width="1"/>' +
+      '<text x="118" y="110" font-size="9" fill="#fca5a5" font-family="monospace" text-anchor="middle">NEGLECT</text>' +
+      '<text x="118" y="121" font-size="8" fill="#fca5a5" font-family="monospace" text-anchor="middle">15%</text>' +
+      '<path d="M200,120 L131,80 A80,80,0,0,1,200,40 Z" fill="rgba(59,130,246,0.7)" stroke="#1d4ed8" stroke-width="1"/>' +
+      '<circle cx="200" cy="120" r="30" fill="#0d1829" stroke="#334870" stroke-width="2"/>' +
+      '<text x="200" y="115" font-size="11" text-anchor="middle" fill="#d4af37" font-family="monospace" font-weight="bold">AI</text>' +
+      '<text x="200" y="128" font-size="9" text-anchor="middle" fill="#d4af37" font-family="monospace">SCORE</text>' +
+    '</svg>' +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Log your call outcomes every time. It directly feeds the Neglect Score and improves your AI picks.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'RFQ Activity gives a huge boost — if an account submitted a quote request recently, call them same day.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'The AI re-scores every account every time the data refreshes — your actions today change tomorrow\'s list.' },
+    ]) +
+
+    acadQuiz('t2-1', 0, 'What is the highest-weighted factor in the AI scoring model?', [
+      'Neglect Score (days since last contact)',
+      'Recency and Revenue (tied at 30% each)',
+      'RFQ Activity (25%)',
+      'Account name alphabetically',
+    ], 1, 'Recency (days since last purchase) and Revenue (lifetime value) are tied at 30% each — they are the most important signals.') +
+
+    acadCompleteBtn('t2-1')
+  );
+},
+
+'t2-3': function() {
+  return acadLessonWrap('Logging Outcomes Correctly', 't2-3', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:16px">Logging your call outcomes correctly is one of the highest-value habits in the app. Here\'s exactly how to do it and what each outcome means.</p>' +
+
+    acadSteps([
+      { n: 1, text: 'Click <strong>Log Outcome</strong> on an activity card in Daily Mission or on an account card.' },
+      { n: 2, text: 'Pick your <strong>outcome type</strong> from the dropdown (Reached, Left Voicemail, No Answer, etc.).' },
+      { n: 3, text: 'Add a <strong>note</strong> — even one sentence is valuable. What did they say? What\'s the next step?' },
+      { n: 4, text: 'Save the outcome. The AI picks will update with your new data.' },
+      { n: 5, text: '<strong>Schedule a follow-up</strong> while you\'re in the flow — pick a date for your next touchpoint.' },
+    ]) +
+
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:10px">OUTCOME TYPES</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+        acadOutcomeRow('Reached', 'var(--green)', 'Had a real conversation → always schedule a follow-up') +
+        acadOutcomeRow('Left Voicemail', 'var(--blue-b)', 'Send a follow-up email same day, call again in 3 days') +
+        acadOutcomeRow('No Answer', 'var(--text-3)', 'Try again in 2 days, different time of day') +
+        acadOutcomeRow('Sent Email', 'var(--blue-b)', 'Follow up with a call if no reply in 2 days') +
+        acadOutcomeRow('Meeting Set', 'var(--gold)', 'Log the meeting date, prep talking points') +
+        acadOutcomeRow('Not Interested', 'var(--red)', 'Set REP_STATUS to Dead, move to Pool in Attack Plan') +
+      '</div>' +
+    '</div>' +
+
+    '<div style="background:rgba(16,185,129,0.1);border:1px solid var(--green);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--green);margin-bottom:4px">INDUSTRY STAT</div>' +
+      '<div style="font-size:13px;line-height:1.6">"Reps who log every call outcome close <strong>31% more deals</strong> annually."</div>' +
+      '<div style="font-size:11px;color:var(--text-3);margin-top:4px">— Sales Benchmark Index 2024</div>' +
+    '</div>' +
+
+    acadCompleteBtn('t2-3')
+  );
+},
+
+'t2-7': function() {
+  return acadLessonWrap('The 5-Minute Daily Routine', 't2-7', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">"Do this every morning before checking email. 5 minutes of focused action beats 2 hours of busy work."</p>' +
+
+    '<div style="display:flex;flex-direction:column;gap:0;margin-bottom:24px">' +
+      acadDayStep('01', '30s', 'Open Daily Mission', 'See your AI-ranked picks for today. The list is fresh and scored from last night\'s data.', 'var(--blue-b)') +
+      acadDayStep('02', '1m', 'Scan your top 3 picks', 'Read the context on each card: revenue, days inactive, last RFQ. Know why each matters before you call.', 'var(--blue-b)') +
+      acadDayStep('03', '2m', 'Make your first call', 'Use the contact info right on the card. Don\'t overthink it — just dial.', 'var(--gold)') +
+      acadDayStep('04', '30s', 'Log the outcome immediately', 'Even one word helps. "VM left", "Reached - call back Friday", "Email sent". Do it while it\'s fresh.', 'var(--green)') +
+      acadDayStep('05', '1m', 'Set your follow-up', 'Pick a date for the next touchpoint. This clears it from your mental load and ensures nothing falls through.', 'var(--green)') +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Do steps 3-5 for each of your top 3 picks. That\'s 15 minutes max — your most productive selling time of the day.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Reps who contact at least 3 accounts before 10am have 43% higher daily conversion rates.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Set a phone alarm for 8:30 AM labeled "5-min mission". Build the habit before other distractions hit.' },
+    ]) +
+
+    acadCompleteBtn('t2-7')
+  );
+},
+
+// ══ TRACK 3 — My Accounts ══════════════════════════════════
+
+'t3-2': function() {
+  return acadLessonWrap('Rep Notes Best Practices', 't3-2', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:16px">Your notes are your institutional memory. When you remember details, customers feel valued — and stay loyal.</p>' +
+
+    '<div style="margin-bottom:24px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:12px">3 NOTE TEMPLATES TO USE EVERY TIME</div>' +
+      acadNoteTemplate(
+        'After a call',
+        'Called [date]. Spoke with [name]. [What they said]. Next: [action] by [date].',
+        'var(--blue-b)'
+      ) +
+      acadNoteTemplate(
+        'After no answer',
+        'Called [date], no answer. Left VM. Will follow up [date] via email.',
+        'var(--text-3)'
+      ) +
+      acadNoteTemplate(
+        'After a quote',
+        'Quoted [part#] x[qty] @ $[price] on [date]. Decision by [date]. Follow up [date].',
+        'var(--gold)'
+      ) +
+    '</div>' +
+
+    acadSection('How to save a note', 'Click any account → Notes tab → type your note → set a Status (Working/Active/etc.) → optionally set a Follow-up Date → click SAVE &amp; LOCK.') +
+    acadSection('Note stamps', 'Every saved note shows your Rep ID and date automatically so the team can see who wrote what and when.') +
+
+    '<div style="background:rgba(212,175,55,0.1);border:1px solid var(--gold);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-size:13px;line-height:1.6;font-style:italic">"Notes are your competitive advantage. When you remember details, customers feel valued — and stay loyal."</div>' +
+    '</div>' +
+
+    acadCompleteBtn('t3-2')
+  );
+},
+
+'t3-4': function() {
+  return acadLessonWrap('Revenue History Charts', 't3-4', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">The History tab shows you bar charts of yearly revenue. Learn to read the 4 key account health patterns.</p>' +
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px">' +
+      acadChartPattern('Healthy Growth', [40,60,80,100,130], '#22c55e', 'Bars increase year over year — protect this account, increase contact frequency') +
+      acadChartPattern('Seasonal Account', [100,30,90,25,95], '#3b82f6', 'Peaks every Q4/year-end — normal, don\'t panic in Q1') +
+      acadChartPattern('Declining Account', [120,95,70,50,30], '#f97316', 'Bars shrinking — trigger re-engagement playbook immediately') +
+      acadChartPattern('Recovered Account', [80,90,40,20,70], '#14b8a6', 'Dip then recovery — shows re-engagement works, keep momentum') +
+    '</div>' +
+
+    acadCompleteBtn('t3-4')
+  );
+},
+
+// ══ TRACK 7 — Industry Best Practices ══════════════════════════════════
+
+'t7-1': function() {
+  return acadLessonWrap('The 80/20 Rule in B2B Electronics', 't7-1', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">In B2B electronics distribution, 20% of your accounts generate 80% of your revenue. Knowing which 20% are yours is the foundation of your Attack Plan.</p>' +
+
+    '<svg width="100%" viewBox="0 0 360 200" style="max-width:360px;margin:0 auto 20px;display:block">' +
+      '<circle cx="180" cy="100" r="90" fill="#1e2d4d" stroke="#334870" stroke-width="1"/>' +
+      '<path d="M180,100 L180,10 A90,90,0,0,1,258,55 L258,55 A90,90,0,0,1,258,145 L258,145 A90,90,0,1,1,180,10 Z" fill="rgba(59,130,246,0.75)" stroke="#1d4ed8" stroke-width="1"/>' +
+      '<text x="220" y="95" font-size="18" font-weight="bold" fill="#60a5fa" text-anchor="middle" font-family="sans-serif">80%</text>' +
+      '<text x="220" y="112" font-size="9" fill="#93c5fd" text-anchor="middle" font-family="monospace">of revenue</text>' +
+      '<path d="M180,100 L180,10 A90,90,0,0,0,102,55 Z" fill="rgba(212,175,55,0.75)" stroke="#b7950b" stroke-width="1"/>' +
+      '<text x="140" y="80" font-size="18" font-weight="bold" fill="#fde68a" text-anchor="middle" font-family="sans-serif">20%</text>' +
+      '<text x="140" y="97" font-size="9" fill="#fde68a" text-anchor="middle" font-family="monospace">of accounts</text>' +
+    '</svg>' +
+
+    acadSection('What to do with this', 'Identify your top 20% accounts right now — they should be in your Solid Core in Attack Plan. The remaining 80% of accounts get less time, but still need a plan.') +
+    acadSection('Find yours', 'Go to Attack Plan → AI Advisor → "Analyze my plan" to see if your Solid Core matches your actual top revenue accounts.') +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Sort My Accounts by VALUE to instantly see your top accounts. The top 10 are almost always your Solid Core.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Review your top 20% monthly. Revenue rank changes — an account that was #5 last year may be #2 this year.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Reps who correctly identify their top 20% and protect them have 2x the account retention of average reps.' },
+    ]) +
+
+    acadCompleteBtn('t7-1')
+  );
+},
+
+'t7-2': function() {
+  return acadLessonWrap('Call Frequency by Account Tier', 't7-2', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Not all accounts need the same attention. Here\'s the recommended contact cadence for each tier.</p>' +
+
+    '<div style="border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;margin-bottom:24px">' +
+      '<div style="background:var(--s2);padding:8px 16px;font-family:var(--mono);font-size:10px;color:var(--text-3);display:grid;grid-template-columns:160px 1fr;gap:16px">' +
+        '<div>ACCOUNT TIER</div><div>CONTACT FREQUENCY</div>' +
+      '</div>' +
+      acadFreqRow('Active $100K+', 'Every 2 weeks minimum', 'var(--gold)') +
+      acadFreqRow('Active $10K–$100K', 'Monthly', 'var(--blue-b)') +
+      acadFreqRow('Active under $10K', 'Quarterly check-in', 'var(--text-2)') +
+      acadFreqRow('Declining (any tier)', 'Every 2 weeks until re-engaged', 'var(--orange)') +
+      acadFreqRow('Dormant 6–12 months', '1 re-engagement attempt, then quarterly', 'var(--text-3)') +
+      acadFreqRow('Dormant 12+ months', 'Annual check-in only', 'var(--text-3)') +
+    '</div>' +
+
+    acadCompleteBtn('t7-2')
+  );
+},
+
+'t7-3': function() {
+  return acadLessonWrap('Re-engaging Dormant Accounts', 't7-3', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Dormant accounts that receive a personalized re-engagement call convert at 22% — far higher than cold prospects at 3%. Here\'s the 3-touch sequence that works.</p>' +
+
+    '<div style="margin-bottom:24px">' +
+      acadSequenceStep('Day 1', 'Personalized call', 'Reference their last purchase specifically and mention a new product relevant to what they buy. Never lead with "just checking in."', 'var(--blue-b)') +
+      acadSequenceStep('Day 3', 'Email (if no answer)', 'Send a concrete offer — a price, a relevant part, a solution to a known problem. Subject line: reference their industry or last order.', 'var(--gold)') +
+      acadSequenceStep('Day 7', 'Final call', 'If still no response, move to Outer Ring and set a 90-day snooze. Don\'t waste Core zone space on truly unresponsive accounts.', 'var(--text-3)') +
+    '</div>' +
+
+    '<div style="background:rgba(16,185,129,0.1);border:1px solid var(--green);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--green);margin-bottom:4px">INDUSTRY STAT</div>' +
+      '<div style="font-size:13px;line-height:1.6">"Dormant accounts that receive a personalized re-engagement call convert at <strong>22%</strong> — far higher than cold prospects (3%)."</div>' +
+    '</div>' +
+
+    acadCompleteBtn('t7-3')
+  );
+},
+
+'t7-4': function() {
+  return acadLessonWrap('The Voicemail + Email 1-2 Punch', 't7-4', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">The most effective outreach sequence in B2B sales: a voicemail immediately followed by a matching email.</p>' +
+
+    '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">' +
+      acadTimelineItem('10:00 AM', 'Leave voicemail (15 seconds max)', 'State your name, company, ONE reason to call back, and your number. Nothing else.', 'var(--blue-b)') +
+      '<div style="margin-left:20px;border-left:2px solid var(--border);height:20px"></div>' +
+      acadTimelineItem('10:05 AM', 'Send email immediately', 'Subject: "Just left you a voicemail — [specific reason]". Body: 2 sentences max with the same value proposition.', 'var(--gold)') +
+      '<div style="margin-left:20px;border-left:2px solid var(--border);height:20px"></div>' +
+      acadTimelineItem('+3 days', 'Follow-up call if no response', 'Try a different time of day. If still no answer, log it and set a 2-week snooze.', 'var(--text-3)') +
+    '</div>' +
+
+    '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-bottom:8px">VOICEMAIL SCRIPT TEMPLATE</div>' +
+      '<div style="font-size:12px;line-height:1.8;font-style:italic;color:var(--text-2)">"Hi [name], this is [your name] from Intransit. I\'m calling because [specific reason — part they buy, price drop, etc.]. Give me a call back at [number]. Thanks."</div>' +
+    '</div>' +
+
+    acadCompleteBtn('t7-4')
+  );
+},
+
+'t7-5': function() {
+  return acadLessonWrap('Reading Buying Signals in Your Data', 't7-5', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Your account data contains clear buying signals. Learn to spot them before it\'s too late.</p>' +
+
+    '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">' +
+      acadSignalRow('🔴', 'RFQ submitted in last 7 days', 'HOT', 'Call today — they are actively shopping. This is your highest-priority action.', '#ef4444') +
+      acadSignalRow('🟠', 'Invoice gap narrowing (buying more frequently)', 'WARMING', 'Nurture weekly — they\'re ramping up. Now is the time to expand the relationship.', '#f97316') +
+      acadSignalRow('🟡', 'Consistent monthly orders', 'STABLE', 'Maintain contact, don\'t over-sell. Keep them happy and watch for expansion opportunities.', '#eab308') +
+      acadSignalRow('🟠', 'Invoice gap widening (slowing down)', 'COOLING', 'Increase contact now — find out why the gap is growing before they go silent.', '#f97316') +
+      acadSignalRow('🔴', 'No RFQs in 90 days + no recent invoice', 'AT RISK', 'Start the 3-touch re-engagement sequence immediately. Do not wait.', '#ef4444') +
+    '</div>' +
+
+    acadCompleteBtn('t7-5')
+  );
+},
+  };
+
+  // For lessons without explicit content, show a placeholder
+  const fn = LESSONS[lessonId];
+  if (fn) return fn();
+  return acadDefaultLesson(lessonId, progress);
+}
+
+function acadDefaultLesson(lessonId, progress) {
+  const track = ACADEMY_TRACKS.find(t => t.lessons.some(l => l.id === lessonId));
+  const lesson = track?.lessons.find(l => l.id === lessonId);
+  return acadLessonWrap(lesson?.title || lessonId, lessonId, progress,
+    '<div style="padding:40px;text-align:center;color:var(--text-3)">' +
+      '<div style="font-size:32px;margin-bottom:12px">📚</div>' +
+      '<div style="font-size:14px;margin-bottom:8px">Lesson content coming soon</div>' +
+      '<div style="font-size:12px">This track and lesson are mapped — full content is being added.</div>' +
+    '</div>' +
+    acadCompleteBtn(lessonId)
+  );
+}
+
+function acadLessonWrap(title, lessonId, progress, bodyHtml) {
+  const completed = (progress.completedLessons || []).includes(lessonId);
+  const track = ACADEMY_TRACKS.find(t => t.lessons.some(l => l.id === lessonId));
+  return '<div>' +
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-bottom:4px">' + (track ? track.icon + ' ' + track.title.toUpperCase() : '') + '</div>' +
+      '<div style="font-size:22px;font-weight:700;margin-bottom:4px">' + title + '</div>' +
+      (completed ? '<span style="font-family:var(--mono);font-size:10px;color:var(--green)">✓ COMPLETED</span>' : '<span style="font-family:var(--mono);font-size:10px;color:var(--text-3)">+50 XP on completion</span>') +
+    '</div>' +
+    bodyHtml +
+  '</div>';
+}
+
+function acadCompleteBtn(lessonId) {
+  const progress = academyGetProgress();
+  const done = (progress.completedLessons || []).includes(lessonId);
+  if (done) return '<div style="margin-top:24px;padding:14px;background:rgba(16,185,129,0.1);border:1px solid var(--green);border-radius:var(--r2);text-align:center;font-family:var(--mono);font-size:11px;color:var(--green)">✓ Lesson complete — +50 XP earned</div>';
+  return '<div style="margin-top:24px;text-align:center">' +
+    '<button onclick="acadCompleteLesson(\'' + lessonId + '\')" style="padding:12px 32px;background:var(--gold);border:none;color:#000;font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer;border-radius:var(--r2);letter-spacing:0.05em">Mark Complete — Earn +50 XP →</button>' +
+  '</div>';
+}
+
+function acadSection(title, text) {
+  return '<div style="margin-bottom:16px">' +
+    '<div style="font-weight:600;font-size:13px;margin-bottom:4px">' + title + '</div>' +
+    '<div style="font-size:13px;color:var(--text-2);line-height:1.7">' + text + '</div>' +
+  '</div>';
+}
+
+function acadTipCards(cards) {
+  return '<div style="display:grid;grid-template-columns:' + (cards.length === 3 ? '1fr 1fr 1fr' : '1fr 1fr') + ';gap:10px;margin-bottom:20px">' +
+    cards.map(c => '<div style="background:var(--s2);border-left:3px solid ' + c.color + ';border-radius:var(--r2);padding:12px 14px">' +
+      '<div style="font-family:var(--mono);font-size:9px;color:' + c.color + ';letter-spacing:0.1em;margin-bottom:5px">' + c.label.toUpperCase() + '</div>' +
+      '<div style="font-size:12px;line-height:1.6;color:var(--text-2)">' + c.text + '</div>' +
+    '</div>').join('') +
+  '</div>';
+}
+
+function acadSteps(steps) {
+  return '<div style="margin-bottom:20px">' +
+    steps.map(s => '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px">' +
+      '<div style="width:24px;height:24px;border-radius:50%;background:var(--blue-b);color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + s.n + '</div>' +
+      '<div style="font-size:13px;line-height:1.6;padding-top:2px;color:var(--text-2)">' + s.text + '</div>' +
+    '</div>').join('') +
+  '</div>';
+}
+
+function acadQuiz(lessonId, qIdx, question, options, correct, explanation) {
+  const progress = academyGetProgress();
+  const key = lessonId + '-q' + qIdx;
+  const answered = (progress.quizAnswers || {})[key];
+  const html = '<div data-quiz style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:16px 18px;margin-bottom:20px">' +
+    '<div style="font-family:var(--mono);font-size:9px;color:var(--gold);letter-spacing:0.1em;margin-bottom:8px">QUIZ</div>' +
+    '<div style="font-size:13px;font-weight:600;margin-bottom:12px">' + question + '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:6px">' +
+    options.map((opt, i) => {
+      const isCorrect = i === correct;
+      const isSelected = answered === i;
+      let bg = 'var(--s1)';
+      if (answered !== undefined) {
+        if (isCorrect) bg = 'rgba(16,185,129,0.3)';
+        else if (isSelected && !isCorrect) bg = 'rgba(239,68,68,0.3)';
+      }
+      return '<button data-correct-btn="' + i + '" onclick="acadAnswerQuiz(\'' + lessonId + '\',' + qIdx + ',' + i + ',' + correct + ',this)" ' +
+        'style="text-align:left;padding:9px 12px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--r);cursor:pointer;color:var(--text);font-size:12px;' + (answered !== undefined ? 'pointer-events:none;' : '') + '">' +
+        '<span style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-right:8px">' + String.fromCharCode(65+i) + '.</span>' + escHtml(opt) +
+      '</button>';
+    }).join('') +
+    '</div>' +
+    '<div data-explanation style="' + (answered !== undefined ? '' : 'display:none;') + 'margin-top:10px;padding:10px;background:rgba(59,130,246,0.1);border-radius:var(--r);font-size:12px;color:var(--text-2)">' + explanation + '</div>' +
+  '</div>';
+  return html;
+}
+
+function acadBadgeCard(label, color, trigger, action) {
+  return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:12px">' +
+    '<div style="display:inline-block;padding:3px 8px;background:' + color + ';color:#fff;font-family:var(--mono);font-size:9px;font-weight:700;border-radius:3px;margin-bottom:8px">' + label + '</div>' +
+    '<div style="font-size:11px;color:var(--text-3);margin-bottom:4px">' + trigger + '</div>' +
+    '<div style="font-size:11px;color:var(--text-2);font-weight:500">→ ' + action + '</div>' +
+  '</div>';
+}
+
+function acadOutcomeRow(label, color, desc) {
+  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 12px;background:var(--s2);border-radius:var(--r);border-left:3px solid ' + color + '">' +
+    '<span style="font-weight:600;font-size:12px;color:' + color + ';min-width:110px">' + label + '</span>' +
+    '<span style="font-size:12px;color:var(--text-2)">' + desc + '</span>' +
+  '</div>';
+}
+
+function acadDayStep(num, time, title, desc, color) {
+  return '<div style="display:flex;gap:12px;background:var(--s2);border-radius:var(--r2);padding:14px;border-left:3px solid ' + color + '">' +
+    '<div style="text-align:center;flex-shrink:0;min-width:40px">' +
+      '<div style="font-family:var(--mono);font-size:18px;font-weight:700;color:' + color + '">' + num + '</div>' +
+      '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + time + '</div>' +
+    '</div>' +
+    '<div>' +
+      '<div style="font-weight:600;font-size:13px;margin-bottom:4px">' + title + '</div>' +
+      '<div style="font-size:12px;color:var(--text-2);line-height:1.6">' + desc + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function acadNoteTemplate(label, template, color) {
+  return '<div style="margin-bottom:10px;background:var(--s2);border:1px solid var(--border);border-left:3px solid ' + color + ';border-radius:var(--r2);padding:12px 14px">' +
+    '<div style="font-family:var(--mono);font-size:9px;color:' + color + ';margin-bottom:6px">' + label.toUpperCase() + '</div>' +
+    '<div style="font-family:monospace;font-size:12px;color:var(--text-2);line-height:1.7">' + template + '</div>' +
+  '</div>';
+}
+
+function acadChartPattern(title, values, color, desc) {
+  const max = Math.max(...values);
+  const bars = values.map((v, i) => {
+    const h = Math.round(v / max * 60);
+    return '<rect x="' + (i * 18 + 5) + '" y="' + (65 - h) + '" width="14" height="' + h + '" rx="2" fill="' + color + '" opacity="0.8"/>';
+  }).join('');
+  return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px">' +
+    '<svg viewBox="0 0 100 80" style="width:100%;height:80px">' + bars +
+      '<line x1="0" y1="66" x2="100" y2="66" stroke="var(--border)" stroke-width="1"/>' +
+    '</svg>' +
+    '<div style="font-weight:600;font-size:12px;color:' + color + ';margin-top:6px">' + title + '</div>' +
+    '<div style="font-size:11px;color:var(--text-3);margin-top:3px">' + desc + '</div>' +
+  '</div>';
+}
+
+function acadFreqRow(tier, freq, color) {
+  return '<div style="padding:9px 16px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:160px 1fr;gap:16px;align-items:center">' +
+    '<div style="font-size:12px;color:' + color + ';font-weight:500">' + tier + '</div>' +
+    '<div style="font-size:12px;color:var(--text-2)">' + freq + '</div>' +
+  '</div>';
+}
+
+function acadSequenceStep(day, action, desc, color) {
+  return '<div style="display:flex;gap:12px;background:var(--s2);border-radius:var(--r2);padding:14px;border-left:3px solid ' + color + ';margin-bottom:8px">' +
+    '<div style="text-align:center;flex-shrink:0;min-width:50px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:' + color + ';font-weight:700">' + day + '</div>' +
+    '</div>' +
+    '<div>' +
+      '<div style="font-weight:600;font-size:13px;margin-bottom:4px">' + action + '</div>' +
+      '<div style="font-size:12px;color:var(--text-2);line-height:1.6">' + desc + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function acadTimelineItem(time, action, desc, color) {
+  return '<div style="display:flex;gap:12px;padding:12px;background:var(--s2);border-radius:var(--r2);border-left:3px solid ' + color + '">' +
+    '<div style="min-width:70px;font-family:var(--mono);font-size:10px;color:' + color + ';font-weight:700">' + time + '</div>' +
+    '<div><div style="font-weight:600;font-size:12px;margin-bottom:3px">' + action + '</div><div style="font-size:12px;color:var(--text-2)">' + desc + '</div></div>' +
+  '</div>';
+}
+
+function acadSignalRow(icon, trigger, label, action, color) {
+  return '<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 14px;background:var(--s2);border-radius:var(--r2);border-left:3px solid ' + color + ';margin-bottom:6px">' +
+    '<span style="font-size:16px">' + icon + '</span>' +
+    '<div style="flex:1">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">' +
+        '<span style="font-size:12px;font-weight:600">' + trigger + '</span>' +
+        '<span style="font-family:var(--mono);font-size:9px;padding:2px 6px;background:' + color + ';color:#fff;border-radius:3px">' + label + '</span>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--text-2)">' + action + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  SUGGESTIONS BOARD (Admin only)
+// ══════════════════════════════════════════════════════════════
+
+async function loadSuggestionsBoardBadge() {
+  try {
+    const rows = await sheetsGet("'_SUGGESTIONS'!A1:Z200");
+    if (!rows || rows.length < 2) return;
+    const hdrs = rows[0].map(h => (h||'').toLowerCase());
+    const statusIdx = hdrs.indexOf('status');
+    const newCount = rows.slice(1).filter(r => {
+      const s = statusIdx >= 0 ? (r[statusIdx] || '').toLowerCase() : '';
+      return !s || s === 'new';
+    }).length;
+    const badge = document.getElementById('badge-suggestions-board');
+    if (badge) badge.textContent = newCount > 0 ? newCount : '';
+  } catch(e) { /* ignore */ }
+}
+
+async function renderSuggestionsBoard() {
+  const el = document.getElementById('main-content');
+  el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font-family:var(--mono);color:var(--text-3)">Loading...</div></div>';
+  let rows = [];
+  try { rows = await sheetsGet("'_SUGGESTIONS'!A1:Z500") || []; }
+  catch(e) { el.innerHTML = '<div style="padding:40px;color:var(--red)">Error: ' + escHtml(e.message) + '</div>'; return; }
+  if (rows.length < 2) {
+    el.innerHTML = '<div style="padding:60px;text-align:center;color:var(--text-3)"><div style="font-size:40px;margin-bottom:16px">&#128161;</div><div>No suggestions yet</div></div>';
+    return;
+  }
+  const hdrs = rows[0].map(h => (h||'').toLowerCase());
+  const get = (row, ...names) => { for (const n of names) { const i=hdrs.indexOf(n); if(i>=0 && row[i]) return row[i]; } return ''; };
+  const suggestions = rows.slice(1).filter(r => r.some(c => c)).map((r, i) => ({
+    rowIdx: i + 2,
+    rep: get(r,'rep','rep_id','user'),
+    category: get(r,'category','type'),
+    page: get(r,'page','view','section'),
+    description: get(r,'description','text','note'),
+    status: get(r,'status') || 'New',
+    date: get(r,'date','timestamp','created'),
+    adminResponse: get(r,'admin_response','response','reply'),
+  }));
+  const total = suggestions.length;
+  const newCnt = suggestions.filter(s => !s.status || s.status.toLowerCase() === 'new').length;
+  const inProg = suggestions.filter(s => s.status.toLowerCase().includes('progress')).length;
+  const done = suggestions.filter(s => s.status.toLowerCase() === 'done').length;
+  if (!window._suggFilter) window._suggFilter = { status:'all', cat:'all' };
+  const ff = window._suggFilter;
+  const filtered = suggestions.filter(s => {
+    if (ff.status !== 'all' && s.status.toLowerCase() !== ff.status.toLowerCase()) return false;
+    if (ff.cat !== 'all' && s.category.toLowerCase() !== ff.cat.toLowerCase()) return false;
+    return true;
+  }).sort((a,b) => (b.date > a.date ? 1 : -1));
+  const catColors = {'bug':'#ef4444','feature idea':'#3b82f6','improvement':'#22c55e'};
+  const stColors = {'new':'#3b82f6','in progress':'#f59e0b','done':'#22c55e',"won't do":'#6b7280'};
+  const cardHtml = filtered.map(s => {
+    const cc = catColors[(s.category||'').toLowerCase()] || 'var(--text-3)';
+    const sc = stColors[(s.status||'').toLowerCase()] || '#3b82f6';
+    const row = s.rowIdx;
+    const dStr = s.date ? new Date(s.date).toLocaleDateString() : '';
+    return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:16px 18px;margin-bottom:10px">' +
+      '<div style="display:flex;align-items:flex-start;gap:12px">' +
+        '<div style="flex:1">' +
+          '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">' +
+            '<span style="font-family:var(--mono);font-size:10px;font-weight:600">' + escHtml(s.rep||'—') + '</span>' +
+            '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + dStr + '</span>' +
+            (s.category ? '<span style="padding:2px 7px;background:' + cc + ';color:#fff;font-family:var(--mono);font-size:9px;border-radius:3px">' + escHtml(s.category) + '</span>' : '') +
+            (s.page ? '<span style="font-family:var(--mono);font-size:9px;background:var(--s1);padding:2px 6px;border-radius:3px;color:var(--text-3)">' + escHtml(s.page) + '</span>' : '') +
+          '</div>' +
+          '<div style="font-size:13px;line-height:1.6">' + escHtml(s.description) + '</div>' +
+        '</div>' +
+        '<select onchange="suggUpdateStatus(' + row + ',this.value)" style="background:var(--s1);border:1px solid ' + sc + ';color:' + sc + ';font-family:var(--mono);font-size:10px;padding:5px 8px;cursor:pointer;border-radius:var(--r);flex-shrink:0">' +
+          ['New','In Progress','Done',"Won\'t Do"].map(st => '<option' + (s.status===st?' selected':'') + '>' + escHtml(st) + '</option>').join('') +
+        '</select>' +
+      '</div>' +
+      (s.adminResponse ? '<div style="margin-top:10px;padding:10px;background:rgba(59,130,246,0.1);border-left:3px solid var(--blue-b);border-radius:var(--r);font-size:12px"><strong>FJohn replied:</strong> ' + escHtml(s.adminResponse) + '</div>' : '') +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<input type="text" id="sr-' + row + '" placeholder="Admin reply..." value="' + escHtml(s.adminResponse||'') + '" style="flex:1;background:var(--s1);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;padding:6px 10px;outline:none;border-radius:var(--r)">' +
+        '<button onclick="suggSaveReply(' + row + ')" style="padding:6px 12px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">SAVE REPLY</button>' +
+      '</div>' +
+    '</div>';
+  }).join('') || '<div style="padding:40px;text-align:center;color:var(--text-3)">No matches</div>';
+
+  el.innerHTML = '<div style="padding:20px 24px;height:100%;overflow-y:auto">' +
+    '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);letter-spacing:0.12em;margin-bottom:16px">&#128161; SUGGESTIONS BOARD</div>' +
+    '<div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">' +
+      [['Total',total,'var(--text-2)'],['New',newCnt,'#3b82f6'],['In Progress',inProg,'#f59e0b'],['Done',done,'#22c55e']].map(([l,v,c]) =>
+        '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:12px 18px"><div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-bottom:4px">' + l + '</div><div style="font-size:22px;font-weight:700;color:' + c + '">' + v + '</div></div>'
+      ).join('') +
+    '</div>' +
+    '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">' +
+      ['all','New','In Progress','Done',"Won\'t Do"].map(s => '<button onclick="window._suggFilter.status=\'' + escHtml(s) + '\';renderSuggestionsBoard()" class="filter-btn' + (ff.status===s?' active':'') + '" style="font-size:10px;padding:3px 9px">' + (s==='all'?'ALL':escHtml(s)) + '</button>').join('') +
+      '&nbsp;&nbsp;' + ['all','Bug','Feature Idea','Improvement'].map(s => '<button onclick="window._suggFilter.cat=\'' + escHtml(s) + '\';renderSuggestionsBoard()" class="filter-btn' + (ff.cat===s?' active':'') + '" style="font-size:10px;padding:3px 9px">' + (s==='all'?'ALL':escHtml(s)) + '</button>').join('') +
+    '</div>' +
+    cardHtml +
+  '</div>';
+}
+
+async function suggUpdateStatus(rowIdx, newStatus) {
+  try {
+    const h = (await sheetsGet("'_SUGGESTIONS'!A1:Z1"))[0].map(x => (x||'').toLowerCase());
+    const col = h.indexOf('status');
+    if (col < 0) { showToast('No STATUS column in _SUGGESTIONS', 'error'); return; }
+    await sheetsUpdate("'_SUGGESTIONS'!" + String.fromCharCode(65+col) + rowIdx, [[newStatus]]);
+    showToast('Status updated', 'success');
+    renderSuggestionsBoard();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+async function suggSaveReply(rowIdx) {
+  const input = document.getElementById('sr-' + rowIdx);
+  if (!input) return;
+  try {
+    const h = (await sheetsGet("'_SUGGESTIONS'!A1:Z1"))[0].map(x => (x||'').toLowerCase());
+    const col = h.indexOf('admin_response');
+    if (col < 0) { showToast('No ADMIN_RESPONSE column in _SUGGESTIONS', 'error'); return; }
+    await sheetsUpdate("'_SUGGESTIONS'!" + String.fromCharCode(65+col) + rowIdx, [[input.value.trim()]]);
+    showToast('Reply saved', 'success');
+    renderSuggestionsBoard();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  NOTES FEED (Admin: all notes / Manager: team notes)
+// ══════════════════════════════════════════════════════════════
+
+async function renderNotesFeed() { await _renderNotesFeed(false); }
+async function renderTeamNotes() { await _renderNotesFeed(true); }
+
+async function _renderNotesFeed(isTeamView) {
+  const el = document.getElementById('main-content');
+  el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font-family:var(--mono);color:var(--text-3)">Loading notes...</div></div>';
+  const mgrCfg = isTeamView ? getManagerConfig() : null;
+  const teamReps = mgrCfg ? mgrCfg.teamReps : null;
+  const teamName = mgrCfg ? mgrCfg.teamName : 'All Reps';
+  let allNotes = [];
+  const accs = state.accounts || [];
+  (teamReps ? accs.filter(a => teamReps.includes(a.rep)) : accs).forEach(acc => {
+    if (acc.note && acc.note.trim()) allNotes.push({ type:'RepNote', accountName:acc.name, rep:acc.rep||'', text:acc.note, date:acc.noteDate||'', accTotal:acc.total||0, daysInactive:acc.daysInactive||0 });
+  });
+  try {
+    const cnRows = await sheetsGet("'_CONTACT_NOTES'!A1:Z300") || [];
+    if (cnRows.length > 1) {
+      const h = cnRows[0].map(x => (x||'').toLowerCase());
+      const g = (row, ...ns) => { for (const n of ns) { const i=h.indexOf(n); if(i>=0&&row[i]) return row[i]; } return ''; };
+      cnRows.slice(1).filter(r => r.some(c=>c)).forEach(r => {
+        const repId = g(r,'rep','rep_id');
+        if (teamReps && !teamReps.includes(repId)) return;
+        const accName = g(r,'account_name','customer','account');
+        const acc = accs.find(a => a.name.trim()===accName.trim());
+        const type = g(r,'type') || 'ContactNote';
+        allNotes.push({ type:type==='ManagerNote'?'ManagerNote':'ContactNote', accountName:accName, contactName:g(r,'contact_name','contact'), rep:repId, text:g(r,'note','text'), date:g(r,'date','timestamp'), accTotal:acc?.total||0, daysInactive:acc?.daysInactive||0 });
+      });
+    }
+  } catch(e) { /* ignore */ }
+  allNotes.sort((a,b) => (b.date > a.date ? 1 : -1));
+  if (!window._nfF) window._nfF = { type:'all', search:'' };
+  const ff = window._nfF;
+  const filtered = allNotes.filter(n => {
+    if (ff.type !== 'all' && n.type !== ff.type) return false;
+    const s = (ff.search||'').toLowerCase();
+    if (s && !n.text.toLowerCase().includes(s) && !(n.accountName||'').toLowerCase().includes(s)) return false;
+    return true;
+  }).slice(0,100);
+  const tColors = {'RepNote':'#3b82f6','ContactNote':'#14b8a6','ManagerNote':'#f59e0b'};
+  const refn = isTeamView ? 'renderTeamNotes' : 'renderNotesFeed';
+  const cards = filtered.map(n => {
+    const tc = tColors[n.type] || 'var(--text-3)';
+    const isMgr = n.type === 'ManagerNote';
+    const d = n.date ? new Date(n.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
+    return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:12px 14px;margin-bottom:8px;border-left:3px solid ' + tc + '">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">' +
+        '<span style="font-size:12px;font-weight:500;cursor:pointer;color:var(--blue-b)" onclick="_openAccFromNotes(\'' + escHtml(n.accountName) + '\')">' + escHtml(n.accountName) + '</span>' +
+        (n.contactName ? '<span style="font-size:11px;color:var(--text-3)">· ' + escHtml(n.contactName) + '</span>' : '') +
+        '<span style="margin-left:auto;font-family:var(--mono);font-size:9px;color:' + (isMgr ? 'var(--gold)' : 'var(--text-3)') + '">' + escHtml(n.rep||'') + (isMgr?' (Mgr)':'') + (d?' · '+d:'') + '</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">' +
+        '<span style="font-family:var(--mono);font-size:9px;padding:2px 6px;background:' + tc + ';color:#fff;border-radius:3px">' + n.type + '</span>' +
+        (n.accTotal ? '<span style="font-family:var(--mono);font-size:10px;color:var(--gold)">$' + formatNum(n.accTotal) + '</span>' : '') +
+        (n.daysInactive > 0 ? '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + n.daysInactive + 'd</span>' : '') +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--text-2);line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">' + escHtml(n.text) + '</div>' +
+    '</div>';
+  }).join('') || '<div style="padding:40px;text-align:center;color:var(--text-3)">No notes found</div>';
+
+  el.innerHTML = '<div style="padding:16px 20px;height:100%;overflow-y:auto">' +
+    '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--blue-b);letter-spacing:0.12em;margin-bottom:14px">&#128203; ' + (isTeamView ? teamName.toUpperCase() + ' NOTES' : 'ALL NOTES FEED') + ' — ' + allNotes.length + ' total</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">' +
+      '<input type="text" placeholder="Search..." oninput="window._nfF.search=this.value;' + refn + '()" value="' + escHtml(ff.search) + '" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;padding:5px 10px;outline:none;border-radius:var(--r);width:160px">' +
+      ['all','RepNote','ContactNote','ManagerNote'].map(t => '<button onclick="window._nfF.type=\'' + t + '\';' + refn + '()" class="filter-btn' + (ff.type===t?' active':'') + '" style="font-size:10px;padding:3px 8px">' + (t==='all'?'ALL':t.toUpperCase()) + '</button>').join('') +
+    '</div>' +
+    cards +
+  '</div>';
+}
+
+function _openAccFromNotes(name) {
+  const acc = (state.accounts||[]).find(a => a.name === name);
+  if (acc) { state.selectedAccount = acc; switchView('accounts'); }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TEAM PROFILE PAGE
+// ══════════════════════════════════════════════════════════════
+
+async function renderTeamProfile() {
+  const el = document.getElementById('main-content');
+  const mgrCfg = getManagerConfig();
+  if (!mgrCfg && !isAdmin()) { el.innerHTML = '<div style="padding:40px;color:var(--text-3)">Manager access only</div>'; return; }
+  const teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[]);
+  const teamName = mgrCfg ? mgrCfg.teamName : 'All Reps';
+  const teamAccs = (state.accounts||[]).filter(a => teamReps.includes(a.rep));
+  const total = teamAccs.length;
+  const active = teamAccs.filter(a => !isInactive(a)).length;
+  const inactive = teamAccs.filter(a => isInactive(a)).length;
+  const declining = teamAccs.filter(a => (a.status||'').includes('Decline')||(a.status||'').includes('Stalled')).length;
+  const ytd = teamAccs.reduce((s,a) => s + (a.ytd||a.total2026||0), 0);
+  const repCards = teamReps.map(rep => {
+    const ra = teamAccs.filter(a => a.rep===rep);
+    const rActive = ra.filter(a => !isInactive(a)).length;
+    const rInact = ra.filter(a => isInactive(a)).length;
+    const rDecl = ra.filter(a => (a.status||'').includes('Decline')||(a.status||'').includes('Stalled')).length;
+    const rYtd = ra.reduce((s,a) => s+(a.ytd||a.total2026||0), 0);
+    const h = rDecl > ra.length*0.3 ? 'var(--red)' : rInact > ra.length*0.5 ? 'var(--gold)' : 'var(--green)';
+    return '<div style="background:var(--s2);border:1px solid var(--border);border-top:3px solid ' + h + ';border-radius:var(--r2);padding:14px">' +
+      '<div style="font-family:var(--mono);font-size:12px;font-weight:700;color:' + h + ';margin-bottom:10px">' + rep + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:5px;font-size:11px">' +
+        '<div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Accounts</span><span>' + ra.length + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between"><span style="color:var(--green)">Active</span><span>' + rActive + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between"><span style="color:var(--red)">Inactive</span><span>' + rInact + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between"><span style="color:var(--orange)">Declining</span><span>' + rDecl + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between"><span style="color:var(--gold)">YTD</span><span>$' + formatNum(rYtd) + '</span></div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  el.innerHTML = '<div style="padding:20px 24px;overflow-y:auto;height:100%">' +
+    '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--green);letter-spacing:0.12em;margin-bottom:16px">&#127970; ' + teamName.toUpperCase() + ' PROFILE</div>' +
+    '<div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap">' +
+      [['Total Accounts',total,'var(--text-2)'],['Active',active,'var(--green)'],['Inactive',inactive,'var(--text-3)'],['Declining',declining,'var(--orange)'],['YTD','$'+formatNum(ytd),'var(--gold)']].map(([l,v,c]) =>
+        '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:12px 16px"><div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-bottom:4px">' + l + '</div><div style="font-size:18px;font-weight:700;color:' + c + '">' + v + '</div></div>'
+      ).join('') +
+    '</div>' +
+    '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:12px">REP SCORECARDS</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">' + repCards + '</div>' +
+  '</div>';
+}
 
 // ══════════════════════════════════════════════════════════
 //  HELP SYSTEM

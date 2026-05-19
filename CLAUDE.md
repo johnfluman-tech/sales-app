@@ -206,3 +206,26 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - All content is aligned with actual app features (Collections badge system, Attack Plan zones, AI email generator, Settings signature, etc.)
 
 **Academy content coverage:** All 37 lessons now have real content — `acadDefaultLesson` fallback no longer reached for any defined lesson.
+
+### 2026-05-19 (session 4 — security hardening + Task 9)
+**Security improvements (5 items — Worker + HTML):**
+- Worker: added `/get-ip` (unauthenticated, returns `CF-Connecting-IP`) and `/geoip` (authenticated, returns city/country/org from `request.cf`)
+- Worker: `verifyGoogleToken()` now checks `payload.exp` expiry, rejects expired tokens even if email is valid
+- Worker: non-admin `PUT` to audit log paths (`_LOG`, `_ACCESS_LOG`, `_NDA_LOG`) returns 403
+- HTML: `Content-Security-Policy` meta tag added to `<head>`
+- HTML: `logAccessEntry('PENDING')` fires at NDA accept; `confirmLocation()` patches actual location into that row (fix audit gap)
+
+**Task 9 — 10 fixes:**
+- Fix 1/2/3 (AI key): all AI calls already go through Worker — removed API key references from Academy (step 2 now says set signature), help page, and academy tip. Settings page shows non-admin "AI features enabled — no setup needed" message.
+- Fix 4 (bcastor): console.log at login: `bcastor accounts loaded: N`
+- Fix 5 (Session ID): `generateSessionId()` function; `sessionStorage.it_session_id` set at `completeLogin()`; SESSION_ID column added to both NDA_LOG and ACCESS_LOG writes
+- Fix 6 (IP logging): geo pre-fetched in `checkIPAndProceed()` and stored on `state.userIP/City/Country/Org`; `logAccessEntry()` reuses state data (no duplicate fetch)
+- Fix 7 (Session timeout): `SESSION_TIMEOUT_MS` changed 30→60 min; `resetSessionTimer()` now sets a 55-min warning timer (`_warnTimer`) and shows "5 minutes to expiry" toast
+- Fix 8 (Known IPs): `checkIPAndProceed()` called from `acceptNDA()` — pre-fetches geo, checks `localStorage.it_known_ips_repId`; known IP → auto-proceed with `logAccessEntry('Known Location')`; new IP → shows location modal with red warning banner (`loc-new-ip-warn`) and "This isn't me" button; `confirmLocation()` adds IP to known list (max 10); `locationNotMe()` logs `SUSPICIOUS_LOGIN` to `_LOG` and signs out
+- Fix 9 (Unusual activity): `checkUnusualActivity()` runs 8s after admin login — reads `_ACCESS_LOG`, counts distinct IPs per rep (7d) and suspicious logins (24h), shows dismissable red banner and sends email via `/send-alert`
+- Fix 10 (Force logout): "⏏ LOG OUT ALL" button in sidebar (admin only); force-logout confirmation modal; `forceLogoutAll()` writes `FORCE_LOGOUT_ALL` to `_LOG`; `forceLogoutUser(repId, email)` writes `FORCE_LOGOUT_USER`; `checkForceLogout()` polls `_LOG` every 2 min for events newer than `state.loginTime`; per-row "⏏ Force Logout" button in Access Log
+
+**New state fields:** `state.loginTime`, `state.userIP`, `state.userCity`, `state.userCountry`, `state.userOrg`
+**New localStorage keys:** `it_known_ips_[repId]` — array of up to 10 known IPs per rep
+**Worker endpoints added:** `/get-ip` (no auth), `/geoip` (auth required), `ADMIN_EMAILS` const
+**Commits:** `ad59e7d` (5 security items), `ffbf846` (Task 9 all 10 fixes)

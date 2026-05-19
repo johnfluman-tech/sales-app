@@ -2960,6 +2960,10 @@ function handleSignout() {
   state._loginComplete = false;
   localStorage.removeItem('it_token');
   localStorage.removeItem('it_user');
+  // Clear NDA + session flags so re-login shows NDA and runs full access-log flow
+  sessionStorage.removeItem('it_nda_accepted');
+  sessionStorage.removeItem('it_session_id');
+  sessionStorage.removeItem('it_login_time');
   try { google.accounts.oauth2.revoke(state.accessToken, () => {}); } catch(e){}
   try { google.accounts.id.disableAutoSelect(); } catch(e){}
   document.getElementById('login-screen').style.display = 'flex';
@@ -9893,10 +9897,17 @@ async function showTransferRequests() {
 }
 
 function canSeeTransferCandidates() {
-  const repId = state.repId;
   const _allowed = ['ADMIN', 'BillP', 'CKaren', 'CMancilla', 'MPerezfreye'];
-  const _result = isAdmin() || !!state.managerRole || _allowed.includes(repId);
-  console.log('[ATTACK] canSeeTransferCandidates:', _result, 'for rep:', repId);
+  // When viewing as a specific rep (admin/manager sim), check THAT rep's permissions
+  const _viewAs = state.viewAsRep;
+  if (_viewAs && _viewAs !== '__TEAM_ALL__') {
+    const _result = _allowed.includes(_viewAs);
+    console.log('[ATTACK] canSeeTransferCandidates:', _result, 'for viewed rep:', _viewAs);
+    return _result;
+  }
+  // Own view or team view
+  const _result = isAdmin() || !!state.managerRole || _allowed.includes(state.repId);
+  console.log('[ATTACK] canSeeTransferCandidates:', _result, 'for rep:', state.repId);
   return _result;
 }
 

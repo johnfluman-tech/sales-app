@@ -70,7 +70,7 @@ My Accounts, Daily Mission (100 AI picks), Dashboard, Collections (138 accts / ~
   - Admin (not simulating): sees all
   - Admin simulating manager (`state.viewingAsManager = true`): sees team notes
   - Real manager: sees own + team notes (uses `getManagerConfig().teamReps`)
-  - `isActuallyTeamView = isTeamView || state.viewAsRep === '__TEAM_ALL__'`
+  - `isActuallyTeamView = isTeamView` — personal Notes Feed always uses full admin access; Team Notes (`isTeamView=true`) scopes to team
 - **Type colors:** RepNote=#3b82f6, ContactNote=#14b8a6, ManagerNote=#f59e0b, CollectionsNote=#ef4444, Outcome=#22c55e, FollowUp=#8b5cf6
 - **Filter buttons:** ALL, REP, CONTACT, MGR, COLL, OUTCOME, FOLLOW-UP
 - Called as `_renderNotesFeed(false)` for personal, `_renderNotesFeed(true)` for team view
@@ -98,6 +98,8 @@ My Accounts, Daily Mission (100 AI picks), Dashboard, Collections (138 accts / ~
 - `repMatchesFn` handles both single-rep and team filter for `accs`, `gpFiltered`, `ordersFiltered`, `reqsFiltered`
 
 ### Suggestions Board (`_SUGGESTIONS` in History sheet)
+- **Admin/FJohn only** — `renderSuggestionsBoard` starts with `if (!isAdmin()) { switchView('accounts'); return; }`
+- Nav item (`nav-suggestions-board`) hidden in `switchViewAs` whenever `state.viewAsRep` is set (any simulated view)
 - Reads/writes all use `CONFIG.HISTORY_SPREADSHEET_ID`
 - Sheet may not have a header row — `renderSuggestionsBoard` detects this and prepends synthetic headers
 - `_rowOffset`: 1 when no sheet headers, 2 when headers present — used for `rowIdx` in `sheetsUpdate` calls
@@ -179,3 +181,15 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - Notes Feed: added FOLLOW-UP filter button to toolbar
 
 **Files created this session:** `implement_t7b_s5.py`, `implement_t7b_s6.py`, `implement_t7b_s7.py`, `implement_t7b_s8.py`
+
+### 2026-05-19 (continued)
+**Bugs fixed:**
+- Suggestions Board access: non-admin users could navigate to the page directly — added `if (!isAdmin()) { switchView('accounts'); return; }` guard at top of `renderSuggestionsBoard`
+- `switchViewAs`: Suggestions Board nav (`nav-suggestions-board`) now hidden whenever admin is simulating any view (`state.viewAsRep` set) — hidden in all rep/manager/team simulations
+- Notes Feed rep dropdown showing only MX team reps for admin/FJohn: `isActuallyTeamView` was `isTeamView || state.viewAsRep === '__TEAM_ALL__'` — previous MX Team visit left `state.viewAsRep='__TEAM_ALL__'` bleeding into the personal Notes Feed. Fixed by changing to `isActuallyTeamView = isTeamView` (Team Notes already passes `isTeamView=true` explicitly, so the condition was redundant and harmful)
+
+**Access rules confirmed:**
+- Admin/FJohn in Notes Feed: sees all reps, dropdown shows all CONFIG.REPS
+- CKaren (manager): dropdown shows MX team reps, sees own + team accounts
+- Regular rep (Anolan, etc.): no dropdown, sees own notes only
+- Suggestions Board: admin/FJohn only — hidden and redirected for everyone else

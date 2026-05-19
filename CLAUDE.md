@@ -337,3 +337,19 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - Attack Plan open: `[ATTACK] canSeeTransferCandidates: true/false for rep: ...`
 
 **Commit:** `ebdbb1b`
+
+### 2026-05-20 (session 10)
+**Bugs fixed:**
+
+- **NDA not showing after re-login (root cause found + fixed):** `checkAuth()` was clearing the expired OAuth token from localStorage but never touching sessionStorage — so `it_nda_accepted` survived token expiry and the NDA was skipped on the next login. Fixed by clearing `it_nda_accepted`, `it_session_id`, `it_login_time` from sessionStorage in ALL three paths that return false from `checkAuth()`: (1) expired token path, (2) no-token path, (3) `init()` `!authed` branch. Every path that reaches the login screen now clears the NDA flag.
+
+- **Access Log page showing "API error 429":** Google Sheets API rate-limits at ~60 reads/minute per user. During cache load, many concurrent reads fire; opening the Access Log immediately after login added one more and tipped it over. Fixed in `sheetsGetFrom()` — 429 now triggers exponential backoff retry: waits 4s, 8s, 12s (3 attempts) before surfacing an error. Applies to all `sheetsGetFrom` calls app-wide.
+
+**Commits:** `1fc880d` (NDA checkAuth fix), `6ddd195` (429 retry fix)
+
+**NDA clear points (all paths covered):**
+1. `handleSignout()` — manual sign out ✓
+2. `showForcedLogoutMessage()` + `_forcedLogoutReload()` — force logout ✓
+3. `checkAuth()` expired token path ✓ (new)
+4. `checkAuth()` no token path ✓ (new)
+5. `init()` `!authed` branch ✓ (new)

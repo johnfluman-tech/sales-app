@@ -157,7 +157,7 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 
 ## Pending / Known Issues
 - Dashboard loads slowly (30s+) — Supabase migration not yet complete (app still reads Sheets)
-- `sales_report.py` not yet scheduled on server (run manually on INTRANSIT-RDS02)
+- `sales_report.py` needs to be scheduled on INTRANSIT-RDS02 via Windows Task Scheduler — target: every 30 minutes, silent background run, log to `C:\scripts\logs\sales_report.log`
 - Each rep needs to allow the popup once before first use
 - `_CONTACT_NOTES` tab may need to be manually created in History sheet if notes aren't persisting (create tab, add header row: `ACCOUNT_NAME, CONTACT_NAME, TYPE, NOTE, DATE, REP`)
 - `saveContactNoteFromView` (line ~8508) does not update `state.contactNotesCache` after save — notes from Contacts view only appear in Notes Feed after next reload

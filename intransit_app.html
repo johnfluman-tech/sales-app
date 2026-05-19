@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Intransit Sales Intelligence</title>
+<title>Intransit Sales Intelligence v1.50</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -1015,7 +1015,7 @@ body::before {
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
-      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em">v1.39</span></div>
+      <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em" id="app-ver-badge" onclick="showChangelog()" title="View changelog" style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em;cursor:pointer">v1.50</span></div>
       <button id="lang-toggle" onclick="toggleLanguage()"
         style="position:absolute;top:8px;right:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r);letter-spacing:0.1em;transition:all 0.15s"
         onmouseover="this.style.borderColor='rgba(255,255,255,0.6)';this.style.color='#fff'"
@@ -1267,6 +1267,30 @@ const CONFIG = {
   SUPABASE_URL: 'https://hutmehcaijdxbqchuivh.supabase.co',
   SUPABASE_KEY: 'your_full_publishable_key_here',
 };
+
+
+const APP_VERSION = '1.50';
+const CHANGELOG = [
+  { version:'1.50', date:'May 18 2026', notes:'Manager roles, Notes Feed AI panel, Academy, Collections persistence, Attack Plan auto-save, Pool hide' },
+  { version:'1.39', date:'May 15 2026', notes:'Daily Mission AI chat, drag resizers, pick card actions, buyer revenue sort' },
+  { version:'1.30', date:'Apr 2026', notes:'Activity log, contact notes, NDA tracker, Academy foundation' },
+];
+
+function showChangelog() {
+  const existing = document.getElementById('changelog-popover');
+  if (existing) { existing.remove(); return; }
+  const badge = document.getElementById('app-ver-badge');
+  if (!badge) return;
+  const rect = badge.getBoundingClientRect();
+  const el = document.createElement('div');
+  el.id = 'changelog-popover';
+  el.style.cssText = 'position:fixed;top:' + (rect.bottom+6) + 'px;left:' + rect.left + 'px;z-index:9999;background:var(--s2);border:1px solid var(--border-hi);border-radius:var(--r2);padding:12px 14px;min-width:320px;box-shadow:0 4px 20px rgba(0,0,0,0.4)';
+  el.innerHTML = '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);letter-spacing:0.12em;margin-bottom:10px">CHANGELOG</div>' +
+    CHANGELOG.map(c => '<div style="margin-bottom:8px"><div style="display:flex;gap:8px;align-items:baseline"><span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text)">v' + escHtml(c.version) + '</span><span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + escHtml(c.date) + '</span></div><div style="font-size:11px;color:var(--text-2);margin-top:2px">' + escHtml(c.notes) + '</div></div>').join('') +
+    '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-family:var(--mono);font-size:9px;color:var(--text-3)">click anywhere to close</div>';
+  document.body.appendChild(el);
+  setTimeout(() => { document.addEventListener('click', function h(){ el.remove(); document.removeEventListener('click',h); }, {once:true}); }, 50);
+}
 
 const MANAGER_CONFIG = {
   'CKaren': {
@@ -2469,6 +2493,23 @@ function completeLogin() {
     const notesFeedNav = document.getElementById('nav-notes-feed');
     if (notesFeedNav) notesFeedNav.style.display = 'block';
     loadSuggestionsBoardBadge();
+    // Populate admin View As dropdown
+    const _admSel = document.getElementById('view-as-select');
+    if (_admSel) {
+      const _reps = CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan'];
+      let _admHtml = '<option value="">── Admin View ──</option>';
+      _admHtml += '<option disabled>── Individual Reps ──</option>';
+      _reps.forEach(function(r){ _admHtml += '<option value="' + r + '">' + r + '</option>'; });
+      _admHtml += '<option disabled>── Manager Views ──</option>';
+      Object.entries(MANAGER_CONFIG).forEach(function(e){
+        _admHtml += '<option value="__MGR_' + e[0] + '">👔 ' + e[0] + ' (Manager) → ' + e[1].teamName + '</option>';
+      });
+      _admHtml += '<option disabled>── Team Views ──</option>';
+      Object.entries(MANAGER_CONFIG).forEach(function(e){
+        _admHtml += '<option value="__TM_' + e[0] + '">📊 ' + e[1].teamName + ' (All)</option>';
+      });
+      _admSel.innerHTML = _admHtml;
+    }
   }
   state.managerRole = getManagerRole(state.repId, state.user ? state.user.email || '' : '');
   if (isManager()) {
@@ -2496,6 +2537,13 @@ function completeLogin() {
     }
   }
   if (state.isAdmin) { loadSuggestionsBadge(); startNotificationPolling(); }
+  // Show notes feed nav for ALL users (label varies by role)
+  const _nfNavAll = document.getElementById('nav-notes-feed');
+  if (_nfNavAll && _nfNavAll.style.display !== 'block') {
+    _nfNavAll.style.display = 'block';
+    const _nfInner = _nfNavAll.querySelector('.nav-item-inner');
+    if (_nfInner && !isAdmin() && !isManager()) _nfInner.innerHTML = '<span class="nav-icon">&#128203;</span> My Notes';
+  }
   academyUpdateBadge();
   // Start loading supplemental data (incl. GP) immediately in background
   // Don't wait for loadAllAccounts — they run in parallel for speed
@@ -6657,24 +6705,45 @@ function exportDashInvoices() {
 }
 
 function switchViewAs(rep) {
-  state.viewAsRep = rep || null;
-  const label = document.getElementById('sidebar-user-role');
-  if (isManager()) {
-    const _mc = getManagerConfig(); const _tn = _mc ? _mc.teamName.toUpperCase() : 'TEAM'; label.textContent = (rep === '__TEAM_ALL__' || rep === 'MX_TEAM') ? 'MANAGER — ' + _tn : rep ? 'VIEWING: ' + rep : 'MANAGER — MY ACCOUNTS';
-    label.style.color = rep ? 'var(--accent)' : '';
-  } else if (rep) {
-    label.textContent = 'ADMIN — VIEWING AS ' + rep;
-    label.style.color = 'var(--accent)';
+  // Handle admin manager-view simulation modes
+  if (rep && rep.startsWith('__MGR_')) {
+    const mid = rep.slice(6);
+    state.viewAsRep = mid;
+    state.managerRole = mid;
+    state.viewingAsManager = true;
+  } else if (rep && rep.startsWith('__TM_')) {
+    const mid = rep.slice(5);
+    state.viewAsRep = '__TEAM_ALL__';
+    state.managerRole = mid;
+    state.viewingAsManager = false;
   } else {
-    label.textContent = 'ADMIN — ALL REPS';
-    label.style.color = '';
+    if (!rep && state.viewingAsManager) { state.managerRole = null; state.viewingAsManager = false; }
+    state.viewAsRep = rep || null;
   }
-  // Hide admin-only nav when impersonating a rep, show when back to admin view
+  const label = document.getElementById('sidebar-user-role');
   if (isAdmin()) {
+    if (state.viewingAsManager) {
+      const _mc = getManagerConfig();
+      const _tn = _mc ? _mc.teamName : 'Team';
+      label.textContent = state.viewAsRep === '__TEAM_ALL__' ? 'ADMIN — ' + _tn + ' view' : 'ADMIN — as ' + state.viewAsRep + ' (Mgr)';
+      label.style.color = 'var(--accent)';
+    } else if (state.viewAsRep) {
+      label.textContent = 'ADMIN — VIEWING AS ' + state.viewAsRep;
+      label.style.color = 'var(--accent)';
+    } else {
+      label.textContent = 'ADMIN — ALL REPS';
+      label.style.color = '';
+    }
+    // Hide admin-only nav only when impersonating a regular rep (not manager)
+    const showAdminNav = !state.viewAsRep || state.viewingAsManager;
     const removalsNav = document.getElementById('nav-removals');
-    if (removalsNav) removalsNav.style.display = rep ? 'none' : 'block';
+    if (removalsNav) removalsNav.style.display = showAdminNav ? 'block' : 'none';
     const accessNavEl = document.getElementById('nav-access');
-    if (accessNavEl) accessNavEl.style.display = rep ? 'none' : 'block';
+    if (accessNavEl) accessNavEl.style.display = showAdminNav ? 'block' : 'none';
+  } else if (isManager()) {
+    const _mc = getManagerConfig(); const _tn = _mc ? _mc.teamName.toUpperCase() : 'TEAM';
+    label.textContent = (rep === '__TEAM_ALL__' || rep === 'MX_TEAM') ? 'MANAGER — ' + _tn : rep ? 'VIEWING: ' + rep : 'MANAGER — MY ACCOUNTS';
+    label.style.color = rep ? 'var(--accent)' : '';
   }
   state.selectedAccount = null;
   switchView('accounts');
@@ -7619,30 +7688,55 @@ function selectCollectionsAccount(name) {
     </div>`;
 }
 
-function saveCollectionsNote(name) {
-  const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
-  const acc = state.accounts.find(a => a.name === name);
+async function saveCollectionsNote(name) {
+  const acc = state.accounts.find(function(a){ return a.name === name; });
   if (!state.isAdmin && acc && acc.rep !== state.repId) {
     showToast('You can only add notes for your own accounts', 'error');
     return;
   }
-  const note          = document.getElementById('coll-note-text')?.value.trim() || '';
-  const status        = document.getElementById('coll-status-select')?.value || '';
-  const promisedDate  = document.getElementById('coll-promised-date')?.value || '';
+  const note = document.getElementById('coll-note-text')?.value.trim() || '';
+  const status = document.getElementById('coll-status-select')?.value || '';
+  const promisedDate = document.getElementById('coll-promised-date')?.value || '';
   if (!note && !status && !promisedDate) { showToast('Nothing to save', 'error'); return; }
-  if (!state.collectionsNotes[name]) state.collectionsNotes[name] = {};
+
   const timestamp = new Date().toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  const dateISO = new Date().toISOString();
+
+  // Update in-memory state
+  if (!state.collectionsNotes) state.collectionsNotes = {};
+  if (!state.collectionsNotes[name]) state.collectionsNotes[name] = {};
   const prev = state.collectionsNotes[name].note || '';
   state.collectionsNotes[name] = {
-    note: note ? `[${timestamp}] ${note}` + (prev ? `\n${prev}` : '') : prev,
+    note: note ? ('[' + timestamp + '] ' + note) + (prev ? '\n' + prev : '') : prev,
     status,
     promisedDate,
   };
-  showToast('Collections note saved ✓', 'success');
-  // Re-render to show updated note on card
+
+  // Save to _CONTACT_NOTES immediately
+  if (note) {
+    const saveBtns = document.querySelectorAll('[onclick*="saveCollectionsNote"]');
+    saveBtns.forEach(function(b){ b.disabled=true; b.textContent='SAVING...'; });
+    try {
+      const repId = state.repId || '';
+      await sheetsAppend("'_CONTACT_NOTES'!A:F", [[name, '', 'CollectionsNote', note, dateISO, repId]], CONFIG.SPREADSHEET_ID);
+      // Cache the note for Notes Feed
+      if (!state.contactNotesCache) state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
+      if (!Array.isArray(state.contactNotesCache[0])) state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
+      state.contactNotesCache.push([name, '', 'CollectionsNote', note, dateISO, repId]);
+      showToast('Note saved ✓', 'success');
+    } catch(e) {
+      showToast('Saved locally (sheet error: ' + e.message.slice(0,40) + ')', 'error');
+    } finally {
+      saveBtns.forEach(function(b){ b.disabled=false; b.textContent='SAVE NOTE'; });
+    }
+  } else {
+    showToast('Status saved ✓', 'success');
+  }
+
   renderCollectionsView();
   selectCollectionsAccount(name);
 }
+
 
 function updateCollEmailBtnState() {
   const checked = document.querySelectorAll('.coll-inv-chk:checked');
@@ -8908,6 +9002,7 @@ function apkMove(name, toZone) {
   apkRenderPool(repAccs);
   apkRenderHeaders();
   showToast(name.slice(0, 22) + ' → ' + toZone, 'success');
+  apkAutoSave();
 }
 
 function apkRender(repAccs, otherAccs, rep) {
@@ -9061,6 +9156,7 @@ function apkCardHtml(name, zone) {
     ).join('');
     const poolDotColor = rawStatus.includes('🔴') ? 'var(--red)' : rawStatus.includes('🟠') ? 'var(--orange)' : rawStatus.includes('🟡') ? 'var(--gold)' : rawStatus.includes('⚫') ? 'var(--text-3)' : 'var(--green)';
     const daysIna = acc?.daysInactive || 0;
+    const hideBtn = '<button data-n="' + escHtml(name) + '" onclick="apkHideAccount(this.dataset.n)" title="Hide from pool" class="apk-zone-btn" style="color:var(--text-3);border-color:transparent">&#215;</button>';
     return `<div style="background:var(--s2);border:1px solid var(--border);border-left:3px solid ${poolDotColor};border-radius:var(--r);padding:4px 7px;width:150px;flex-shrink:0;min-height:0">
       <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;cursor:default" data-poolname="${escHtml(name).toLowerCase()}" title="${escHtml(name)}">
         <span onclick="apkOpenAccount('${escHtml(name)}')" style="cursor:pointer" onmouseover="this.style.color='var(--blue-b)'" onmouseout="this.style.color=''">${escHtml(name)}</span>
@@ -9068,7 +9164,7 @@ function apkCardHtml(name, zone) {
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:var(--mono);font-size:9px;color:var(--gold)">$${formatNum(acc?.total||0)}</span>
         <span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">${daysIna > 0 ? daysIna + 'd' : 'active'}</span>
-        <div style="display:flex;gap:2px">${btnHtml}</div>
+        <div style="display:flex;gap:2px">${btnHtml + hideBtn}</div>
       </div>
     </div>`;
   }
@@ -9104,7 +9200,10 @@ function apkRenderColumns(repAccs) {
   });
 }
 
+function _apkUpdateHiddenBtn() { const h=apkGetMyHiddenSet(); const b=document.getElementById('apk-hidden-btn'); if(b) b.textContent=h.size>0?'MY HIDDEN ('+h.size+')':'MY HIDDEN'; }
+
 function apkRenderPool(repAccs) {
+  _apkUpdateHiddenBtn();
   const cols = apkGetCols();
   const poolEl = document.getElementById('apk-pool');
   if (!poolEl) return;
@@ -9167,7 +9266,7 @@ function apkSaveNow() {
 }
 
 function apkConfirmReset() {
-  if (!confirm('Reset to default layout based on revenue ranking? This clears your saved arrangement.')) return;
+  if (!confirm('This will clear your saved plan and rebuild from revenue ranking. This cannot be undone. Are you sure?')) return;
   const rep = window.apkRep;
   const repAccs = state.accounts.filter(a => a.rep === rep).sort((a, b) => (b.total || 0) - (a.total || 0));
   window.apkState = {};
@@ -9703,6 +9802,47 @@ function apkShowGlobalRemoved() {
 // Legacy aliases kept for backward compat
 function apkSave(rep) { apkSaveNow(); }
 async function apkResetDefault(rep) { apkConfirmReset(); }
+function apkHideAccount(name) {
+  const repId = window.apkRep || state.repId || '';
+  const hidden = apkGetMyHiddenSet();
+  hidden.add(name);
+  try { localStorage.setItem('it_pool_hidden_' + repId, JSON.stringify(Array.from(hidden))); } catch(e) {}
+  const btn = document.getElementById('apk-hidden-btn');
+  if (btn) btn.textContent = 'MY HIDDEN (' + hidden.size + ')';
+  const repAccs = (state.accounts||[]).filter(function(a){ return a.rep === window.apkRep; }).sort(function(a,b){ return (b.total||0)-(a.total||0); });
+  apkRenderPool(repAccs);
+  showToast(name.slice(0,24) + ' hidden · ', 'success');
+}
+
+function apkUnhideAccount(name) {
+  const repId = window.apkRep || state.repId || '';
+  const hidden = apkGetMyHiddenSet();
+  hidden.delete(name);
+  try { localStorage.setItem('it_pool_hidden_' + repId, JSON.stringify(Array.from(hidden))); } catch(e) {}
+  const btn = document.getElementById('apk-hidden-btn');
+  if (btn) btn.textContent = hidden.size > 0 ? 'MY HIDDEN (' + hidden.size + ')' : 'MY HIDDEN';
+  const repAccs = (state.accounts||[]).filter(function(a){ return a.rep === window.apkRep; }).sort(function(a,b){ return (b.total||0)-(a.total||0); });
+  apkRenderPool(repAccs);
+  showToast(name.slice(0,24) + ' restored to pool', 'success');
+}
+
+function apkGetAllCards() {
+  const cols = apkGetCols();
+  const cards = [];
+  ['solid','center','ring','pool'].forEach(function(z){ (cols[z]||[]).forEach(function(n){ cards.push({name:n, zone:z}); }); });
+  return cards;
+}
+
+let _apkSaveTimer = null;
+function apkAutoSave() {
+  const rep = window.apkRep;
+  if (!rep) return;
+  const cards = apkGetAllCards();
+  try { localStorage.setItem('ap_plan_' + rep, JSON.stringify(cards)); } catch(e) {}
+  clearTimeout(_apkSaveTimer);
+  _apkSaveTimer = setTimeout(function(){ saveAttackPlan(rep, cards).catch(function(){}); }, 4000);
+}
+
 function apkMoveCard(name, fromZone, toZone) { apkMove(name, toZone); }
 function requestTransfer(name, rep) { apkRequestTransfer(name); }
 
@@ -9837,6 +9977,11 @@ INSTRUCTIONS:
 // ══════════════════════════════════════════════════════════════
 //  INTRANSIT ACADEMY — Training System
 // ══════════════════════════════════════════════════════════════
+
+const TRACK_COLORS = {
+  t1: '#6b7280', t2: '#2563eb', t3: '#0d9488', t4: '#d97706',
+  t5: '#dc2626', t6: '#7c3aed', t7: '#16a34a', t8: '#f97316',
+};
 
 const ACADEMY_LEVELS = [
   { min: 0,    title: 'New Rep' },
@@ -9995,6 +10140,7 @@ function renderAcademyView() {
     treeHtml += '<div class="acad-track" style="margin-bottom:2px">' +
       '<div onclick="acadToggleTrack(\'' + track.id + '\')" style="display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;border-radius:var(--r);' + (isUnlocked ? '' : 'opacity:0.5;') + '" ' +
       'onmouseover="this.style.background=\'var(--s2)\'" onmouseout="this.style.background=\'\'">' +
+      '<span style="width:7px;height:7px;border-radius:50%;background:' + ((typeof TRACK_COLORS!=='undefined' && TRACK_COLORS[track.id])||'#666') + ';flex-shrink:0;display:inline-block"></span>' +
       '<span style="font-size:13px">' + track.icon + '</span>' +
       '<span style="font-size:12px;font-weight:600;flex:1">' + track.title + '</span>' +
       '<span style="font-family:var(--mono);font-size:9px;color:' + tColor + '">' + trackDone + '/' + trackTotal + '</span>' +
@@ -10035,6 +10181,20 @@ function renderAcademyView() {
   // Get lesson content
   const lessonContent = academyGetLessonContent(selectedLessonId, progress);
 
+  // Welcome-back banner (shown when user has progress)
+  let _wbHtml = '';
+  if (completedLessons.length > 0) {
+    const _wbTrack = ACADEMY_TRACKS.find(function(t){ return t.lessons.some(function(l){ return l.id === selectedLessonId; }); });
+    const _wbLesson = _wbTrack ? _wbTrack.lessons.find(function(l){ return l.id === selectedLessonId; }) : null;
+    if (_wbTrack && _wbLesson) {
+      const _wbPos = _wbTrack.lessons.indexOf(_wbLesson) + 1;
+      _wbHtml = '<div style="background:rgba(37,99,235,0.08);border:1px solid var(--blue-b);border-radius:var(--r2);padding:9px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">' +
+        '<span style="font-family:var(--mono);font-size:9px;color:var(--blue-b);flex-shrink:0">CONTINUE</span>' +
+        '<span style="font-size:12px;color:var(--text-2)">' + escHtml(_wbTrack.title) + ' — Lesson ' + _wbPos + ': ' + escHtml(_wbLesson.title) + '</span>' +
+      '</div>';
+    }
+  }
+
   content.innerHTML = '<div style="display:flex;height:100%;overflow:hidden">' +
 
     // Left panel — lesson tree
@@ -10062,7 +10222,7 @@ function renderAcademyView() {
 
     // Right panel — lesson content
     '<div style="flex:1;overflow-y:auto;padding:24px 32px;max-width:860px">' +
-      lessonContent +
+      _wbHtml + lessonContent +
     '</div>' +
 
   '</div>';
@@ -10115,29 +10275,49 @@ function acadCompleteLesson(lessonId) {
 function acadAnswerQuiz(lessonId, qIdx, selected, correct, btnEl) {
   const progress = academyGetProgress();
   const key = lessonId + '-q' + qIdx;
-  if ((progress.quizAnswers || {})[key] !== undefined) return; // already answered
+  if ((progress.quizAnswers || {})[key] !== undefined) return;
   const isCorrect = selected === correct;
   const container = btnEl.closest('[data-quiz]');
-  if (container) {
-    container.querySelectorAll('button').forEach(b => b.disabled = true);
-    btnEl.style.background = isCorrect ? 'var(--green)' : 'var(--red)';
-    const expEl = container.querySelector('[data-explanation]');
-    if (expEl) expEl.style.display = 'block';
-    if (isCorrect) {
-      const correctMsg = container.querySelector('[data-correct-msg]');
-      if (correctMsg) correctMsg.style.display = 'block';
+  if (!container) return;
+  const attempts = parseInt(container.getAttribute('data-attempts') || '0');
+  if (!isCorrect && attempts === 0) {
+    // First wrong attempt — allow one retry
+    container.setAttribute('data-attempts', '1');
+    btnEl.style.background = 'rgba(239,68,68,0.3)';
+    btnEl.disabled = true;
+    let retryMsg = container.querySelector('[data-retry-msg]');
+    if (!retryMsg) {
+      retryMsg = document.createElement('div');
+      retryMsg.setAttribute('data-retry-msg', '');
+      retryMsg.style.cssText = 'margin-top:8px;padding:8px 10px;background:rgba(239,68,68,0.1);border-radius:var(--r);font-size:11px;color:var(--red);font-family:var(--mono)';
+      retryMsg.textContent = 'Not quite — try again!';
+      const expElR = container.querySelector('[data-explanation]');
+      if (expElR) container.insertBefore(retryMsg, expElR);
     }
-    const correctBtn = container.querySelector('[data-correct-btn="' + correct + '"]');
-    if (correctBtn && !isCorrect) correctBtn.style.background = 'var(--green)';
+    return;
   }
+  // Final answer
+  container.querySelectorAll('button').forEach(function(b){ b.disabled = true; });
+  btnEl.style.background = isCorrect ? 'var(--green)' : 'rgba(239,68,68,0.5)';
+  const expEl = container.querySelector('[data-explanation]');
+  if (expEl) expEl.style.display = 'block';
+  const retryMsg2 = container.querySelector('[data-retry-msg]');
+  if (retryMsg2) retryMsg2.remove();
+  if (isCorrect) {
+    const correctMsg = container.querySelector('[data-correct-msg]');
+    if (correctMsg) correctMsg.style.display = 'block';
+  }
+  const correctBtn = container.querySelector('[data-correct-btn="' + correct + '"]');
+  if (correctBtn && !isCorrect) correctBtn.style.background = 'rgba(16,185,129,0.5)';
   if (!progress.quizAnswers) progress.quizAnswers = {};
   progress.quizAnswers[key] = selected;
-  if (isCorrect && !progress._firstTryBonus) progress._firstTryBonus = {};
-  if (isCorrect && !(progress._firstTryBonus||{})[key]) {
+  if (isCorrect && attempts === 0) {
     if (!progress._firstTryBonus) progress._firstTryBonus = {};
-    progress._firstTryBonus[key] = true;
-    progress.xp = (progress.xp || 0) + 25;
-    showToast('+25 XP bonus — correct first try!', 'success');
+    if (!progress._firstTryBonus[key]) {
+      progress._firstTryBonus[key] = true;
+      progress.xp = (progress.xp || 0) + 25;
+      showToast('+25 XP bonus — correct first try!', 'success');
+    }
   }
   academySaveProgress(progress);
 }
@@ -10462,6 +10642,11 @@ function academyGetLessonContent(lessonId, progress) {
       { color: 'var(--green)', label: 'Industry Stat', text: 'Reps who correctly identify their top 20% and protect them have 2x the account retention of average reps.' },
     ]) +
 
+    acadKeyTakeaway(
+      '20% of your accounts generate 80% of your revenue. Know which accounts are in that top 20% and protect those relationships above all else.',
+      'Open Attack Plan and put your top revenue accounts in Solid Core →',
+      'attackPlan'
+    ) +
     acadCompleteBtn('t7-1')
   );
 },
@@ -10482,6 +10667,11 @@ function academyGetLessonContent(lessonId, progress) {
       acadFreqRow('Dormant 12+ months', 'Annual check-in only', 'var(--text-3)') +
     '</div>' +
 
+    acadKeyTakeaway(
+      'Tier A accounts need monthly contact. Tier B every 6 weeks. Tier C quarterly. Under-contacting your best accounts is how you lose them.',
+      'Open Attack Plan and verify your Solid Core matches your top revenue accounts →',
+      'attackPlan'
+    ) +
     acadCompleteBtn('t7-2')
   );
 },
@@ -10501,6 +10691,11 @@ function academyGetLessonContent(lessonId, progress) {
       '<div style="font-size:13px;line-height:1.6">"Dormant accounts that receive a personalized re-engagement call convert at <strong>22%</strong> — far higher than cold prospects (3%)."</div>' +
     '</div>' +
 
+    acadKeyTakeaway(
+      'Dormant accounts that re-engage convert at 22% — far higher than cold prospects. They already know you. Your job is just to remind them you\'re there.',
+      'Filter My Accounts by status "Dormant" or "AT RISK" to find re-engagement targets →',
+      'accounts'
+    ) +
     acadCompleteBtn('t7-3')
   );
 },
@@ -10522,6 +10717,11 @@ function academyGetLessonContent(lessonId, progress) {
       '<div style="font-size:12px;line-height:1.8;font-style:italic;color:var(--text-2)">"Hi [name], this is [your name] from Intransit. I\'m calling because [specific reason — part they buy, price drop, etc.]. Give me a call back at [number]. Thanks."</div>' +
     '</div>' +
 
+    acadKeyTakeaway(
+      'Voicemail alone has a 4% callback rate. Voicemail + same-day email has a 15% rate. Always send the follow-up email within 30 minutes of leaving the voicemail.',
+      'Log a "Left Voicemail" outcome and schedule a follow-up email reminder →',
+      'daily-mission'
+    ) +
     acadCompleteBtn('t7-4')
   );
 },
@@ -10538,9 +10738,252 @@ function academyGetLessonContent(lessonId, progress) {
       acadSignalRow('🔴', 'No RFQs in 90 days + no recent invoice', 'AT RISK', 'Start the 3-touch re-engagement sequence immediately. Do not wait.', '#ef4444') +
     '</div>' +
 
+    acadKeyTakeaway(
+      'An RFQ submitted in the last 7 days is the highest-confidence buying signal in electronics distribution. Every other task stops when you see one.',
+      'Open Daily Mission and sort by AI score to find accounts with active RFQ signals →',
+      'daily-mission'
+    ) +
     acadCompleteBtn('t7-5')
   );
 },
+
+// ══ TRACK 1 — Additional Lessons ══════════════════════════════
+
+'t1-2': function() {
+  return acadLessonWrap('Your First Login', 't1-2', progress,
+    acadVideoPlaceholder('t1-2') +
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Sign in with your @intransittech.com Google account to unlock your full territory, AI features, and team tools. Takes about 3 minutes to set up properly.</p>' +
+
+    acadSteps([
+      { n: 1, text: '<strong>Click Sign In with Google</strong>. Use your @intransittech.com account — personal Gmail won\'t work. Allow the pop-up on first use.' },
+      { n: 2, text: '<strong>Enter your Claude API key</strong> in Settings → AI Config. This powers the AI email generator and Daily Mission analysis. Get your key from john.fluman@intransittech.com.' },
+      { n: 3, text: '<strong>Set your email signature</strong> in Settings → Email Signature. Your name and contact info will auto-fill every AI-generated email.' },
+      { n: 4, text: '<strong>Verify My Accounts</strong> — your territory should load automatically. If you see the wrong accounts, contact John immediately.' },
+      { n: 5, text: '<strong>Bookmark the URL</strong> for quick daily access. The app works on desktop and mobile — add it to your home screen for one-tap access on the road.' },
+    ]) +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Complete your API key and signature setup before you make your first call. These unlock the most powerful features.' },
+      { color: 'var(--gold)', label: 'Security', text: 'Your session auto-expires after 30 minutes of inactivity. Just click Sign In again to resume — your data is never lost.' },
+      { color: 'var(--green)', label: 'Mobile', text: 'The app is fully functional on mobile. Add it to your iPhone or Android home screen for between-call access.' },
+    ]) +
+
+    acadQuiz('t1-2', 0, 'What are the two most important things to set up after your first login?', [
+      'Download the app and change your password',
+      'Your Claude API key and email signature in Settings',
+      'Create a new Google account for work',
+      'Add all your customer contacts manually',
+    ], 1, 'The API key unlocks all AI features and the signature auto-fills your AI-generated emails. These are the two settings with the biggest immediate payoff.') +
+
+    acadCompleteBtn('t1-2')
+  );
+},
+
+'t1-4': function() {
+  return acadLessonWrap('Understanding Your Accounts', 't1-4', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Every account in My Accounts has detailed data pulled live from CCCRM. The more you understand each field, the faster you can prioritize what actually matters today.</p>' +
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">' +
+      '<div style="background:var(--s2);border-left:3px solid var(--blue-b);border-radius:var(--r2);padding:12px">' +
+        '<div style="font-family:var(--mono);font-size:9px;color:var(--blue-b);margin-bottom:5px">STATUS BADGE</div>' +
+        '<div style="font-size:12px;line-height:1.6">Your action priority. Read this first — it tells you exactly whether to call this week, this month, or next quarter.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border-left:3px solid var(--gold);border-radius:var(--r2);padding:12px">' +
+        '<div style="font-family:var(--mono);font-size:9px;color:var(--gold);margin-bottom:5px">LIFETIME REVENUE</div>' +
+        '<div style="font-size:12px;line-height:1.6">Total historical spend. Tells you how big this account could be again. A $200K lifetime account is always worth a call.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border-left:3px solid var(--green);border-radius:var(--r2);padding:12px">' +
+        '<div style="font-family:var(--mono);font-size:9px;color:var(--green);margin-bottom:5px">DAYS INACTIVE</div>' +
+        '<div style="font-size:12px;line-height:1.6">Days since last invoice. Under 60 = active. 60–180 = slowing. Over 180 = at risk. Over 365 = dormant.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border-left:3px solid var(--text-3);border-radius:var(--r2);padding:12px">' +
+        '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-bottom:5px">REP NOTE</div>' +
+        '<div style="font-size:12px;line-height:1.6">Your private scratchpad. Record key contacts, product preferences, or context before a call. Persists forever.</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadSection('Account detail panel', 'Click any account to open the detail panel. Tabs: Overview (status + notes), Revenue (monthly chart with year-over-year comparison), Contacts (clickable to send email), and recent shipments.') +
+    acadSection('The REP_STATUS field', 'Use REP_STATUS (in the detail panel) to mark accounts as Active, Dead, or Custom. This affects your AI scoring and filters across the app.') +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Sort by Days Inactive to find sleeping giants — high-lifetime accounts that haven\'t ordered in months.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'The revenue chart in the detail panel shows monthly comparison vs. last year. A declining bar chart is your call-to-action.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Reps who review account history before calling have 37% longer average conversations.' },
+    ]) +
+
+    acadQuiz('t1-4', 0, 'An account shows $180K lifetime revenue and 220 days inactive. What should you do?', [
+      'It\'s too old to bother with',
+      'This is a high-priority re-engagement target — call this week',
+      'Wait until they call you',
+      'Send one automated email and move on',
+    ], 1, 'High lifetime revenue + 220 days inactive = classic "sleeping giant." This account spent big before and stopped. That gap is your opportunity.') +
+
+    acadCompleteBtn('t1-4')
+  );
+},
+
+// ══ TRACK 2 — Additional Lessons ══════════════════════════════
+
+'t2-2': function() {
+  return acadLessonWrap('Reading AI Scores', 't2-2', progress,
+    acadVideoPlaceholder('t2-2') +
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Each account on your Daily Mission has an AI score from 1–100. The score reflects how urgently that account needs your attention today based on four weighted factors.</p>' +
+
+    '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:24px">' +
+      '<div style="display:grid;grid-template-columns:60px 80px 1fr;gap:10px;align-items:center;padding:10px 12px;background:rgba(239,68,68,0.1);border-left:3px solid #ef4444;border-radius:var(--r)">' +
+        '<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:#ef4444">90–100</span>' +
+        '<span style="font-family:var(--mono);font-size:9px;color:#ef4444">CRITICAL</span>' +
+        '<span style="font-size:12px;color:var(--text-2)">Call immediately — RFQ submitted, overdue invoice, or account at serious risk of churn</span>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:60px 80px 1fr;gap:10px;align-items:center;padding:10px 12px;background:rgba(249,115,22,0.1);border-left:3px solid #f97316;border-radius:var(--r)">' +
+        '<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:#f97316">70–89</span>' +
+        '<span style="font-family:var(--mono);font-size:9px;color:#f97316">HIGH</span>' +
+        '<span style="font-size:12px;color:var(--text-2)">Call today — strong revenue history and growing gap since last contact</span>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:60px 80px 1fr;gap:10px;align-items:center;padding:10px 12px;background:rgba(234,179,8,0.1);border-left:3px solid #eab308;border-radius:var(--r)">' +
+        '<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:#eab308">50–69</span>' +
+        '<span style="font-family:var(--mono);font-size:9px;color:#eab308">MODERATE</span>' +
+        '<span style="font-size:12px;color:var(--text-2)">Call this week — good account, normal follow-up cadence needed</span>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:60px 80px 1fr;gap:10px;align-items:center;padding:10px 12px;background:var(--s2);border-left:3px solid var(--text-3);border-radius:var(--r)">' +
+        '<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text-3)">1–49</span>' +
+        '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">LOW</span>' +
+        '<span style="font-size:12px;color:var(--text-2)">Queue for later — lower priority, routine maintenance contact only</span>' +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Always read the score context on the card — it shows WHY the score is high. Same score, different reasons = different call approach.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'A 90+ score with "RFQ Activity" as the reason is the highest-urgency call you can make. They\'re actively shopping.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Reps who call accounts in the same session they appear on the AI list close 3x more often than those who wait.' },
+    ]) +
+
+    acadQuiz('t2-2', 0, 'An account has a score of 85 with "RFQ submitted 2 days ago" as the context. What does this mean?', [
+      'It means the account is in debt and needs to pay',
+      'The account submitted a quote request and is actively shopping right now — call today',
+      'An AI error; ignore it',
+      'The account wants to be removed from your list',
+    ], 1, 'An RFQ submission is the highest buying signal in electronics distribution. They are actively seeking a supplier right now. Call within the hour if possible.') +
+
+    acadCompleteBtn('t2-2')
+  );
+},
+
+'t2-4': function() {
+  return acadLessonWrap('Scheduling Follow-Up Calls', 't2-4', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Scheduling a follow-up while you\'re still in the moment is the single highest-ROI habit in the app. It takes 15 seconds and eliminates "I need to remember to call them back."</p>' +
+
+    acadSteps([
+      { n: 1, text: 'After logging a call outcome, click <strong>Schedule Follow-Up</strong> on the outcome dialog.' },
+      { n: 2, text: 'Pick a date from the calendar picker. For voicemails, try 2–3 days. For "call me next week," set the exact date they said.' },
+      { n: 3, text: 'The account moves to your calendar view on that date. Daily Mission will also surface it automatically on the morning of the scheduled call.' },
+      { n: 4, text: 'When the day comes, the account appears at the top of your Daily Mission with a <strong>FOLLOW-UP</strong> badge so you can\'t miss it.' },
+      { n: 5, text: 'After the follow-up call, log the new outcome and either close the loop or set another follow-up date.' },
+    ]) +
+
+    '<div style="background:rgba(212,175,55,0.1);border:1px solid var(--gold);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:9px;color:var(--gold);margin-bottom:6px">FOLLOW-UP TIMING GUIDE</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-2)">' +
+        '<div><strong>Left voicemail:</strong> Follow up in 2–3 days. Different time of day, different medium (email).</div>' +
+        '<div><strong>No answer:</strong> Try again in 2 days. Morning vs afternoon rotation.</div>' +
+        '<div><strong>"Call me next week":</strong> Set the exact day and time they specified.</div>' +
+        '<div><strong>Sent email:</strong> Follow up by phone in 2 days if no reply.</div>' +
+        '<div><strong>Active customer check-in:</strong> 30 days max between contacts.</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Set follow-ups for morning arrival time (8:30 AM) — decision-makers answer faster before their day gets full.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Never leave a call without a next step. Even "no answer" gets a follow-up. The accounts with no follow-up date fall through the cracks.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: '80% of sales require 5+ follow-up touches. Only 10% of reps make 5 or more attempts.' },
+    ]) +
+
+    acadQuiz('t2-4', 0, 'You called a customer, left a voicemail, and they didn\'t call back. What is the correct next step?', [
+      'Wait for them to call you back whenever',
+      'Schedule a follow-up call in 2–3 days AND send a brief email today',
+      'Remove them from your list',
+      'Call again immediately',
+    ], 1, 'The voicemail + same-day email is the highest-response two-step in sales. Then schedule a call in 2-3 days to complete the sequence.') +
+
+    acadCompleteBtn('t2-4')
+  );
+},
+
+'t2-5': function() {
+  return acadLessonWrap('Using the Calendar View', 't2-5', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">The Calendar view shows all your scheduled follow-ups organized by day. Use it for weekly planning so nothing slips through the cracks.</p>' +
+
+    acadSection('Accessing the Calendar', 'Click Calendar in the sidebar or use the calendar icon in Daily Mission. The view shows the current week by default, with color-coded dots for each follow-up.') +
+    acadSection('What each dot means', 'Blue dots = scheduled calls you set. Green dots = calls you completed. Red dots = calls you missed (past-due follow-ups). Past-due calls appear at the top of your Daily Mission automatically.') +
+    acadSection('Planning your week', 'Use Monday morning calendar review as a 5-minute ritual. See how many follow-ups you have per day and balance your workload. Heavy Thursday? Move some to Wednesday.') +
+
+    '<div style="background:rgba(59,130,246,0.1);border:1px solid var(--blue-b);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:9px;color:var(--blue-b);margin-bottom:6px">WEEKLY ROUTINE</div>' +
+      '<div style="font-size:13px;line-height:1.6">Monday morning: open Calendar, review the week\'s follow-ups. Aim for 5–10 scheduled calls per day. More than 15 per day becomes unmanageable — defer lower-priority ones to the following week.</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Check your calendar every Monday and every Friday. Monday = plan ahead. Friday = catch anything you missed this week.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Cluster calls by geography or industry on the same day — your context switches faster and conversations flow better.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Reps who plan their follow-up calls the night before are 28% more likely to actually make those calls.' },
+    ]) +
+
+    acadQuiz('t2-5', 0, 'You have 8 past-due follow-ups showing as red in your calendar. What is the right response?', [
+      'Delete them all and start fresh',
+      'Work through them systematically — these are your highest-priority calls today',
+      'Ignore them; they\'ll fall off eventually',
+      'Set them all to "Done" without calling',
+    ], 1, 'Past-due follow-ups are promises you made to reconnect. Working through them first protects your relationships and your AI scoring.') +
+
+    acadCompleteBtn('t2-5')
+  );
+},
+
+'t2-6': function() {
+  return acadLessonWrap('Snooze vs Delete vs Done', 't2-6', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Every activity card in Daily Mission has three action buttons. Choosing the right one matters — each one tells the AI something different about how to score this account going forward.</p>' +
+
+    '<div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px">' +
+      '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+          '<div style="padding:4px 10px;background:var(--gold);color:#000;font-family:var(--mono);font-size:9px;font-weight:700;border-radius:var(--r)">SNOOZE</div>' +
+          '<div style="font-size:12px;font-weight:600">Come back later (minutes to days)</div>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Use when: you know you\'ll call, just not right now. The card re-appears in your list based on your snooze time. The AI does NOT reduce the score — this account still needs attention.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+          '<div style="padding:4px 10px;background:var(--green);color:#000;font-family:var(--mono);font-size:9px;font-weight:700;border-radius:var(--r)">DONE</div>' +
+          '<div style="font-size:12px;font-weight:600">Completed — call happened or not needed today</div>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Use when: you made the call (or decided this account doesn\'t need a call today). Logs the outcome, removes from today\'s list. The AI updates the neglect score. ALWAYS log the outcome before hitting Done.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+          '<div style="padding:4px 10px;background:var(--red);color:#fff;font-family:var(--mono);font-size:9px;font-weight:700;border-radius:var(--r)">DELETE</div>' +
+          '<div style="font-size:12px;font-weight:600">Remove from today\'s list without acting</div>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Use when: this account should not be in your Daily Mission at all (wrong rep, account is dead, etc.). Does NOT log an outcome. Only use this if there\'s a real reason to skip this account indefinitely.</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--red)', label: 'Warning', text: 'Never Delete an account just because you don\'t feel like calling today. Use Snooze. Delete tells the AI this account is permanently off your list.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Use Done + Log Outcome (even "No Answer") after every call attempt. The outcome note feeds your call history and improves future AI picks.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Snooze with a specific time (e.g., "4 hours") when you know the buyer is in a meeting and you\'ll try again this afternoon.' },
+    ]) +
+
+    acadQuiz('t2-6', 0, 'You tried to call an account and got voicemail. Which action should you take in Daily Mission?', [
+      'Delete it — they didn\'t answer',
+      'Snooze for 3 days if you plan to retry, OR Done + Log Outcome "Left Voicemail"',
+      'Done without logging anything',
+      'Nothing — just leave the card on your list',
+    ], 1, 'Both Snooze (with retry plan) and Done + Log Outcome are correct depending on your intent. Never Delete just because they didn\'t answer. And always log what happened.') +
+
+    acadCompleteBtn('t2-6')
+  );
+},
+
   };
 
   // For lessons without explicit content, show a placeholder
@@ -10564,14 +11007,32 @@ function acadDefaultLesson(lessonId, progress) {
 
 function acadLessonWrap(title, lessonId, progress, bodyHtml) {
   const completed = (progress.completedLessons || []).includes(lessonId);
-  const track = ACADEMY_TRACKS.find(t => t.lessons.some(l => l.id === lessonId));
+  const track = ACADEMY_TRACKS.find(function(t){ return t.lessons.some(function(l){ return l.id === lessonId; }); });
+  const trackIdx = track ? ACADEMY_TRACKS.indexOf(track) : -1;
+  const lessonObj = track ? track.lessons.find(function(l){ return l.id === lessonId; }) : null;
+  const posInTrack = (track && lessonObj) ? track.lessons.indexOf(lessonObj) + 1 : 0;
+  const tColor = (typeof TRACK_COLORS !== 'undefined' && track) ? TRACK_COLORS[track.id] || '#666' : '#666';
+  const breadcrumb = track ? 'Track ' + (trackIdx + 1) + ' — ' + track.title + ' › ' + posInTrack + '. ' + title : '';
+  const allLessons = [];
+  ACADEMY_TRACKS.forEach(function(t){ t.lessons.forEach(function(l){ allLessons.push(l); }); });
+  const flatIdx = allLessons.findIndex(function(l){ return l.id === lessonId; });
+  const prev = flatIdx > 0 ? allLessons[flatIdx - 1] : null;
+  const next = flatIdx < allLessons.length - 1 ? allLessons[flatIdx + 1] : null;
+  const navHtml = '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:32px;padding-top:16px;border-top:1px solid var(--border)">' +
+    (prev ? '<button onclick="acadSelectLesson(this.dataset.lid)" data-lid="' + prev.id + '" style="padding:8px 14px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);cursor:pointer;color:var(--text-2);font-size:12px">← ' + escHtml(prev.title) + '</button>' : '<span></span>') +
+    (next ? '<button onclick="acadSelectLesson(this.dataset.lid)" data-lid="' + next.id + '" style="padding:8px 14px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);cursor:pointer;color:var(--text-2);font-size:12px">' + escHtml(next.title) + ' →</button>' : '<span></span>') +
+  '</div>';
   return '<div>' +
     '<div style="margin-bottom:20px">' +
-      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-bottom:4px">' + (track ? track.icon + ' ' + track.title.toUpperCase() : '') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:' + tColor + ';flex-shrink:0;display:inline-block"></span>' +
+        '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.03em">' + escHtml(breadcrumb) + '</div>' +
+      '</div>' +
       '<div style="font-size:22px;font-weight:700;margin-bottom:4px">' + title + '</div>' +
       (completed ? '<span style="font-family:var(--mono);font-size:10px;color:var(--green)">✓ COMPLETED</span>' : '<span style="font-family:var(--mono);font-size:10px;color:var(--text-3)">+50 XP on completion</span>') +
     '</div>' +
     bodyHtml +
+    navHtml +
   '</div>';
 }
 
@@ -10609,11 +11070,36 @@ function acadSteps(steps) {
   '</div>';
 }
 
+function acadVideoPlaceholder(lessonId) {
+  const videos = JSON.parse(localStorage.getItem('it_academy_videos') || '{}');
+  const url = videos[lessonId];
+  if (url) {
+    return '<div style="margin-bottom:20px;border-radius:var(--r2);overflow:hidden">' +
+      '<iframe width="100%" height="260" src="' + url.replace('watch?v=', 'embed/') + '" frameborder="0" allowfullscreen style="display:block"></iframe>' +
+    '</div>';
+  }
+  return '<div style="margin-bottom:20px;background:var(--navy-dark);border:2px dashed var(--border);border-radius:var(--r2);padding:28px;text-align:center">' +
+    '<div style="font-size:28px;margin-bottom:8px;opacity:0.4">▶</div>' +
+    '<div style="font-size:11px;color:var(--text-3);font-family:var(--mono);letter-spacing:0.1em">VIDEO COMING SOON</div>' +
+  '</div>';
+}
+
+function acadKeyTakeaway(text, tryItText, tryItView) {
+  return '<div style="border:2px solid var(--green);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px;background:rgba(16,185,129,0.05)">' +
+    '<div style="font-family:var(--mono);font-size:9px;color:var(--green);letter-spacing:0.1em;margin-bottom:6px">KEY TAKEAWAY</div>' +
+    '<div style="font-size:13px;font-weight:600;line-height:1.5">' + text + '</div>' +
+    (tryItText && tryItView ? '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(16,185,129,0.2);font-size:12px">' +
+      '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-right:6px">TRY IT NOW: </span>' +
+      '<button onclick="switchView(this.dataset.view)" data-view="' + escHtml(tryItView) + '" style="background:none;border:none;cursor:pointer;color:var(--green);font-size:12px;text-decoration:underline;padding:0">' + tryItText + '</button>' +
+    '</div>' : '') +
+  '</div>';
+}
+
 function acadQuiz(lessonId, qIdx, question, options, correct, explanation) {
   const progress = academyGetProgress();
   const key = lessonId + '-q' + qIdx;
   const answered = (progress.quizAnswers || {})[key];
-  const html = '<div data-quiz style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:16px 18px;margin-bottom:20px">' +
+  const html = '<div data-quiz data-attempts="0" style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:16px 18px;margin-bottom:20px">' +
     '<div style="font-family:var(--mono);font-size:9px;color:var(--gold);letter-spacing:0.1em;margin-bottom:8px">QUIZ</div>' +
     '<div style="font-size:13px;font-weight:600;margin-bottom:12px">' + question + '</div>' +
     '<div style="display:flex;flex-direction:column;gap:6px">' +
@@ -10857,68 +11343,243 @@ async function renderTeamNotes() { await _renderNotesFeed(true); }
 async function _renderNotesFeed(isTeamView) {
   const el = document.getElementById('main-content');
   el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font-family:var(--mono);color:var(--text-3)">Loading notes...</div></div>';
-  const mgrCfg = isTeamView ? getManagerConfig() : null;
-  const teamReps = mgrCfg ? mgrCfg.teamReps : null;
+
+  // Ensure accounts are loaded
+  await ensureCacheLoaded();
+  if (state.accounts && !state.accounts.length) {
+    await new Promise(function(resolve) {
+      const t = setInterval(function(){ if (state.accounts && state.accounts.length) { clearInterval(t); resolve(); } }, 250);
+      setTimeout(function(){ clearInterval(t); resolve(); }, 5000);
+    });
+  }
+
+  const isAdm = isAdmin();
+  const isMgr = isManager() && !isAdm;
+  const viewingAsMgr = isAdm && state.viewingAsManager;
+  const mgrCfg = viewingAsMgr ? getManagerConfig() : (isTeamView ? getManagerConfig() : null);
+  const teamReps = mgrCfg ? mgrCfg.teamReps : (isMgr && !isTeamView ? null : (mgrCfg ? mgrCfg.teamReps : null));
   const teamName = mgrCfg ? mgrCfg.teamName : 'All Reps';
+  const myRep = state.repId;
+
   let allNotes = [];
   const accs = state.accounts || [];
-  (teamReps ? accs.filter(a => teamReps.includes(a.rep)) : accs).forEach(acc => {
-    if (acc.note && acc.note.trim()) allNotes.push({ type:'RepNote', accountName:acc.name, rep:acc.rep||'', text:acc.note, date:acc.noteDate||'', accTotal:acc.total||0, daysInactive:acc.daysInactive||0 });
+
+  // Apply access control for which accounts to pull notes from
+  let noteAccs;
+  if (isAdm && !viewingAsMgr && !isTeamView) {
+    noteAccs = accs; // admin sees all
+  } else if (teamReps) {
+    noteAccs = accs.filter(function(a){ return teamReps.includes(a.rep); });
+  } else if (isMgr) {
+    // manager viewing their own (not team all) - their accounts + team accounts
+    const mc = getManagerConfig();
+    const tr = mc ? mc.teamReps : [];
+    noteAccs = accs.filter(function(a){ return a.rep === myRep || tr.includes(a.rep); });
+  } else {
+    noteAccs = accs.filter(function(a){ return a.rep === myRep; }); // regular rep: own only
+  }
+
+  // Source 1: Rep notes from state.accounts
+  noteAccs.forEach(function(acc) {
+    const noteText = acc.repNote || acc.note || '';
+    if (noteText && noteText.trim()) {
+      allNotes.push({ type:'RepNote', accountName:acc.name, rep:acc.rep||'', text:noteText,
+        date:acc.repNoteDate||acc.noteDate||acc.followUpDate||'',
+        accTotal:acc.total||0, daysInactive:acc.daysInactive||0, accStatus:acc.status||'' });
+    }
   });
+
+  // Source 2: Contact/collections notes
   try {
-    const cnRows = await sheetsGet("'_CONTACT_NOTES'!A1:Z300") || [];
+    let cnRows = [];
+    if (state.contactNotesCache && state.contactNotesCache.length > 1) {
+      cnRows = state.contactNotesCache;
+    } else {
+      cnRows = await sheetsGet("'_CONTACT_NOTES'!A1:Z1000") || [];
+    }
     if (cnRows.length > 1) {
-      const h = cnRows[0].map(x => (x||'').toLowerCase());
-      const g = (row, ...ns) => { for (const n of ns) { const i=h.indexOf(n); if(i>=0&&row[i]) return row[i]; } return ''; };
-      cnRows.slice(1).filter(r => r.some(c=>c)).forEach(r => {
+      const h = cnRows[0].map(function(x){ return (x||'').toLowerCase(); });
+      const g = function(row) {
+        const args = Array.prototype.slice.call(arguments, 1);
+        for (let i=0; i<args.length; i++) { const idx=h.indexOf(args[i]); if(idx>=0&&row[idx]) return row[idx]; } return '';
+      };
+      cnRows.slice(1).filter(function(r){ return r.some(function(c){ return c; }); }).forEach(function(r) {
         const repId = g(r,'rep','rep_id');
-        if (teamReps && !teamReps.includes(repId)) return;
+        // Access control
+        if (!isAdm || viewingAsMgr || isTeamView) {
+          if (teamReps && !teamReps.includes(repId)) return;
+          if (!teamReps && !isAdm && repId !== myRep) return;
+        }
         const accName = g(r,'account_name','customer','account');
-        const acc = accs.find(a => a.name.trim()===accName.trim());
-        const type = g(r,'type') || 'ContactNote';
-        allNotes.push({ type:type==='ManagerNote'?'ManagerNote':'ContactNote', accountName:accName, contactName:g(r,'contact_name','contact'), rep:repId, text:g(r,'note','text'), date:g(r,'date','timestamp'), accTotal:acc?.total||0, daysInactive:acc?.daysInactive||0 });
+        const acc = accs.find(function(a){ return a.name.trim()===accName.trim(); });
+        const rawType = g(r,'type') || 'ContactNote';
+        const noteType = rawType === 'ManagerNote' ? 'ManagerNote' : rawType === 'CollectionsNote' ? 'CollectionsNote' : rawType === 'Outcome' ? 'Outcome' : 'ContactNote';
+        allNotes.push({ type:noteType, accountName:accName, contactName:g(r,'contact_name','contact'),
+          rep:repId, text:g(r,'note','text'), date:g(r,'date','timestamp'),
+          accTotal:acc?acc.total||0:0, daysInactive:acc?acc.daysInactive||0:0, accStatus:acc?acc.status||'':'' });
       });
     }
-  } catch(e) { /* ignore */ }
-  allNotes.sort((a,b) => (b.date > a.date ? 1 : -1));
-  if (!window._nfF) window._nfF = { type:'all', search:'' };
+  } catch(e) { console.warn('Notes feed error:', e.message); }
+
+  allNotes.sort(function(a,b){ return b.date > a.date ? 1 : -1; });
+
+  if (!window._nfF) window._nfF = { type:'all', search:'', rep:'all', sort:'newest' };
   const ff = window._nfF;
-  const filtered = allNotes.filter(n => {
+  const refn = isTeamView ? 'renderTeamNotes' : 'renderNotesFeed';
+
+  const filtered = allNotes.filter(function(n) {
     if (ff.type !== 'all' && n.type !== ff.type) return false;
+    if (ff.rep !== 'all' && n.rep !== ff.rep) return false;
     const s = (ff.search||'').toLowerCase();
     if (s && !n.text.toLowerCase().includes(s) && !(n.accountName||'').toLowerCase().includes(s)) return false;
     return true;
-  }).slice(0,100);
-  const tColors = {'RepNote':'#3b82f6','ContactNote':'#14b8a6','ManagerNote':'#f59e0b'};
-  const refn = isTeamView ? 'renderTeamNotes' : 'renderNotesFeed';
-  const cards = filtered.map(n => {
+  });
+
+  const sorted = filtered.slice();
+  if (ff.sort === 'oldest') sorted.reverse();
+  else if (ff.sort === 'rep') sorted.sort(function(a,b){ return (a.rep||'').localeCompare(b.rep||''); });
+  else if (ff.sort === 'value') sorted.sort(function(a,b){ return (b.accTotal||0)-(a.accTotal||0); });
+  const displayNotes = sorted.slice(0,100);
+
+  const tColors = {'RepNote':'#3b82f6','ContactNote':'#14b8a6','ManagerNote':'#f59e0b','CollectionsNote':'#ef4444','Outcome':'#22c55e'};
+
+  const cards = displayNotes.map(function(n) {
     const tc = tColors[n.type] || 'var(--text-3)';
-    const isMgr = n.type === 'ManagerNote';
+    const isMgrNote = n.type === 'ManagerNote';
     const d = n.date ? new Date(n.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
-    return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:12px 14px;margin-bottom:8px;border-left:3px solid ' + tc + '">' +
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">' +
-        '<span style="font-size:12px;font-weight:500;cursor:pointer;color:var(--blue-b)" onclick="_openAccFromNotes(\'' + escHtml(n.accountName) + '\')">' + escHtml(n.accountName) + '</span>' +
+    const stClean = (n.accStatus||'').replace(/[\u{1F534}\u{1F7E0}\u{26AB}\u{1F7E1}\u{1F7E2}]/gu,'').trim();
+    const safeName = escHtml(n.accountName).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:11px 13px;margin-bottom:7px;border-left:3px solid ' + tc + '">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">' +
+        '<span style="font-size:12px;font-weight:500;cursor:pointer;color:var(--blue-b)" onclick="_openAccFromNotes(\'' + safeName + '\')">' + escHtml(n.accountName) + '</span>' +
         (n.contactName ? '<span style="font-size:11px;color:var(--text-3)">· ' + escHtml(n.contactName) + '</span>' : '') +
-        '<span style="margin-left:auto;font-family:var(--mono);font-size:9px;color:' + (isMgr ? 'var(--gold)' : 'var(--text-3)') + '">' + escHtml(n.rep||'') + (isMgr?' (Mgr)':'') + (d?' · '+d:'') + '</span>' +
+        '<span style="margin-left:auto;font-family:var(--mono);font-size:9px;color:' + (isMgrNote?'var(--gold)':'var(--text-3)') + '">' + escHtml(n.rep||'') + (isMgrNote?' (Mgr)':'') + (d?' · '+d:'') + '</span>' +
       '</div>' +
-      '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">' +
-        '<span style="font-family:var(--mono);font-size:9px;padding:2px 6px;background:' + tc + ';color:#fff;border-radius:3px">' + n.type + '</span>' +
+      '<div style="display:flex;gap:5px;align-items:center;margin-bottom:5px;flex-wrap:wrap">' +
+        '<span style="font-family:var(--mono);font-size:9px;padding:2px 5px;background:' + tc + ';color:#fff;border-radius:3px">' + n.type + '</span>' +
+        (stClean ? '<span style="font-family:var(--mono);font-size:9px;padding:1px 5px;border:1px solid var(--border);border-radius:2px;color:var(--text-3)">' + escHtml(stClean) + '</span>' : '') +
         (n.accTotal ? '<span style="font-family:var(--mono);font-size:10px;color:var(--gold)">$' + formatNum(n.accTotal) + '</span>' : '') +
         (n.daysInactive > 0 ? '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + n.daysInactive + 'd</span>' : '') +
       '</div>' +
-      '<div style="font-size:12px;color:var(--text-2);line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">' + escHtml(n.text) + '</div>' +
+      '<div style="font-size:12px;color:var(--text-2);line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;cursor:pointer" onclick="var s=this.style;s.webkitLineClamp=s.webkitLineClamp===\'unset\'?\'3\':\'unset\'">' + escHtml(n.text) + '</div>' +
+      '<div style="display:flex;gap:5px;margin-top:7px">' +
+        '<button onclick="_openAccFromNotes(\'' + safeName + '\')" class="filter-btn" style="font-size:9px;padding:2px 8px">&#128065; View</button>' +
+      '</div>' +
     '</div>';
   }).join('') || '<div style="padding:40px;text-align:center;color:var(--text-3)">No notes found</div>';
 
-  el.innerHTML = '<div style="padding:16px 20px;height:100%;overflow-y:auto">' +
-    '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--blue-b);letter-spacing:0.12em;margin-bottom:14px">&#128203; ' + (isTeamView ? teamName.toUpperCase() + ' NOTES' : 'ALL NOTES FEED') + ' — ' + allNotes.length + ' total</div>' +
-    '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">' +
-      '<input type="text" placeholder="Search..." oninput="window._nfF.search=this.value;' + refn + '()" value="' + escHtml(ff.search) + '" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;padding:5px 10px;outline:none;border-radius:var(--r);width:160px">' +
-      ['all','RepNote','ContactNote','ManagerNote'].map(t => '<button onclick="window._nfF.type=\'' + t + '\';' + refn + '()" class="filter-btn' + (ff.type===t?' active':'') + '" style="font-size:10px;padding:3px 8px">' + (t==='all'?'ALL':t.toUpperCase()) + '</button>').join('') +
+  const repOpts = (isAdm || isMgr) ? (['all'].concat(teamReps || (CONFIG.REPS||[]))) : [];
+  const typeOpts = [['all','ALL'],['RepNote','REP'],['ContactNote','CONTACT'],['ManagerNote','MGR'],['CollectionsNote','COLL'],['Outcome','OUTCOME']];
+  const sortOpts = [['newest','Newest'],['oldest','Oldest'],['rep','By Rep'],['value','By Value']];
+  const headerLabel = isTeamView ? (teamName.toUpperCase() + ' NOTES') : (isAdm ? 'ALL NOTES FEED' : 'MY NOTES');
+
+  el.innerHTML = '<div style="display:flex;height:100%;overflow:hidden">' +
+    '<div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)">' +
+      '<div style="padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+        '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--blue-b);letter-spacing:0.12em;margin-bottom:8px">&#128203; ' + headerLabel + ' — ' + allNotes.length + ' total</div>' +
+        '<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:5px">' +
+          '<input type="text" placeholder="Search..." oninput="window._nfF.search=this.value;' + refn + '()" value="' + escHtml(ff.search) + '" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;padding:4px 8px;outline:none;border-radius:var(--r);width:130px">' +
+          typeOpts.map(function(t){ return '<button onclick="window._nfF.type=\'' + t[0] + '\';' + refn + '()" class="filter-btn' + (ff.type===t[0]?' active':'') + '" style="font-size:9px;padding:2px 6px">' + t[1] + '</button>'; }).join('') +
+        '</div>' +
+        '<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">' +
+          (repOpts.length > 1 ? '<select onchange="window._nfF.rep=this.value;' + refn + '()" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:3px 6px;border-radius:var(--r)">' + repOpts.map(function(r){ return '<option value="' + r + '"' + (ff.rep===r?' selected':'') + '>' + (r==='all'?'All Reps':r) + '</option>'; }).join('') + '</select>' : '') +
+          sortOpts.map(function(s){ return '<button onclick="window._nfF.sort=\'' + s[0] + '\';' + refn + '()" class="filter-btn' + (ff.sort===s[0]?' active':'') + '" style="font-size:9px;padding:2px 6px">' + s[1] + '</button>'; }).join('') +
+        '</div>' +
+      '</div>' +
+      '<div style="flex:1;overflow-y:auto;padding:10px 12px">' + cards + '</div>' +
     '</div>' +
-    cards +
+    '<div id="nf-ai-panel" style="width:300px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--s1)">' +
+      '<div style="padding:10px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);letter-spacing:0.1em">&#9733; AI INTELLIGENCE</div>' +
+      '<div id="nf-ai-analysis" style="flex:1;overflow-y:auto;padding:10px 12px;font-size:11px;color:var(--text-3);font-style:italic">Analyzing notes...</div>' +
+      '<div style="padding:8px 10px;border-top:1px solid var(--border);flex-shrink:0">' +
+        '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">' + _nfQuickBtnsHtml(isAdm, isMgr, refn) + '</div>' +
+        '<div style="display:flex;gap:5px">' +
+          '<input id="nf-chat-input" type="text" placeholder="Ask about your notes..." style="flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;padding:5px 8px;outline:none;border-radius:var(--r)" onkeydown="if(event.key===\'Enter\')_nfAskAI(\'' + refn + '\')">' +
+          '<button onclick="_nfAskAI(\'' + refn + '\')" style="padding:5px 9px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">ASK</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
   '</div>';
+
+  _nfAutoAnalyze(allNotes.slice(0,60), isAdm, isMgr, isTeamView, teamName);
 }
+
+function _nfQuickBtnsHtml(isAdm, isMgr, refn) {
+  const btns = isAdm ? [
+    ["Which accounts need attention today?","Urgent"],
+    ["Which reps haven't logged anything this week?","Inactive Reps"],
+    ["Find notes mentioning a competitor","Competitors"],
+    ["Show accounts with unresolved issues","Issues"],
+    ["Where are the biggest opportunities?","Opportunities"],
+    ["Which declining accounts have positive recent notes?","Recovering"]
+  ] : isMgr ? [
+    ["Which of my reps needs coaching this week?","Coaching"],
+    ["Show team accounts with pricing issues","Pricing"],
+    ["Which team accounts have no notes in 30 days?","Neglected"],
+    ["Who on my team is most active?","Activity"],
+    ["Where are the best opportunities across my team?","Opportunities"]
+  ] : [
+    ["What should I follow up on today?","Follow-ups"],
+    ["Which of my accounts haven't I noted in 30 days?","Neglected"],
+    ["Summarize my activity this week","Summary"],
+    ["What patterns do you see in my accounts?","Patterns"]
+  ];
+  return btns.map(function(b){
+    const q = b[0].replace(/'/g,"\\'"); const l = b[1];
+    return '<button onclick="document.getElementById(\'nf-chat-input\').value=\'' + q + '\';_nfAskAI(\'' + refn + '\')" style="font-family:var(--mono);font-size:9px;padding:2px 6px;background:var(--s2);border:1px solid var(--border);color:var(--text-2);cursor:pointer;border-radius:var(--r)">' + l + '</button>';
+  }).join('');
+}
+
+async function _nfAutoAnalyze(notes, isAdm, isMgr, isTeamView, teamName) {
+  const panel = document.getElementById('nf-ai-analysis');
+  if (!panel) return;
+  if (!notes.length) { panel.innerHTML = '<div>No notes to analyze yet.</div>'; return; }
+  const summary = notes.slice(0,40).map(function(n){ return (n.rep||'?') + '/' + (n.accountName||'?') + ' (' + n.type + '): ' + (n.text||'').slice(0,70); }).join('\n');
+  const roleCtx = isAdm ? 'admin view of all reps' : isMgr ? (teamName + ' manager view') : 'individual rep view';
+  const prompt = 'Sales notes for ' + roleCtx + '. Give 3-4 concise bullet insights. Focus on: accounts needing attention, risk signals (complaints/pricing/competition), opportunities (RFQs/projects/budgets). Max 180 words.\n\nNotes:\n' + summary;
+  try {
+    const resp = await callAI({ model:'claude-sonnet-4-5', max_tokens:280, system:'Sales intelligence assistant. Bullet points only. Be specific and actionable.', messages:[{role:'user',content:prompt}] });
+    const txt = (resp && resp.content && resp.content[0] && resp.content[0].text) ? resp.content[0].text : (resp && resp.text ? resp.text : 'No insights available.');
+    if (panel) panel.innerHTML = '<div style="line-height:1.7;color:var(--text-2)">' + _nfLinkifyAccounts(txt) + '</div>';
+  } catch(e) {
+    if (panel) panel.innerHTML = '<div style="color:var(--text-3)">AI unavailable: ' + escHtml(e.message.slice(0,60)) + '</div>';
+  }
+}
+
+async function _nfAskAI(refn) {
+  const input = document.getElementById('nf-chat-input');
+  const panel = document.getElementById('nf-ai-analysis');
+  if (!input || !panel) return;
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+  panel.innerHTML = '<div style="color:var(--text-3)">Thinking...</div>';
+  const ctx = (state.accounts||[]).filter(function(a){ return a.repNote||a.note; }).slice(0,40).map(function(a){ return (a.rep||'?') + '/' + a.name + ': ' + ((a.repNote||a.note||'').slice(0,60)); }).join('\n');
+  try {
+    const resp = await callAI({ model:'claude-sonnet-4-5', max_tokens:350, system:'Concise sales intelligence assistant for Intransit Technologies. Answer in bullet points. Be specific.', messages:[{role:'user',content:q + '\n\nContext:\n' + ctx}] });
+    const txt = (resp && resp.content && resp.content[0] && resp.content[0].text) ? resp.content[0].text : (resp && resp.text ? resp.text : 'No response.');
+    if (panel) panel.innerHTML = '<div style="line-height:1.7;color:var(--text-2)">' + _nfLinkifyAccounts(txt) + '</div>';
+  } catch(e) {
+    if (panel) panel.innerHTML = '<div style="color:var(--text-3)">Error: ' + escHtml(e.message.slice(0,80)) + '</div>';
+  }
+}
+
+function _nfLinkifyAccounts(text) {
+  let out = '';
+  let remaining = text;
+  const accs = (state.accounts || []).filter(function(a){ return a.name && a.name.length > 4; });
+  // Simple approach: escape first, then linkify known account names
+  let escaped = escHtml(remaining).replace(/\n/g,'<br>');
+  accs.forEach(function(acc) {
+    const eName = escHtml(acc.name);
+    if (escaped.indexOf(eName) >= 0) {
+      const safeName = eName.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      escaped = escaped.split(eName).join('<span style="color:var(--blue-b);cursor:pointer;text-decoration:underline" onclick="_openAccFromNotes(\'' + safeName + '\')">' + eName + '</span>');
+    }
+  });
+  return escaped;
+}
+
 
 function _openAccFromNotes(name) {
   const acc = (state.accounts||[]).find(a => a.name === name);

@@ -320,7 +320,7 @@ body::before {
 .detail-header {
   padding: 14px 18px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--s1);
+  background: var(--s1); flex-shrink: 0;
 }
 .detail-name {
   font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
@@ -335,7 +335,7 @@ body::before {
 .detail-account-name { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 7px; }
 .detail-tabs {
   display: flex; border-bottom: 1px solid var(--border);
-  background: var(--s0); padding: 0 18px;
+  background: var(--s0); padding: 0 18px; flex-shrink: 0;
 }
 .detail-tab {
   padding: 9px 14px;
@@ -350,7 +350,7 @@ body::before {
 .rev-year-label { font-size: 10px; color: var(--text-3); font-family: var(--mono); }
 .rev-year-val { font-size: 11px; font-weight: 600; color: var(--text-1); font-family: var(--mono); }
 .rev-year-val.rev-zero { color: var(--text-3); font-weight: 400; }
-.detail-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
+.detail-body { flex: 1; overflow-y: auto; padding: 16px 18px; min-height: 0; }
 .detail-top { flex-shrink: 0; }
 .detail-bottom { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 120px; }
 .detail-split-h {
@@ -1277,6 +1277,35 @@ body::before {
   </div>
 </div>
 
+<!-- FORCE LOGOUT MODAL -->
+<div id="force-logout-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:10002;align-items:center;justify-content:center">
+  <div style="background:var(--s1);border:1px solid rgba(239,68,68,0.4);border-top:4px solid var(--red);border-radius:var(--r2);width:420px;padding:28px 32px;box-shadow:0 24px 64px rgba(0,0,0,0.8)">
+    <div style="font-size:22px;margin-bottom:10px;text-align:center">⏏</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px;text-align:center">Force Sign Out All Users?</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px;text-align:center;line-height:1.6">All active sessions will be signed out within 2 minutes.<br>You will not be affected.</div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button onclick="document.getElementById('force-logout-modal').style.display='none'"
+        style="padding:9px 24px;background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r)">CANCEL</button>
+      <button onclick="forceLogoutAll()"
+        style="padding:9px 24px;background:var(--red);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer;border-radius:var(--r)">SIGN OUT ALL USERS</button>
+    </div>
+  </div>
+</div>
+
+<!-- FORCE LOGOUT RESULT MODAL -->
+<div id="force-logout-result-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:10003;align-items:center;justify-content:center">
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);width:420px;padding:28px 32px;box-shadow:0 24px 64px rgba(0,0,0,0.8)">
+    <div id="fl-result-icon" style="font-size:28px;margin-bottom:10px;text-align:center"></div>
+    <div id="fl-result-title" style="font-size:16px;font-weight:700;margin-bottom:8px;text-align:center"></div>
+    <div id="fl-result-body" style="font-size:12px;color:var(--text-muted);margin-bottom:20px;text-align:center;line-height:1.6"></div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="fl-result-retry" onclick="forceLogoutAll()" style="display:none;padding:9px 20px;background:var(--red);border:none;color:#fff;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r)">TRY AGAIN</button>
+      <button onclick="document.getElementById('force-logout-result-modal').style.display='none'"
+        style="padding:9px 24px;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r)">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- HELP MODAL -->
 <div id="help-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:flex-end;justify-content:flex-end;padding:16px" onclick="if(event.target===this)this.style.display='none'">
   <div style="background:var(--s1);border:1px solid var(--border-hi);border-radius:var(--r2);width:520px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.7)">
@@ -2022,6 +2051,20 @@ Answer the rep's question concisely and specifically. If you don't know somethin
 }
 
 // ── HISTORY TAB ────────────────────────────────────────────
+function histShowMore(accName) {
+  if (!state._histPage) state._histPage = {};
+  state._histPage[accName] = (state._histPage[accName] || 1) + 1;
+  renderDetail(state.selectedAccount);
+}
+
+function histSetSort(accName, sortKey) {
+  if (!state._histSort) state._histSort = {};
+  state._histSort[accName] = sortKey;
+  if (!state._histPage) state._histPage = {};
+  state._histPage[accName] = 1;
+  renderDetail(state.selectedAccount);
+}
+
 function renderHistoryTab(acc) {
   const _hKey = acc.name.trim();
   const _hNorm = _hKey.toLowerCase().replace(/\s+/g,' ');
@@ -2031,54 +2074,196 @@ function renderHistoryTab(acc) {
     _hKey;
   const h = state.historyCache[_hResolved] || { invoices: [], reqs: [], quotes: [] };
 
-  const section = (title, color, items, renderFn) => {
-    if (!items.length) return `
-      <div style="margin-bottom:14px">
-        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:${color};margin-bottom:6px;text-transform:uppercase">${title}</div>
-        <div style="font-size:11px;color:var(--text-muted);padding:8px 0">None on record</div>
-      </div>`;
-    return `
-      <div style="margin-bottom:14px">
-        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:${color};margin-bottom:8px;text-transform:uppercase">${title} (${items.length})</div>
-        ${items.slice(0,20).map(renderFn).join('')}
-        ${items.length > 20 ? `<div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);padding:4px 0">+ ${items.length-20} more</div>` : ''}
-      </div>`;
+  // GP lookup by invoice number
+  const gpByInv = {};
+  if (state.gpCache && state.gpCache.length) {
+    const _normName = _hResolved.toLowerCase().replace(/\s+/g,' ').trim();
+    state.gpCache.forEach(function(g) {
+      const gCust = (g.CUSTOMER_NAME || '').toLowerCase().replace(/\s+/g,' ').trim();
+      if (gCust === _normName || gCust.indexOf(_normName) !== -1 || _normName.indexOf(gCust) !== -1) {
+        const invNum = String(g.INVOICE_NUMBER || '').trim();
+        if (invNum && !gpByInv[invNum]) gpByInv[invNum] = g;
+      }
+    });
+  }
+
+  // Collections lookup by invoice number
+  const collByInv = {};
+  const collArr = (state.collectionsInvoicesCache && state.collectionsInvoicesCache[_hResolved]) || [];
+  collArr.forEach(function(ci) {
+    const invNum = String(ci.invoiceNum || '').trim();
+    if (invNum) collByInv[invNum] = ci;
+  });
+
+  // Group line items by invoice
+  const invoiceMap = {};
+  h.invoices.forEach(function(item) {
+    const inv = String(item.invoiceNum || 'Unknown').trim();
+    if (!invoiceMap[inv]) {
+      invoiceMap[inv] = { invoiceNum: inv, date: item.date || '', total: item.total || 0, items: [] };
+    }
+    invoiceMap[inv].items.push(item);
+  });
+
+  // Sort
+  if (!state._histSort) state._histSort = {};
+  const sortKey = state._histSort[acc.name] || 'newest';
+  const invoiceList = Object.values(invoiceMap);
+  if (sortKey === 'newest') invoiceList.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  else if (sortKey === 'oldest') invoiceList.sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+  else if (sortKey === 'largest') invoiceList.sort(function(a,b){ return (b.total||0)-(a.total||0); });
+
+  // Pagination
+  if (!state._histPage) state._histPage = {};
+  const _pgSize = 20;
+  const _pgShow = (state._histPage[acc.name] || 1) * _pgSize;
+  const invoiceSlice = invoiceList.slice(0, _pgShow);
+  const hasMore = invoiceList.length > _pgShow;
+  const invCount = invoiceList.length;
+
+  // Sort buttons
+  const sortBtns = ['newest','oldest','largest'].map(function(s) {
+    const active = sortKey === s;
+    return '<button data-acc="' + escHtml(acc.name) + '" data-sort="' + s + '" onclick="histSetSort(this.dataset.acc,this.dataset.sort)"'
+      + ' style="font-family:var(--font-mono);font-size:9px;padding:3px 7px;background:' + (active ? 'var(--blue-b)' : 'var(--navy-mid)') + ';'
+      + 'color:' + (active ? '#fff' : 'var(--text-muted)') + ';border:1px solid var(--border);cursor:pointer;letter-spacing:0.05em">'
+      + s.toUpperCase() + '</button>';
+  }).join('');
+
+  const _showing = Math.min(_pgShow, invCount);
+  const countLabel = invCount > 0
+    ? (invCount + ' invoices' + (invCount > _showing ? ' — showing 1–' + _showing : ''))
+    : '';
+
+  let invHtml = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+    + '<span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">' + countLabel + '</span>'
+    + '<span style="display:flex;gap:4px">' + sortBtns + '</span>'
+    + '</div>';
+
+  if (invCount === 0) {
+    invHtml += '<div style="font-size:11px;color:var(--text-muted);padding:8px 0">None on record</div>';
+  } else {
+    invHtml += invoiceSlice.map(function(inv) {
+      const gp = gpByInv[inv.invoiceNum] || null;
+      const coll = collByInv[inv.invoiceNum] || null;
+      const gpAmt = gp ? parseFloat(gp.GP || 0) : 0;
+      const extPrice = gp ? parseFloat(gp.EXTENDED_PRICE || inv.total || 0) : (inv.total || 0);
+      const gpPct = extPrice > 0 && gpAmt > 0 ? (gpAmt / extPrice * 100).toFixed(1) : null;
+      const balance = coll ? parseFloat(coll.balance || 0) : 0;
+      const tracking = coll ? (coll.tracking || '') : '';
+      const shipVia = coll ? (coll.shipVia || '') : '';
+      const orderNum = coll ? (coll.orderNum || '') : '';
+
+      let trackHtml = '';
+      if (tracking) {
+        const sv = shipVia.toUpperCase();
+        let tUrl = '';
+        if (sv.indexOf('UPS') !== -1) tUrl = 'https://www.ups.com/track?tracknum=' + encodeURIComponent(tracking);
+        else if (sv.indexOf('FEDEX') !== -1 || sv.indexOf('FED EX') !== -1) tUrl = 'https://www.fedextrack.com/?trknbr=' + encodeURIComponent(tracking);
+        else if (sv.indexOf('DHL') !== -1) tUrl = 'https://www.dhl.com/en/express/tracking.html?AWB=' + encodeURIComponent(tracking);
+        const tLabel = escHtml((shipVia ? shipVia + ': ' : '') + tracking);
+        trackHtml = tUrl
+          ? ' &nbsp;&middot;&nbsp; <a href="' + tUrl + '" target="_blank" rel="noopener" style="color:var(--blue-b);text-decoration:none">' + tLabel + ' ↗</a>'
+          : ' &nbsp;&middot;&nbsp; ' + tLabel;
+      }
+
+      const lineItems = inv.items.map(function(item) {
+        const descTrunc = (item.desc||'').length > 40 ? (item.desc||'').slice(0,40) + '…' : (item.desc||'');
+        return '<div style="padding:4px 10px 4px 16px;font-size:11px;color:var(--text-muted);border-left:2px solid var(--border);margin-left:8px;margin-top:2px">'
+          + '<span style="font-weight:600;color:var(--text)">' + escHtml(item.part||'') + '</span>'
+          + ' &nbsp; ' + escHtml(descTrunc)
+          + (item.condition ? ' &nbsp;&middot;&nbsp; ' + escHtml(item.condition) : '')
+          + ' &nbsp;&middot;&nbsp; Qty:&nbsp;' + escHtml(String(item.qty||0))
+          + ' &nbsp;&middot;&nbsp; @$' + formatNum(parseFloat(item.price||0))
+          + ' = $' + formatNum(parseFloat(item.lineTotal||0))
+          + '</div>';
+      }).join('');
+
+      return '<div style="background:var(--navy-mid);border:1px solid var(--border);margin-bottom:6px;border-radius:2px">'
+        + '<div style="padding:8px 10px 6px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:3px">'
+        + '<span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--blue-b)">#' + escHtml(inv.invoiceNum) + '</span>'
+        + '<span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--green)">$' + formatNum(extPrice) + '</span>'
+        + '</div>'
+        + '<div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:3px">'
+        + escHtml((inv.date||'').slice(0,10))
+        + (orderNum ? ' &nbsp;&middot;&nbsp; Order:&nbsp;' + escHtml(orderNum) : '')
+        + trackHtml
+        + '</div>'
+        + ((gpAmt > 0 || balance > 0) ? '<div style="font-size:10px;font-family:var(--font-mono)">'
+            + (gpAmt > 0 ? '<span style="color:var(--green)">GP: $' + formatNum(gpAmt) + (gpPct ? ' &middot; ' + gpPct + '%' : '') + '</span>' : '')
+            + (gpAmt > 0 && balance > 0 ? ' &nbsp;&middot;&nbsp; ' : '')
+            + (balance > 0 ? '<span style="color:var(--red)">Balance: $' + formatNum(balance) + '</span>' : '')
+            + '</div>' : '')
+        + '</div>'
+        + (lineItems ? '<div style="border-top:1px solid var(--border);padding-bottom:6px">' + lineItems + '</div>' : '')
+        + '</div>';
+    }).join('');
+
+    if (hasMore) {
+      invHtml += '<button data-acc="' + escHtml(acc.name) + '" onclick="histShowMore(this.dataset.acc)"'
+        + ' style="width:100%;padding:8px;background:var(--navy-mid);border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:10px;cursor:pointer;margin-top:4px;letter-spacing:0.05em">'
+        + 'SHOW MORE (' + (invoiceList.length - _pgShow) + ' remaining)</button>';
+    }
+  }
+
+  // RFQ section
+  const reqs = (h.reqs || []).slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  let reqHtml = '';
+  if (!reqs.length) {
+    reqHtml = '<div style="font-size:11px;color:var(--text-muted);padding:8px 0">None on record</div>';
+  } else {
+    reqHtml = reqs.slice(0,50).map(function(r) {
+      return '<div style="padding:8px 10px;background:var(--navy-mid);border:1px solid var(--border);margin-bottom:4px;font-size:12px">'
+        + '<div style="display:flex;justify-content:space-between;margin-bottom:3px">'
+        + '<span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + escHtml(String(r.date||'').slice(0,10)) + '</span>'
+        + '<span style="font-family:var(--font-mono);font-size:10px;color:' + (r.closed==='Y'?'var(--text-muted)':'var(--accent)') + '">' + (r.closed==='Y'?'Closed':'Open') + '</span>'
+        + '</div>'
+        + '<div style="font-weight:500">' + escHtml(r.part||'') + '</div>'
+        + '<div style="color:var(--text-muted);font-size:11px">'
+        + (r.mfr ? escHtml(r.mfr) + ' &nbsp;&middot;&nbsp; ' : '')
+        + 'Qty:&nbsp;' + escHtml(String(r.qty||0))
+        + (r.price && String(r.price) !== '0' ? ' &nbsp;&middot;&nbsp; Target: $' + escHtml(String(r.price)) : '')
+        + '</div>'
+        + '</div>';
+    }).join('');
+    if (reqs.length > 50) reqHtml += '<div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);padding:4px 0">+ ' + (reqs.length-50) + ' more</div>';
+  }
+
+  // Quotes section
+  const quotes = (h.quotes || []).slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  let quoteHtml = '';
+  if (!quotes.length) {
+    quoteHtml = '<div style="font-size:11px;color:var(--text-muted);padding:8px 0">None on record</div>';
+  } else {
+    quoteHtml = quotes.slice(0,50).map(function(q) {
+      return '<div style="padding:8px 10px;background:var(--navy-mid);border:1px solid var(--border);margin-bottom:4px;font-size:12px">'
+        + '<div style="display:flex;justify-content:space-between;margin-bottom:3px">'
+        + '<span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + escHtml(String(q.date||'').slice(0,10)) + '</span>'
+        + '<span style="font-family:var(--font-mono);font-size:11px;color:var(--accent)">$' + formatNum(q.price||0) + '</span>'
+        + '</div>'
+        + '<div style="font-weight:500">' + escHtml(q.part||'') + '</div>'
+        + '<div style="color:var(--text-muted);font-size:11px">'
+        + (q.mfr ? escHtml(q.mfr) + ' &nbsp;&middot;&nbsp; ' : '')
+        + 'Qty:&nbsp;' + escHtml(String(q.qty||0))
+        + ' &nbsp;&middot;&nbsp; ' + (q.closed==='Y'?'Closed':'Open')
+        + (q.quoteNum ? ' &nbsp;&middot;&nbsp; #' + escHtml(String(q.quoteNum)) : '')
+        + '</div>'
+        + '</div>';
+    }).join('');
+    if (quotes.length > 50) quoteHtml += '<div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);padding:4px 0">+ ' + (quotes.length-50) + ' more</div>';
+  }
+
+  const sDiv = function(title, color, cnt, content) {
+    return '<div style="margin-bottom:14px">'
+      + '<div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:' + color + ';margin-bottom:8px;text-transform:uppercase">'
+      + title + (cnt > 0 ? ' (' + cnt + ')' : '') + '</div>'
+      + content + '</div>';
   };
 
-  const invHtml = section('📦 Recent Invoices', 'var(--green)', h.invoices,
-    i => `<div style="padding:8px 10px;background:var(--navy-mid);border:1px solid var(--border);margin-bottom:4px;font-size:12px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">${escHtml(i.date.slice(0,10))}</span>
-        <span style="font-family:var(--font-mono);font-size:11px;color:var(--green)">$${formatNum(i.lineTotal)}</span>
-      </div>
-      <div style="font-weight:500">${escHtml(i.part)}</div>
-      <div style="color:var(--text-muted);font-size:11px">${escHtml(i.desc)} &nbsp;·&nbsp; Qty: ${escHtml(String(i.qty))} &nbsp;·&nbsp; ${escHtml(i.condition)}</div>
-    </div>`
-  );
-
-  const reqHtml = section('📋 RFQ History', 'var(--blue-bright)', h.reqs,
-    r => `<div style="padding:8px 10px;background:var(--navy-mid);border:1px solid var(--border);margin-bottom:4px;font-size:12px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">${escHtml(String(r.date).slice(0,10))}</span>
-        <span style="font-family:var(--font-mono);font-size:10px;color:${r.closed==='Y'?'var(--text-muted)':'var(--accent)'}">${r.closed==='Y'?'Closed':'Open'}</span>
-      </div>
-      <div style="font-weight:500">${escHtml(r.part)}</div>
-      <div style="color:var(--text-muted);font-size:11px">${escHtml(r.mfr)} &nbsp;·&nbsp; Qty: ${escHtml(String(r.qty))} &nbsp;·&nbsp; Target: $${escHtml(String(r.price))}</div>
-    </div>`
-  );
-
-  const quoteHtml = section('💬 Quote History', 'var(--accent)', h.quotes,
-    q => `<div style="padding:8px 10px;background:var(--navy-mid);border:1px solid var(--border);margin-bottom:4px;font-size:12px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">${escHtml(String(q.date).slice(0,10))}</span>
-        <span style="font-family:var(--font-mono);font-size:11px;color:var(--accent)">$${formatNum(q.price)}</span>
-      </div>
-      <div style="font-weight:500">${escHtml(q.part)}</div>
-      <div style="color:var(--text-muted);font-size:11px">${escHtml(q.mfr)} &nbsp;·&nbsp; Qty: ${escHtml(String(q.qty))} &nbsp;·&nbsp; ${q.closed==='Y'?'Closed':'Open'}</div>
-    </div>`
-  );
-
-  return invHtml + reqHtml + quoteHtml;
+  return sDiv('📦 Recent Invoices', 'var(--green)', invCount, invHtml)
+    + sDiv('📋 RFQ History', 'var(--blue-bright)', reqs.length, reqHtml)
+    + sDiv('💬 Quote History', 'var(--accent)', quotes.length, quoteHtml);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2338,6 +2523,16 @@ async function acceptNDA() {
     const ndaTextEN  = LANG.en.ndaBody.slice(0, 500) + '...';
     const ndaTextES  = LANG.es.ndaBody.slice(0, 500) + '...';
 
+    // Store full NDA record in localStorage for View NDA feature
+    const ndaRecKey = 'it_nda_' + repId + '_' + now.getTime();
+    try {
+      localStorage.setItem(ndaRecKey, JSON.stringify({
+        repId, email: userEmail, name: userName, timestamp, ndaVersion, lang,
+        en: (typeof LANG !== 'undefined' && LANG.en) ? LANG.en.ndaBody : ndaTextEN,
+        es: (typeof LANG !== 'undefined' && LANG.es) ? LANG.es.ndaBody : ndaTextES
+      }));
+    } catch(e) { /* localStorage may be full */ }
+
     const row = [
       timestamp,          // A: Date/Time (local)
       isoTime,            // B: ISO Timestamp (UTC)
@@ -2352,6 +2547,7 @@ async function acceptNDA() {
       ndaTextEN,          // K: EN agreement summary
       ndaTextES,          // L: ES agreement summary
       sessionStorage.getItem('it_session_id') || 'unknown',  // M: Session ID
+      ndaRecKey,          // N: localStorage key for full NDA record
     ];
 
     await sheetsAppend("'_NDA_LOG'!A1", [
@@ -2639,6 +2835,7 @@ function completeLogin() {
   }
   state._loginComplete = true;
   state.loginTime = Date.now();
+  sessionStorage.setItem('it_login_time', String(state.loginTime));
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').classList.add('visible');
   document.getElementById('sidebar-user-name').textContent = state.user?.name || state.user?.email || '—';
@@ -2709,6 +2906,10 @@ function completeLogin() {
   // Start force-logout polling for all users
   clearInterval(window._forceLogoutPoll);
   window._forceLogoutPoll = setInterval(checkForceLogout, 2 * 60 * 1000);
+  // Start heartbeat (updates _ACTIVE_USERS tab every 60s)
+  sendHeartbeat().catch(function(){});
+  clearInterval(window._heartbeatInterval);
+  window._heartbeatInterval = setInterval(function() { sendHeartbeat().catch(function(){}); }, 60 * 1000);
   // Show notes feed nav for ALL users (label varies by role)
   const _nfNavAll = document.getElementById('nav-notes-feed');
   if (_nfNavAll && _nfNavAll.style.display !== 'block') {
@@ -2756,6 +2957,94 @@ function handleSignout() {
   document.getElementById('app').classList.remove('visible');
 }
 
+async function sendHeartbeat() {
+  if (!state.user || !state.accessToken) return;
+  const _hbRow = [state.repId||'unknown', state.user.email||'', new Date().toISOString(),
+    state.userIP||'unknown', navigator.userAgent.substr(0,80),
+    sessionStorage.getItem('it_session_id')||'', state.activeView||''];
+  try {
+    if (!state._heartbeatRow) {
+      const _hbExist = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACTIVE_USERS'!A1:G200");
+      if (!_hbExist || _hbExist.length === 0) {
+        await sheetsAppend("'_ACTIVE_USERS'!A1", [['REP_ID','EMAIL','LAST_SEEN','IP','DEVICE','SESSION_ID','CURRENT_PAGE'], _hbRow], CONFIG.HISTORY_SPREADSHEET_ID);
+        state._heartbeatRow = 2;
+      } else {
+        let _hbFound = -1;
+        for (let i = 0; i < _hbExist.length; i++) { if ((_hbExist[i][0]||'') === (state.repId||'unknown')) { _hbFound = i + 1; break; } }
+        if (_hbFound === -1) {
+          await sheetsAppend("'_ACTIVE_USERS'!A1", [_hbRow], CONFIG.HISTORY_SPREADSHEET_ID);
+          state._heartbeatRow = _hbExist.length + 1;
+        } else {
+          state._heartbeatRow = _hbFound;
+          await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACTIVE_USERS'!A" + _hbFound + ":G" + _hbFound, [_hbRow]);
+        }
+      }
+    } else {
+      await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACTIVE_USERS'!A" + state._heartbeatRow + ":G" + state._heartbeatRow, [_hbRow]);
+    }
+  } catch(e) { /* non-blocking */ }
+}
+
+async function loadActiveUsers() {
+  const el = document.getElementById('active-users-section');
+  if (!el) return;
+  try {
+    const _auRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACTIVE_USERS'!A1:G100");
+    if (!_auRows || _auRows.length < 2) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--text-muted)">No active users data yet. Users appear here after their first heartbeat.</div>';
+      return;
+    }
+    const _auNow = Date.now();
+    const _auData = _auRows.slice(1);
+    const _auRelTime = function(iso) {
+      if (!iso) return 'unknown';
+      const diff = Math.floor((_auNow - new Date(iso).getTime()) / 1000);
+      if (diff < 10) return 'Just now';
+      if (diff < 60) return diff + 's ago';
+      if (diff < 3600) return Math.floor(diff/60) + ' min ago';
+      return Math.floor(diff/3600) + 'h ago';
+    };
+    const _auOnline = _auData.filter(function(r) { const ts = r[2] ? new Date(r[2]).getTime() : 0; return _auNow - ts < 3*60*1000; });
+    const _auRecent = _auData.filter(function(r) { const age = _auNow - (r[2] ? new Date(r[2]).getTime() : 0); return age >= 3*60*1000 && age < 24*60*60*1000; });
+    const _auHeader = '<div style="display:grid;grid-template-columns:70px 110px 90px 90px 1fr 80px;gap:6px;padding:4px 8px;font-family:var(--font-mono);font-size:9px;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:4px">'
+      + '<span>REP</span><span>EMAIL</span><span>PAGE</span><span>IP</span><span>LAST SEEN</span><span></span></div>';
+    const _auBody = _auOnline.length === 0
+      ? '<div style="font-size:11px;color:var(--text-muted);padding:8px 0">No users currently online</div>'
+      : _auOnline.map(function(r) {
+          return '<div style="display:grid;grid-template-columns:70px 110px 90px 90px 1fr 80px;gap:6px;align-items:center;padding:7px 8px;background:var(--navy-mid);border:1px solid var(--border);margin-bottom:3px;font-size:11px">'
+            + '<span style="font-weight:600">' + escHtml(r[0]||'') + '</span>'
+            + '<span style="color:var(--text-muted);font-size:10px">' + escHtml((r[1]||'').split('@')[0]) + '</span>'
+            + '<span style="font-family:var(--font-mono);font-size:10px;color:var(--blue-b)">' + escHtml(r[6]||'') + '</span>'
+            + '<span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + escHtml(r[3]||'') + '</span>'
+            + '<span style="font-family:var(--font-mono);font-size:10px;color:var(--green)">' + _auRelTime(r[2]) + '</span>'
+            + '<button data-rep="' + escHtml(r[0]||'') + '" data-email="' + escHtml(r[1]||'') + '" onclick="forceLogoutUser(this.dataset.rep,this.dataset.email)"'
+            + ' style="background:transparent;border:1px solid rgba(239,68,68,0.4);color:var(--red);font-family:var(--font-mono);font-size:9px;padding:3px 6px;cursor:pointer;letter-spacing:0.05em">LOG OFF</button>'
+            + '</div>';
+        }).join('');
+    const _auRecentHtml = _auRecent.length === 0 ? '' :
+      '<details style="margin-top:10px"><summary style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--text-muted);cursor:pointer">RECENT SESSIONS (LAST 24H) (' + _auRecent.length + ')</summary>'
+      + '<div style="margin-top:6px">'
+      + _auRecent.slice(0,20).map(function(r) {
+          return '<div style="display:flex;gap:10px;padding:4px 0;font-size:11px;border-bottom:1px solid var(--border-light)">'
+            + '<span style="width:70px;font-weight:500">' + escHtml(r[0]||'') + '</span>'
+            + '<span style="color:var(--text-muted);flex:1">' + escHtml(r[6]||'') + '</span>'
+            + '<span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + _auRelTime(r[2]) + '</span>'
+            + '</div>';
+        }).join('')
+      + '</div></details>';
+    el.innerHTML = '<div style="font-family:var(--font-mono);font-size:10px;margin-bottom:8px">'
+      + '<span style="color:' + (_auOnline.length > 0 ? 'var(--green)' : 'var(--text-muted)') + ';font-weight:' + (_auOnline.length > 0 ? '600' : 'normal') + '">'
+      + _auOnline.length + ' online now</span>'
+      + '</div>'
+      + _auHeader + _auBody + _auRecentHtml
+      + '<div style="display:flex;gap:8px;margin-top:10px;align-items:center">'
+      + '<button onclick="loadActiveUsers()" style="padding:5px 12px;background:var(--navy-mid);border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:9px;cursor:pointer;letter-spacing:0.08em">↺ REFRESH</button>'
+      + '<button onclick="confirmForceLogoutAll()" style="padding:5px 12px;background:transparent;border:1px solid rgba(239,68,68,0.4);color:var(--red);font-family:var(--font-mono);font-size:9px;cursor:pointer;letter-spacing:0.08em">⏏ LOG OFF ALL</button>'
+      + '<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-left:auto">auto-refreshes every 60s</span>'
+      + '</div>';
+  } catch(e) { if (el) el.innerHTML = '<div style="font-size:11px;color:var(--red)">Failed to load: ' + escHtml(e.message) + '</div>'; }
+}
+
 function confirmForceLogoutAll() {
   if (!isAdmin()) return;
   document.getElementById('force-logout-modal').style.display = 'flex';
@@ -2763,16 +3052,29 @@ function confirmForceLogoutAll() {
 
 async function forceLogoutAll() {
   document.getElementById('force-logout-modal').style.display = 'none';
+  const rm = document.getElementById('force-logout-result-modal');
+  const ri = document.getElementById('fl-result-icon');
+  const rt = document.getElementById('fl-result-title');
+  const rb = document.getElementById('fl-result-body');
+  const rr = document.getElementById('fl-result-retry');
   try {
     await sheetsAppend("'_LOG'!A1", [[
       new Date().toISOString(),
       state.user?.email || 'admin',
       'FORCE_LOGOUT_ALL',
-      'TARGET:ALL BY:' + (state.user?.email || 'admin')
+      'TARGET:ALL BY:' + (state.user?.email || 'admin') + ' IP:' + (state.userIP || 'unknown')
     ]]);
-    showToast('Force logout signal sent — all reps will be signed out within 2 minutes', 'success');
+    ri.textContent = '✅';
+    rt.textContent = 'All users have been logged out';
+    rb.innerHTML = 'The force logout signal has been sent.<br>All active sessions will be signed out within 2 minutes.';
+    rr.style.display = 'none';
+    rm.style.display = 'flex';
   } catch(e) {
-    showToast('Force logout failed: ' + e.message, 'error');
+    ri.textContent = '❌';
+    rt.textContent = 'Force logout failed';
+    rb.innerHTML = 'Could not write to the session log.<br>Please try again or check your connection.<br><br><span style="color:var(--red);font-family:var(--mono);font-size:10px">Error: ' + escHtml(e.message) + '</span>';
+    rr.style.display = 'inline-block';
+    rm.style.display = 'flex';
   }
 }
 
@@ -2788,6 +3090,17 @@ async function forceLogoutUser(repId, targetEmail) {
   } catch(e) {
     showToast('Force logout failed: ' + e.message, 'error');
   }
+}
+
+function showForcedLogoutMessage() {
+  clearInterval(window._forceLogoutPoll);
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;'
+    + 'height:100vh;background:#0a1628;flex-direction:column;gap:16px">'
+    + '<div style="font-size:36px">&#128274;</div>'
+    + '<p style="color:#e2e8f0;font-size:18px;font-weight:500;margin:0">You have been signed out</p>'
+    + '<p style="color:#94a3b8;font-size:14px;margin:0;text-align:center">An administrator has ended all active sessions.<br>Please log back in to continue.</p>'
+    + '<button onclick="location.reload()" style="margin-top:8px;padding:10px 24px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-family:sans-serif">Log back in</button>'
+    + '</div>';
 }
 
 async function checkForceLogout() {
@@ -2809,16 +3122,14 @@ async function checkForceLogout() {
       const evt = (row[2] || '').toUpperCase();
       const detail = row[3] || '';
       if (evt === 'FORCE_LOGOUT_ALL') {
-        showToast('You have been signed out by the administrator. Please log back in.', 'error');
-        clearInterval(window._forceLogoutPoll);
-        setTimeout(handleSignout, 2500);
+        showForcedLogoutMessage();
+        setTimeout(handleSignout, 1500);
         return;
       }
       if (evt === 'FORCE_LOGOUT_USER') {
         if (detail.includes('TARGET:' + myRepId) || detail.includes('EMAIL:' + myEmail)) {
-          showToast('You have been signed out by the administrator. Please log back in.', 'error');
-          clearInterval(window._forceLogoutPoll);
-          setTimeout(handleSignout, 2500);
+          showForcedLogoutMessage();
+          setTimeout(handleSignout, 1500);
           return;
         }
       }
@@ -2851,6 +3162,7 @@ async function checkAuth() {
     state.accessToken = savedToken;
     state.user = JSON.parse(savedUser);
     setRepFromEmail(state.user.email);
+    state.loginTime = parseInt(sessionStorage.getItem('it_login_time') || '0');
     return true;
   }
   return false;
@@ -3122,6 +3434,7 @@ function toggleMobileNav(forceClose) {
 }
 
 function switchView(view) {
+  checkForceLogout().catch(function(){});
   if (state.hasUnsavedNote) {
     const noteEl = document.getElementById('note-text-input');
     if (noteEl && noteEl.value.trim()) {
@@ -3578,6 +3891,14 @@ function renderNoteInput(acc) {
       <button class="approve-btn" onclick="approveRemoval()">APPROVE REMOVAL</button>
     </div>` : '';
 
+  const johnPoolHtml = state.isAdmin ? (
+    '<div style="margin-top:10px;padding:10px 14px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r)">'
+    + '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:8px">POOL VISIBILITY — ADMIN</div>'
+    + (acc.hideFromPool === 'YES'
+      ? '<button data-n="' + escHtml(acc.name) + '" onclick="adminSetPoolHide(this.dataset.n, false)" style="width:100%;padding:7px 12px;background:transparent;border:1px solid rgba(34,197,94,0.5);color:var(--green);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700;text-align:left">&#8629; RESTORE TO TRANSFER POOL<span style=\'display:block;font-size:9px;font-weight:400;opacity:0.7;margin-top:1px\'>Re-enable in Transfer Candidates for all reps</span></button>'
+      : '<button data-n="' + escHtml(acc.name) + '" onclick="adminSetPoolHide(this.dataset.n, true)" style="width:100%;padding:7px 12px;background:transparent;border:1px solid rgba(220,38,38,0.4);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700;text-align:left">&#128065; HIDE FROM TRANSFER POOL<span style=\'display:block;font-size:9px;font-weight:400;opacity:0.7;margin-top:1px\'>Hides from all reps\' Transfer Candidates. Owner keeps full access.</span></button>')
+    + '</div>'
+  ) : '';
   // Rep requests section — shown to reps and admin
   const repRequestsHtml = `
     <div style="margin-top:16px;padding:14px 16px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r2)">
@@ -3647,6 +3968,7 @@ function renderNoteInput(acc) {
         <button onclick="openScheduleModal('${escJs(acc.name)}','','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
       </div>
       ${johnApproveHtml}
+      ${johnPoolHtml}
       ${repRequestsHtml}
     </div>`;
 }
@@ -3755,29 +4077,66 @@ function renderCollectionsTab(acc) {
 
 function renderInfoTab(acc) {
   const years = Object.keys(acc.years).sort();
-  return `
-    <div style="margin-bottom:14px">
-      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:8px">REVENUE BY YEAR</div>
-      ${years.map(y => `
-        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-light);font-size:12px">
-          <span style="font-family:var(--font-mono);color:var(--text-muted)">${y}</span>
-          <span style="font-family:var(--font-mono);color:${acc.years[y] > 0 ? 'var(--text)' : 'var(--text-muted)'}">
-            ${acc.years[y] > 0 ? '$' + formatNum(acc.years[y]) : '—'}
-          </span>
-        </div>`).join('')}
-      <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px;font-weight:500;margin-top:4px">
-        <span style="font-family:var(--font-mono);color:var(--accent)">TOTAL</span>
-        <span style="font-family:var(--font-mono);color:var(--accent)">$${formatNum(acc.total)}</span>
-      </div>
-    </div>
-    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:8px">ACCOUNT DETAILS</div>
-    <div style="font-size:12px;display:flex;flex-direction:column;gap:6px">
-      <div style="display:flex;gap:8px"><span style="color:var(--text-muted);width:90px">Rep</span><span>${escHtml(acc.rep)}</span></div>
-      <div style="display:flex;gap:8px"><span style="color:var(--text-muted);width:90px">Last order</span><span>${acc.lastSaleDate || '—'}</span></div>
-      <div style="display:flex;gap:8px"><span style="color:var(--text-muted);width:90px">Days quiet</span><span>${acc.daysInactive || 0}</span></div>
-      <div style="display:flex;gap:8px"><span style="color:var(--text-muted);width:90px">Rep status</span><span>${escHtml(acc.repStatus) || '—'}</span></div>
-      <div style="display:flex;gap:8px"><span style="color:var(--text-muted);width:90px">Follow-up</span><span style="color:var(--accent)">${escHtml(acc.followUpDate) || '—'}</span></div>
-    </div>`;
+  const vals = years.map(function(y){ return acc.years[y] || 0; });
+  const maxVal = Math.max.apply(null, vals) || 1;
+
+  // SVG bar chart
+  const barW = 28, barGap = 6, chartH = 80, labelH = 18;
+  const totalW = years.length * (barW + barGap);
+  const bars = years.map(function(y, i) {
+    const v = acc.years[y] || 0;
+    const h = v > 0 ? Math.max(3, Math.round(v / maxVal * chartH)) : 2;
+    const x = i * (barW + barGap);
+    const prevVal = i > 0 ? (acc.years[years[i-1]] || 0) : v;
+    const color = v === 0 ? '#374151' : v >= prevVal ? '#22c55e' : '#f59e0b';
+    const yr = String(y).slice(2);
+    return '<rect x="' + x + '" y="' + (chartH - h) + '" width="' + barW + '" height="' + h + '" fill="' + color + '" opacity="0.85" rx="2"/>'
+      + '<text x="' + (x + barW/2) + '" y="' + (chartH + labelH - 4) + '" text-anchor="middle" font-family="monospace" font-size="9" fill="#6b7280">' + yr + '</text>';
+  }).join('');
+
+  const chartSvg = years.length > 0
+    ? '<svg width="100%" viewBox="0 0 ' + Math.max(totalW, 100) + ' ' + (chartH + labelH) + '" preserveAspectRatio="xMidYMid meet" style="display:block;margin-bottom:12px;max-height:100px">' + bars + '</svg>'
+    : '';
+
+  // Year-by-year table
+  const yearRows = years.map(function(y) {
+    const v = acc.years[y] || 0;
+    return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-light);font-size:12px">'
+      + '<span style="font-family:var(--font-mono);color:var(--text-muted)">' + escHtml(y) + '</span>'
+      + '<span style="font-family:var(--font-mono);color:' + (v > 0 ? 'var(--text)' : 'var(--text-muted)') + '">' + (v > 0 ? '$' + formatNum(v) : '—') + '</span>'
+      + '</div>';
+  }).join('');
+
+  const totalRow = '<div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px;font-weight:500;margin-top:4px">'
+    + '<span style="font-family:var(--font-mono);color:var(--accent)">TOTAL</span>'
+    + '<span style="font-family:var(--font-mono);color:var(--accent)">$' + formatNum(acc.total) + '</span>'
+    + '</div>';
+
+  // Account details
+  const detailRow = function(label, val) {
+    return '<div style="display:flex;gap:8px"><span style="color:var(--text-muted);width:100px">' + label + '</span><span>' + val + '</span></div>';
+  };
+
+  const details = '<div style="font-size:12px;display:flex;flex-direction:column;gap:6px">'
+    + detailRow('Rep', escHtml(acc.rep||'—'))
+    + detailRow('Last order', escHtml(acc.lastSaleDate||'—'))
+    + detailRow('Days quiet', String(acc.daysInactive||0))
+    + detailRow('Rep status', escHtml(acc.repStatus||'—'))
+    + (acc.followUpDate ? detailRow('Follow-up', '<span style="color:var(--accent)">' + escHtml(acc.followUpDate) + '</span>') : '')
+    + (acc.creditLimit ? detailRow('Credit limit', '$' + formatNum(acc.creditLimit)) : '')
+    + (acc.creditHold ? detailRow('Credit hold', '<span style="color:var(--red)">YES</span>') : '')
+    + (acc.avgDaysPay ? detailRow('Avg days pay', String(acc.avgDaysPay)) : '')
+    + (acc.segment ? detailRow('Segment', escHtml(acc.segment)) : '')
+    + '</div>';
+
+  return '<div style="margin-bottom:14px">'
+    + '<div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:8px">REVENUE BY YEAR</div>'
+    + chartSvg
+    + yearRows
+    + totalRow
+    + '</div>'
+    + '<div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:8px">ACCOUNT DETAILS</div>'
+    + details;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -4862,18 +5221,22 @@ async function renderRemovalsView() {
         </div>
         ${ndaRows.length ? `
         <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">
-          <div style="display:grid;grid-template-columns:140px 1fr 100px 80px 70px;background:var(--s2);border-bottom:1px solid var(--border);padding:8px 14px;font-family:var(--mono);font-size:9px;color:var(--text-3)">
-            <div>TIMESTAMP</div><div>EMAIL</div><div>REP</div><div>LANG</div><div>ACTION</div>
+          <div style="display:grid;grid-template-columns:130px 1fr 70px 60px 70px 90px 60px;background:var(--s2);border-bottom:1px solid var(--border);padding:8px 14px;font-family:var(--mono);font-size:9px;color:var(--text-3)">
+            <div>TIMESTAMP</div><div>EMAIL</div><div>REP</div><div>LANG</div><div>ACTION</div><div>SESSION ID</div><div>NDA VER</div>
           </div>
-          <div style="max-height:300px;overflow-y:auto">
+          <div style="max-height:360px;overflow-y:auto">
             ${ndaRows.slice(0,50).map(r => `
-              <div style="display:grid;grid-template-columns:140px 1fr 100px 80px 70px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:11px"
+              <div style="display:grid;grid-template-columns:130px 1fr 70px 60px 70px 90px 60px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:11px"
                 onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
                 <div style="font-family:var(--mono);font-size:10px;color:var(--text-3)">${escHtml(r[0]?.slice(0,16)||'')}</div>
                 <div style="color:var(--blue-b);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r[2]||'')}</div>
                 <div style="font-size:10px;color:var(--text-2)">${escHtml(r[4]||'')}</div>
                 <div style="font-size:10px;color:var(--text-3)">${escHtml(r[5]||'')}</div>
                 <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:${(r[7]||'')==='ACCEPTED'?'var(--green)':'var(--red)'}">${escHtml(r[7]||'')}</div>
+                <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis">${escHtml((r[12]||'').slice(0,12))}</div>
+                <div style="font-size:10px;color:var(--text-muted)">${escHtml(r[6]||'')}
+                  ${r[13] ? '<button data-key="' + escHtml(r[13]) + '" onclick="viewNDARecord(this.dataset.key)" style="display:block;margin-top:3px;padding:2px 6px;background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--mono);font-size:8px;cursor:pointer">📄 VIEW</button>' : ''}
+                </div>
               </div>`).join('')}
           </div>
         </div>` : `
@@ -4887,6 +5250,46 @@ async function renderRemovalsView() {
 
 
 
+
+function viewNDARecord(key) {
+  if (!key) { showToast('No NDA record stored for this entry', 'error'); return; }
+  let rec;
+  try { rec = JSON.parse(localStorage.getItem(key) || 'null'); } catch(e) { rec = null; }
+  if (!rec) {
+    showToast('NDA record not found — captured on a different browser/device', 'error');
+    return;
+  }
+  const m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10010;display:flex;align-items:center;justify-content:center';
+  const _ndaCloseId = 'nda-view-modal-' + Date.now();
+  m.id = _ndaCloseId;
+  m.innerHTML = '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);width:600px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden">'
+    + '<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">'
+    + '<div><div style="font-size:14px;font-weight:700">&#128274; NDA accepted by ' + escHtml(rec.repId) + ' on ' + escHtml(rec.timestamp) + '</div>'
+    + '<div style="font-size:11px;color:var(--text-muted)">Version: ' + escHtml(rec.ndaVersion||'unknown') + ' &middot; Language: ' + escHtml(rec.lang||'unknown') + '</div></div>'
+    + '<button data-mid="' + _ndaCloseId + '" onclick="document.getElementById(this.dataset.mid).remove()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--mono);font-size:10px;padding:4px 10px;cursor:pointer">CLOSE</button>'
+    + '</div>'
+    + '<div style="padding:16px 18px;overflow-y:auto;flex:1;font-size:12px;line-height:1.7;white-space:pre-wrap">' + escHtml(rec.en||'') + '</div>'
+    + '</div>';
+  m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+}
+
+function exportNDALog() {
+  if (!state._ndaLogRows || !state._ndaLogRows.length) { showToast('No NDA log data loaded', 'error'); return; }
+  const headers = ['Timestamp','ISO_Time','Email','Name','Rep_ID','Language','NDA_Version','Action','Timezone','User_Agent','Session_ID'];
+  const rows = state._ndaLogRows.slice(1).map(function(r) {
+    return [r[0]||'',r[1]||'',r[2]||'',r[3]||'',r[4]||'',r[5]||'',r[6]||'',r[7]||'',r[8]||'',r[9]||'',r[12]||''].map(function(v) {
+      return '"' + String(v).replace(/"/g,'""') + '"';
+    }).join(',');
+  });
+  const csv = [headers.join(',')].concat(rows).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'nda_log_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
 
 async function approveRemovalDirect(accountName) {
   if (!state.isAdmin) { showToast('Admin only', 'error'); return; }
@@ -4905,6 +5308,30 @@ async function approveRemovalDirect(accountName) {
     acc.johnApproval = 'YES';
     showToast(`${accountName} approved for removal ✓`, 'success');
     renderRemovalsView();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function adminSetPoolHide(accName, hide) {
+  if (!state.isAdmin) { showToast('Admin only', 'error'); return; }
+  const acc = state.accounts.find(function(a){ return a.name === accName; });
+  if (!acc) { showToast('Account not found', 'error'); return; }
+  const val = hide ? 'YES' : '';
+  try {
+    const range = "'" + acc.tabName + "'!A" + (acc.rowIndex + 1) + ":Z" + (acc.rowIndex + 1);
+    const rows = await sheetsGet(range);
+    const row = rows[0] || [];
+    const newRow = [...row];
+    while (newRow.length < acc.headers.length) newRow.push('');
+    const iHide = acc.headers.indexOf('HIDE_FROM_POOL');
+    if (iHide < 0) {
+      showToast('HIDE_FROM_POOL column not in sheet — add it to _MASTER and rep tabs first', 'error');
+      return;
+    }
+    newRow[iHide] = val;
+    await sheetsUpdate(range, [newRow]);
+    acc.hideFromPool = val;
+    showToast(hide ? accName + ' hidden from Transfer Pool ✓' : accName + ' restored to Transfer Pool ✓', 'success');
+    renderDetail(state.selectedAccount);
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
@@ -7563,6 +7990,13 @@ function renderSettingsView() {
       <!-- Dev Tools — admin only -->
       ${isAdmin() && !state.viewAsRep ? '<div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px"><div style="font-size:15px;font-weight:600;margin-bottom:4px">Developer Tools</div><div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Copy your current OAuth session token for use in pre-deploy testing.</div><button onclick="copySessionToken()" style="background:var(--navy-mid);border:1px solid var(--gold);color:var(--gold);font-family:var(--font-mono);font-size:11px;padding:8px 16px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em">📋 COPY SESSION TOKEN</button><span id="copy-token-msg" style="font-size:11px;color:var(--green);margin-left:12px;display:none">✓ Copied to clipboard</span><div style="font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.6">Paste into <strong style="color:var(--text)">intransit_test.html</strong> to validate a new build before deploying.<br>Token expires after ~50 min. If test fails auth, sign out and back in to get a fresh one.</div></div>' : ''}
 
+      <!-- Active Users — admin only -->
+      ${isAdmin() && !state.viewAsRep ? '<div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px">'
+        + '<div style="font-size:15px;font-weight:600;margin-bottom:4px">Active Users</div>'
+        + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Users currently online and recent sessions. Updates every 60 seconds.</div>'
+        + '<div id="active-users-section" style="font-size:11px;color:var(--text-muted)">Loading…</div>'
+        + '</div>' : ''}
+
       <!-- App Info -->
       <div style="background:var(--navy-light);border:1px solid var(--border);padding:20px">
         <div style="font-size:15px;font-weight:600;margin-bottom:12px">About</div>
@@ -9456,7 +9890,7 @@ async function renderAttackPlan() {
     _hiddenBtn.style.borderColor = 'var(--orange)';
   }
   // Build otherAccs AFTER globallyRemovedFromPool is loaded so filter is accurate
-  const otherAccs = state.accounts.filter(a => a.rep !== repFilter && isInactive(a) && !state.globallyRemovedFromPool.has(a.name)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
+  const otherAccs = state.accounts.filter(a => a.rep !== repFilter && isInactive(a) && !state.globallyRemovedFromPool.has(a.name) && a.hideFromPool !== 'YES').sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
   apkRender(repAccs, otherAccs, repFilter);
 }
 
@@ -9488,7 +9922,7 @@ function apkMove(name, toZone) {
   apkSaveZoneDates(window.apkRep);
   // Re-render just the columns (not the whole board)
   const repAccs = state.accounts.filter(a => a.rep === window.apkRep).sort((a, b) => (b.total || 0) - (a.total || 0));
-  const otherAccs = state.accounts.filter(a => a.rep !== window.apkRep && isInactive(a) && !state.globallyRemovedFromPool.has(a.name)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
+  const otherAccs = state.accounts.filter(a => a.rep !== window.apkRep && isInactive(a) && !state.globallyRemovedFromPool.has(a.name) && a.hideFromPool !== 'YES').sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
   apkRenderColumns(repAccs);
   apkRenderPool(repAccs);
   apkRenderHeaders();
@@ -9861,8 +10295,8 @@ function apkShowTransferActionModal(name) {
         </button>
         <button onclick="apkDoRequestGlobalRemove('${escHtml(name)}')"
           style="width:100%;padding:10px 16px;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.4);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;text-align:left">
-          🚫 REQUEST REMOVE FROM ALL USERS
-          <span style="display:block;font-size:10px;font-weight:400;opacity:0.8;margin-top:2px">Ask John to permanently remove from everyone's inactive pool — requires his approval</span>
+          🚫 REQUEST REMOVE FROM POOL
+          <span style="display:block;font-size:10px;font-weight:400;opacity:0.8;margin-top:2px">Ask John to hide from everyone's Transfer Candidates — requires approval. The owning rep keeps full access.</span>
         </button>
         <button onclick="document.getElementById('apk-action-modal-overlay').remove()"
           style="width:100%;padding:7px 16px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">
@@ -9911,7 +10345,7 @@ function apkRequestHideTransfer(name, existingNote) {
     .catch(e => showToast('Error: ' + e.message, 'error'));
   // Re-render transfer panel
   const repAccs = state.accounts.filter(a => a.rep === repId);
-  const otherAccs = state.accounts.filter(a => a.rep !== repId && isInactive(a) && !state.globallyRemovedFromPool.has(a.name)).sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,50);
+  const otherAccs = state.accounts.filter(a => a.rep !== repId && isInactive(a) && !state.globallyRemovedFromPool.has(a.name) && a.hideFromPool !== 'YES').sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,50);
   const panel = document.getElementById('apk-transfer');
   if (panel) apkRenderTransferPanel(panel, otherAccs, repId);
   // Re-render modal if open
@@ -9936,7 +10370,7 @@ function apkLoadHiddenTransferAccounts() {
 function apkRenderTransferPanel(panelEl, otherAccs, repId) {
   const hiddenSet = state.hiddenTransferAccounts[repId] || new Set();
   const globalRemoved = state.globallyRemovedFromPool || new Set();
-  const accsFiltered = otherAccs.filter(a => !globalRemoved.has(a.name));
+  const accsFiltered = otherAccs.filter(a => !globalRemoved.has(a.name) && a.hideFromPool !== 'YES');
   const visible = accsFiltered.filter(a => !hiddenSet.has(a.name));
   const hiddenCount = accsFiltered.filter(a => hiddenSet.has(a.name)).length;
   if (!visible.length && !hiddenCount) {
@@ -9956,6 +10390,14 @@ function apkRenderTransferPanel(panelEl, otherAccs, repId) {
         VIEW ALL${hiddenCount ? ` (${hiddenCount} hidden)` : ''}
       </button>
     </div>`;
+  if (state.isAdmin && !state.viewAsRep) {
+    loadActiveUsers();
+    clearInterval(window._activeUsersTimer);
+    window._activeUsersTimer = setInterval(function() {
+      if (state.activeView === 'settings') loadActiveUsers();
+      else clearInterval(window._activeUsersTimer);
+    }, 60000);
+  }
 }
 
 function apkOpenTransferModal() {

@@ -4704,8 +4704,9 @@ function renderFollowUpCommandCenter() {
   }
 
   const pending = events.filter(e => !e.done).sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
-  const todayEvents = pending.filter(e => e.date === todayStr);
-  const overdueEvents = pending.filter(e => e.date < todayStr);
+  const selDate = (window._iqCalState && window._iqCalState.selectedDate) ? window._iqCalState.selectedDate : todayStr;
+  const todayEvents = pending.filter(e => e.date === selDate);
+  const overdueEvents = selDate === todayStr ? pending.filter(e => e.date < todayStr) : [];
   const upcomingEvents = pending.filter(e => e.date > todayStr);
 
   // Build contact intelligence for AI recommendations
@@ -4853,7 +4854,11 @@ function renderFollowUpCommandCenter() {
 
   const calHdr = document.createElement('div');
   calHdr.className = 'iq-cal-hdr';
-  const calState = { month: today.getMonth(), year: today.getFullYear() };
+  const calState = {
+    month: (window._iqCalState && window._iqCalState.month !== undefined) ? window._iqCalState.month : today.getMonth(),
+    year:  (window._iqCalState && window._iqCalState.year  !== undefined) ? window._iqCalState.year  : today.getFullYear(),
+    selectedDate: (window._iqCalState && window._iqCalState.selectedDate) ? window._iqCalState.selectedDate : todayStr
+  };
   window._iqCalState = calState;
 
   function renderCalendar() {
@@ -4878,14 +4883,22 @@ function renderFollowUpCommandCenter() {
       dayEl.className = 'iq-cal-day';
 
       const dayHdr = document.createElement('div');
+      const isSelected = dateStr === window._iqCalState.selectedDate;
       dayHdr.className = 'iq-cal-dhdr' + (isToday ? ' today' : '');
       dayHdr.style.opacity = isPast && !dayEvents.length ? '0.4' : '1';
+      dayHdr.style.cursor = 'pointer';
+      if (isSelected && !isToday) dayHdr.style.cssText += ';background:rgba(59,130,246,0.18);border-left:2px solid var(--blue-b)';
       const dayName = ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
       const dayNum = d.getDate();
       dayHdr.innerHTML =
-        '<span>' + dayName + ' ' + dayNum + (isToday ? ' ← TODAY' : '') + '</span>' +
+        '<span>' + dayName + ' ' + dayNum + (isToday ? ' ← TODAY' : '') + (isSelected && !isToday ? ' ◄' : '') + '</span>' +
         (dayEvents.length ? '<span style="background:var(--blue-b);color:#fff;font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:10px">' + dayEvents.length + '</span>' : '') +
-        '<span style="color:var(--blue-bright);font-size:10px;cursor:pointer" onclick="openScheduleModal(\'\',\'\',\'\')" title="Add activity">+</span>';
+        '<span style="color:var(--blue-bright);font-size:10px;cursor:pointer" onclick="event.stopPropagation();openScheduleModal(\'\',\'\',\'\')" title="Add activity">+</span>';
+      dayHdr.onclick = (e) => {
+        if (e.target.title === 'Add activity') return;
+        window._iqCalState.selectedDate = dateStr;
+        renderFollowUpCommandCenter();
+      };
       dayEl.appendChild(dayHdr);
 
       dayEvents.forEach(ev => {
@@ -4896,9 +4909,13 @@ function renderFollowUpCommandCenter() {
           '<span class="iq-cal-time">' + (ev.time || '--:--') + '</span>' +
           '<div style="flex:1;min-width:0">' +
             '<div class="iq-cal-iname">' + typeIcon + ' ' + escHtml(ev.contactName || ev.accName) + '</div>' +
-            '<div class="iq-cal-isub">' + escHtml(ev.accName) + '</div>' +
+            '<div class="iq-cal-isub" style="cursor:pointer;text-decoration:underline" data-accname="' + escHtml(ev.accName) + '">' + escHtml(ev.accName) + '</div>' +
           '</div>';
-        item.onclick = () => iqSelectEvent(ev.id);
+        item.onclick = (e) => {
+          const sub = e.target.closest('[data-accname]');
+          if (sub && sub.dataset.accname) { selectAccountByName(sub.dataset.accname); return; }
+          iqSelectEvent(ev.id);
+        };
         dayEl.appendChild(item);
       });
 
@@ -4925,10 +4942,12 @@ function renderFollowUpCommandCenter() {
   // Section: Today's Schedule
   const todayHdr = document.createElement('div');
   todayHdr.className = 'iq-shdr';
-  const todayDate = today.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
+  const selDateObj = new Date(selDate + 'T12:00:00');
+  const selDateFmt = selDateObj.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'}).toUpperCase();
+  const selDateLabel = selDate === todayStr ? 'TODAY — ' + selDateFmt : selDateFmt;
   todayHdr.innerHTML =
-    '<span class="iq-stitle" style="color:var(--blue-bright)">📅 ' + todayDate.toUpperCase() + '</span>' +
-    '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + (todayEvents.length + overdueEvents.length) + ' activities due</span>';
+    '<span class="iq-stitle" style="color:var(--blue-bright)">📅 ' + selDateLabel + '</span>' +
+    '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + (todayEvents.length + overdueEvents.length) + ' activities</span>';
   mainPanel.appendChild(todayHdr);
 
   const panels = document.createElement('div');
@@ -4947,7 +4966,7 @@ function renderFollowUpCommandCenter() {
   if (!allDue.length) {
     todayList.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--text-3)">' +
       '<div style="font-size:28px;margin-bottom:8px">✓</div>' +
-      '<div style="font-size:12px">Nothing due today</div>' +
+      '<div style="font-size:12px">Nothing scheduled' + (selDate === todayStr ? ' today' : ' for this day') + '</div>' +
       '<div style="font-size:10px;margin-top:8px">Schedule an activity or check AI recommendations →</div>' +
       '</div>';
   } else {
@@ -5005,12 +5024,27 @@ function renderFollowUpCommandCenter() {
       const contactEl = document.createElement('div');
       contactEl.className = 'iq-row-contact';
       contactEl.textContent = ev.contactName || '(No contact specified)';
+      if (ev.contactName) {
+        contactEl.style.cssText += ';cursor:pointer;text-decoration:underline';
+        contactEl.title = 'View contact';
+        contactEl.onclick = () => {
+          switchView('contacts');
+          setTimeout(() => {
+            const card = document.querySelector(
+              '.contact-card[data-accname="' + CSS.escape(ev.accName) + '"][data-ctname="' + CSS.escape(ev.contactName) + '"]'
+            );
+            if (card) { card.scrollIntoView({ block: 'center' }); card.click(); }
+          }, 500);
+        };
+      }
       rowBody.appendChild(contactEl);
 
       const accEl = document.createElement('div');
       accEl.className = 'iq-row-account';
       accEl.textContent = ev.accName;
-      accEl.onclick = () => { const a = state.accounts.find(x=>x.name===ev.accName); if(a){switchView('accounts');setTimeout(()=>selectAccount(a),400);} };
+      accEl.style.cssText += ';cursor:pointer;text-decoration:underline';
+      accEl.title = 'View account';
+      accEl.onclick = () => selectAccountByName(ev.accName);
       rowBody.appendChild(accEl);
 
       if (ev.overdue) {
@@ -5186,16 +5220,36 @@ function renderFollowUpCommandCenter() {
     if (c.contactName) {
       const nameEl = document.createElement('div');
       nameEl.className = 'iq-ai-name';
+      nameEl.style.cursor = 'pointer';
+      nameEl.title = 'View contact';
       nameEl.textContent = c.contactName;
+      nameEl.onclick = () => {
+        switchView('contacts');
+        setTimeout(() => {
+          const card = document.querySelector(
+            '.contact-card[data-accname="' + CSS.escape(c.accName) + '"][data-ctname="' + CSS.escape(c.contactName) + '"]'
+          );
+          if (card) { card.scrollIntoView({ block: 'center' }); card.click(); }
+        }, 500);
+      };
       aiRow.appendChild(nameEl);
       const titleEl = document.createElement('div');
       titleEl.className = 'iq-ai-contact';
-      titleEl.textContent = (c.contactTitle || 'No title') + ' · ' + c.accName;
+      const accSpan = document.createElement('span');
+      accSpan.style.cssText = 'cursor:pointer;text-decoration:underline';
+      accSpan.title = 'View account';
+      accSpan.textContent = c.accName;
+      accSpan.onclick = (e) => { e.stopPropagation(); selectAccountByName(c.accName); };
+      titleEl.textContent = (c.contactTitle || 'No title') + ' · ';
+      titleEl.appendChild(accSpan);
       aiRow.appendChild(titleEl);
     } else {
       const nameEl = document.createElement('div');
       nameEl.className = 'iq-ai-name';
+      nameEl.style.cursor = 'pointer';
+      nameEl.title = 'View account';
       nameEl.textContent = c.accName;
+      nameEl.onclick = () => selectAccountByName(c.accName);
       aiRow.appendChild(nameEl);
       const noContact = document.createElement('div');
       noContact.className = 'iq-ai-contact';

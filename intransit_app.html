@@ -3183,6 +3183,9 @@ async function checkAuth() {
       // Token likely expired — clear it so user gets fresh login
       localStorage.removeItem('it_token');
       localStorage.removeItem('it_token_time');
+      sessionStorage.removeItem('it_nda_accepted');
+      sessionStorage.removeItem('it_session_id');
+      sessionStorage.removeItem('it_login_time');
       return false;
     }
     state.accessToken = savedToken;
@@ -3191,6 +3194,10 @@ async function checkAuth() {
     state.loginTime = parseInt(sessionStorage.getItem('it_login_time') || '0');
     return true;
   }
+  // No saved token — clear any stale NDA flag so NDA shows on next login
+  sessionStorage.removeItem('it_nda_accepted');
+  sessionStorage.removeItem('it_session_id');
+  sessionStorage.removeItem('it_login_time');
   return false;
 }
 
@@ -13810,6 +13817,9 @@ async function init() {
   const authed = await checkAuth();
 
   if (!authed) {
+    sessionStorage.removeItem('it_nda_accepted');
+    sessionStorage.removeItem('it_session_id');
+    sessionStorage.removeItem('it_login_time');
     setLoading(false);
     return;
   }

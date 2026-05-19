@@ -286,3 +286,29 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **New functions:** `getUserIP`, `logLoginEvent`
 **Worker:** `/get-ip` route already existed (added in Task 9) — no Worker changes needed
 **Commit:** `aba1556`
+
+### 2026-05-19 (session 8 — Task 15)
+**Task 15: NDA fix + login logging + transfer candidates + manager daily mission**
+
+**Fix 1 — NDA before app shows:**
+- `completeLogin()` now checks `sessionStorage.getItem('it_nda_accepted')` at the TOP, before showing the app or setting `_loginComplete`
+- If NDA not yet accepted: calls `showNDA()` and returns immediately — login screen stays visible
+- After NDA accept, `acceptNDA()` → `checkIPAndProceed()` → `completeLoginAfterLocation()` → `completeLogin()` resumes (NDA flag is now set, proceeds normally)
+- Applies to ALL users including those with cached OAuth tokens
+
+**Fix 2 — Login logging columns:**
+- `logLoginEvent()` now writes 9 columns: `TIMESTAMP, EVENT, EMAIL, REP_ID, IP_ADDRESS, LOCATION_CLAIM('PENDING'), DEVICE, STATUS('NORMAL'), SESSION_ID`
+- Added `console.log` at function entry and each attempt for diagnostics
+- Error catch now logs the full error object (not just `e.message`)
+
+**Fix 3 — Transfer candidates for CKaren/BillP:**
+- `canSeeTransferCandidates()` was using `state.user.repId` (always undefined) — now uses `state.repId`
+- Added `repId === 'CKaren'` (belt-and-suspenders alongside `!!state.managerRole` which already covers her)
+
+**Fix 4 — Manager daily mission team filter:**
+- Added `_isManagerTeamView = !!state.managerRole && viewAsRep === '__TEAM_ALL__'`
+- When true: events filtered to team rep emails (PIan, RMauricio, LMancera, bcastor); repAccounts filtered to team rep IDs
+- FJohn and BillP events never appear in manager team view
+- `repEmailMap` hoisted to be shared across all branches
+
+**Commit:** `c6700a8`

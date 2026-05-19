@@ -9829,6 +9829,10 @@ async function showTransferRequests() {
   } catch(e) { showToast('Error loading requests: '+e.message,'error'); }
 }
 
+function canSeeTransferCandidates() {
+  return isAdmin() || !!state.managerRole || (state.user && state.user.repId === 'BillP');
+}
+
 async function renderAttackPlan() {
   const el = document.getElementById('main-content');
 
@@ -9890,7 +9894,9 @@ async function renderAttackPlan() {
     _hiddenBtn.style.borderColor = 'var(--orange)';
   }
   // Build otherAccs AFTER globallyRemovedFromPool is loaded so filter is accurate
-  const otherAccs = state.accounts.filter(a => a.rep !== repFilter && isInactive(a) && !state.globallyRemovedFromPool.has(a.name) && a.hideFromPool !== 'YES').sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
+  const otherAccs = canSeeTransferCandidates()
+    ? state.accounts.filter(a => a.rep !== repFilter && isInactive(a) && !state.globallyRemovedFromPool.has(a.name) && a.hideFromPool !== 'YES').sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50)
+    : [];
   apkRender(repAccs, otherAccs, repFilter);
 }
 
@@ -9922,7 +9928,6 @@ function apkMove(name, toZone) {
   apkSaveZoneDates(window.apkRep);
   // Re-render just the columns (not the whole board)
   const repAccs = state.accounts.filter(a => a.rep === window.apkRep).sort((a, b) => (b.total || 0) - (a.total || 0));
-  const otherAccs = state.accounts.filter(a => a.rep !== window.apkRep && isInactive(a) && !state.globallyRemovedFromPool.has(a.name) && a.hideFromPool !== 'YES').sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
   apkRenderColumns(repAccs);
   apkRenderPool(repAccs);
   apkRenderHeaders();
@@ -9932,6 +9937,19 @@ function apkMove(name, toZone) {
 
 function apkRender(repAccs, otherAccs, rep) {
   const el = document.getElementById('main-content');
+  const _canTransfer = canSeeTransferCandidates();
+  const _transferHeaderHtml = _canTransfer ? (
+    '<div style="width:190px;flex-shrink:0;padding-bottom:10px;border-left:1px solid var(--border);padding-left:10px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center">' +
+    '<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--orange);letter-spacing:0.08em">⇄ TRANSFER</span>' +
+    '<div style="display:flex;gap:4px">' +
+    '<button onclick="apkOpenTransferModal()" style="font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.15);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r)">VIEW ALL</button>' +
+    ((state.isAdmin && !state.viewAsRep) ? '<button onclick=\"switchView(\'removals\')\" style=\"font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r)\">REQUESTS</button>' : '') +
+    '</div></div>' +
+    '<div style=\"font-size:11px;color:var(--text-3);margin-top:2px\">Other reps\' inactive accounts</div>' +
+    '</div>'
+  ) : '';
+  const _transferPanelHtml = _canTransfer ? '<div style="width:190px;flex-shrink:0;border-left:1px solid var(--border);overflow-y:auto;background:var(--s1)" id="apk-transfer"></div>' : '';
   el.innerHTML = `
     <div id="apk-board" style="display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--s0)">
 
@@ -9956,16 +9974,7 @@ function apkRender(repAccs, otherAccs, rep) {
             <div style="height:3px;background:var(--s2);border-radius:2px"><div id="apk-bar-${key}" style="height:3px;background:${d.color};border-radius:2px;width:${pct}%;transition:width 0.3s"></div></div>
           </div>`;
         }).join('<div style="width:1px;background:var(--border);margin-bottom:10px"></div>')}
-        <div style="width:190px;flex-shrink:0;padding-bottom:10px;border-left:1px solid var(--border);padding-left:10px">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--orange);letter-spacing:0.08em">⇄ TRANSFER</span>
-            <div style="display:flex;gap:4px">
-              <button onclick="apkOpenTransferModal()" style="font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.15);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r)">VIEW ALL</button>
-              ${(state.isAdmin && !state.viewAsRep) ? `<button onclick="switchView('removals')" style="font-size:9px;font-family:var(--mono);padding:2px 7px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r)">REQUESTS</button>` : ''}
-            </div>
-          </div>
-          <div style="font-size:11px;color:var(--text-3);margin-top:2px">Other reps' inactive accounts</div>
-        </div>
+        ${_transferHeaderHtml}
       </div>
 
       <!-- Main columns area -->
@@ -9980,28 +9989,7 @@ function apkRender(repAccs, otherAccs, rep) {
         </div>
 
         <!-- Transfer panel -->
-        <div style="width:190px;flex-shrink:0;border-left:1px solid var(--border);overflow-y:auto;background:var(--s1)" id="apk-transfer">
-          ${(() => {
-            const repId = window.apkRep || '';
-            const hiddenSet = state.hiddenTransferAccounts[repId] || new Set();
-            const visible = otherAccs.filter(a => !hiddenSet.has(a.name));
-            const hiddenCount = otherAccs.filter(a => hiddenSet.has(a.name)).length;
-            if (!visible.length && !hiddenCount) return '<div style="font-size:11px;color:var(--text-3);padding:14px;text-align:center">No inactive accounts from other reps</div>';
-            return (visible.length ? visible.map(acc => `
-            <div onclick="apkRequestTransfer('${escHtml(acc.name)}')"
-              style="padding:9px 11px;border-bottom:1px solid var(--border);cursor:pointer;border-left:3px solid var(--orange)"
-              onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
-              <div style="font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(acc.name)}">${escHtml(acc.name)}</div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--orange)">$${formatNum(acc.total || 0)}</div>
-              <div style="font-size:9px;color:var(--text-3)">${escHtml(acc.rep)}</div>
-            </div>`).join('') : '') +
-            `<div style="padding:8px 11px;text-align:center">
-              <button onclick="apkOpenTransferModal()" style="font-size:10px;font-family:var(--mono);padding:4px 10px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r);width:100%">
-                VIEW ALL${hiddenCount ? ` (${hiddenCount} hidden)` : ''}
-              </button>
-            </div>`;
-          })()}
-        </div>
+        ${_transferPanelHtml}
       </div>
 
       <!-- Pool strip -->
@@ -10050,6 +10038,10 @@ function apkRender(repAccs, otherAccs, rep) {
 
   apkRenderColumns(repAccs);
   apkRenderPool(repAccs);
+  if (_canTransfer) {
+    var _tp = document.getElementById('apk-transfer');
+    if (_tp) apkRenderTransferPanel(_tp, otherAccs, rep);
+  }
 }
 
 function apkLoadZoneDates(repId) {
@@ -10265,6 +10257,12 @@ function apkShowTransferActionModal(name) {
   const overlay = document.createElement('div');
   overlay.id = 'apk-action-modal-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9500;display:flex;align-items:center;justify-content:center';
+  const _canAssign = isAdmin() || !!state.managerRole;
+  const _assignBtnHtml = _canAssign ? (
+    '<button data-n="' + escHtml(name) + '" onclick="apkDoAssignToMe(this.dataset.n)" style="width:100%;padding:10px 16px;background:rgba(34,197,94,0.15);border:1px solid var(--green);color:var(--green);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;text-align:left">' +
+    '&#x2714; ASSIGN DIRECTLY' +
+    '<span style="display:block;font-size:10px;font-weight:400;opacity:0.8;margin-top:2px">Immediately reassign this account to ' + escHtml(window.apkRep || 'this rep') + '</span></button>'
+  ) : '';
   overlay.innerHTML = `
     <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);width:440px;max-width:94vw;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
       <!-- Header -->
@@ -10281,8 +10279,9 @@ function apkShowTransferActionModal(name) {
           onkeydown="if(event.key==='Escape')document.getElementById('apk-action-modal-overlay').remove()">
       </div>
 
-      <!-- Two action buttons -->
+      <!-- Action buttons -->
       <div style="padding:6px 20px 18px;display:flex;flex-direction:column;gap:8px">
+        ${_assignBtnHtml}
         <button onclick="apkDoRequestTransfer('${escHtml(name)}')"
           style="width:100%;padding:10px 16px;background:rgba(249,115,22,0.15);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;text-align:left">
           ⇄ REQUEST TRANSFER
@@ -10309,6 +10308,29 @@ function apkShowTransferActionModal(name) {
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   // Focus the note field
   setTimeout(() => document.getElementById('apk-action-note')?.focus(), 50);
+}
+
+async function apkDoAssignToMe(name) {
+  if (!isAdmin() && !state.managerRole) { showToast('Admin or manager only', 'error'); return; }
+  const targetRep = window.apkRep;
+  if (!targetRep) { showToast('No rep selected', 'error'); return; }
+  const acc = state.accounts.find(function(a){ return a.name === name; });
+  if (!acc) { showToast('Account not found', 'error'); return; }
+  document.getElementById('apk-action-modal-overlay')?.remove();
+  const oldRep = acc.rep;
+  try {
+    await sheetsAppend("'_LOG'!A1", [[
+      new Date().toISOString(), state.user?.email || state.repId, 'ACCOUNT_ASSIGNED',
+      'Manager ' + (state.repId || '') + ' assigned ' + name + ' from ' + oldRep + ' to ' + targetRep
+    ]]);
+    acc.rep = targetRep;
+    if (canSeeTransferCandidates()) {
+      const otherAccs = state.accounts.filter(function(a){ return a.rep !== targetRep && isInactive(a) && !state.globallyRemovedFromPool.has(a.name) && a.hideFromPool !== 'YES'; }).sort(function(a,b){ return (b.total||0)-(a.total||0); }).slice(0,50);
+      const panel = document.getElementById('apk-transfer');
+      if (panel) apkRenderTransferPanel(panel, otherAccs, targetRep);
+    }
+    showToast(name.slice(0,22) + ' assigned to ' + targetRep + ' ✓', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 function apkDoRequestTransfer(name) {
@@ -10344,10 +10366,11 @@ function apkRequestHideTransfer(name, existingNote) {
   ]]).then(() => showToast('Removed from your list ✓', 'success'))
     .catch(e => showToast('Error: ' + e.message, 'error'));
   // Re-render transfer panel
-  const repAccs = state.accounts.filter(a => a.rep === repId);
-  const otherAccs = state.accounts.filter(a => a.rep !== repId && isInactive(a) && !state.globallyRemovedFromPool.has(a.name) && a.hideFromPool !== 'YES').sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,50);
-  const panel = document.getElementById('apk-transfer');
-  if (panel) apkRenderTransferPanel(panel, otherAccs, repId);
+  if (canSeeTransferCandidates()) {
+    const otherAccs = state.accounts.filter(a => a.rep !== repId && isInactive(a) && !state.globallyRemovedFromPool.has(a.name) && a.hideFromPool !== 'YES').sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,50);
+    const panel = document.getElementById('apk-transfer');
+    if (panel) apkRenderTransferPanel(panel, otherAccs, repId);
+  }
   // Re-render modal if open
   const modal = document.getElementById('transfer-modal-body');
   if (modal) apkRenderTransferModalBody();
@@ -10390,14 +10413,6 @@ function apkRenderTransferPanel(panelEl, otherAccs, repId) {
         VIEW ALL${hiddenCount ? ` (${hiddenCount} hidden)` : ''}
       </button>
     </div>`;
-  if (state.isAdmin && !state.viewAsRep) {
-    loadActiveUsers();
-    clearInterval(window._activeUsersTimer);
-    window._activeUsersTimer = setInterval(function() {
-      if (state.activeView === 'settings') loadActiveUsers();
-      else clearInterval(window._activeUsersTimer);
-    }, 60000);
-  }
 }
 
 function apkOpenTransferModal() {

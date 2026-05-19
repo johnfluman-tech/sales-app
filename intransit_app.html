@@ -2447,6 +2447,7 @@ function applyLanguage() {
 
 // ── NDA MODAL ─────────────────────────────────────────────
 function showNDA() {
+  console.log('[NDA] Showing NDA modal for:', state.user ? state.user.email : 'unknown');
   const modal = document.getElementById('nda-modal');
   if (!modal) return;
 
@@ -2496,6 +2497,7 @@ async function ensureNDALogHeader() {
 
 
 async function acceptNDA() {
+  console.log('[NDA] Accepted by:', state.user ? state.user.email : 'unknown');
   document.getElementById('nda-modal').style.display = 'none';
   sessionStorage.setItem('it_nda_accepted', '1');
   // Ensure _NDA_LOG has header row (creates tab + header if brand new)
@@ -2827,7 +2829,8 @@ function requestSheetsToken() {
   }
 }
 function completeLogin() {
-  console.log('completeLogin called for:', state.user ? state.user.email : 'unknown', state.repId);
+  console.log('[AUTH] Login started for:', state.user ? state.user.email : 'unknown', state.repId);
+  console.log('[NDA] sessionStorage it_nda_accepted:', sessionStorage.getItem('it_nda_accepted'));
   if (state._loginComplete) return; // prevent double-init
   // NDA must be accepted before ANY app content is shown
   if (!sessionStorage.getItem('it_nda_accepted')) {
@@ -4496,12 +4499,12 @@ async function getUserIP() {
 }
 
 async function logLoginEvent(userData) {
-  console.log('logLoginEvent called for', userData ? userData.email : '?', userData ? userData.repId : '?');
+  console.log('[LOG] Writing login event for:', userData ? userData.email : '?', 'repId:', userData ? userData.repId : '?');
   for (var _i = 0; _i < 3; _i++) {
     try {
       var _ip = await getUserIP();
       var _now = new Date();
-      console.log('logLoginEvent attempt', _i + 1, 'ip:', _ip);
+      console.log('[LOG] Writing login event for:', userData ? userData.email : '?', 'IP:', _ip);
       await sheetsAppend("'_LOG'!A1", [[
         _now.toISOString(),
         'LOGIN',
@@ -9891,10 +9894,10 @@ async function showTransferRequests() {
 
 function canSeeTransferCandidates() {
   const repId = state.repId;
-  return isAdmin() ||
-         !!state.managerRole ||
-         repId === 'BillP' ||
-         repId === 'CKaren';
+  const _allowed = ['ADMIN', 'BillP', 'CKaren', 'CMancilla', 'MPerezfreye'];
+  const _result = isAdmin() || !!state.managerRole || _allowed.includes(repId);
+  console.log('[ATTACK] canSeeTransferCandidates:', _result, 'for rep:', repId);
+  return _result;
 }
 
 async function renderAttackPlan() {

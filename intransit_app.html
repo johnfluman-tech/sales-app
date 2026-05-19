@@ -887,6 +887,59 @@ body::before {
   background: var(--s3); border-color: var(--border-acc);
   color: var(--text); box-shadow: 0 6px 20px rgba(59,130,246,0.15);
 }
+
+/* ── MOBILE HAMBURGER ──────────────────── */
+#mobile-menu-btn {
+  display: none; align-items: center; justify-content: center;
+  width: 32px; height: 32px; flex-shrink: 0;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-2); cursor: pointer; border-radius: var(--r);
+  font-size: 16px; margin-right: 4px;
+}
+#mobile-nav-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55); z-index: 8999;
+}
+
+/* ── RESPONSIVE: TABLET / PHONE ────────── */
+@media (max-width: 768px) {
+  #sidebar-splitter { display: none; }
+  #mobile-menu-btn { display: flex; }
+  #mobile-nav-overlay.visible { display: block; }
+
+  .sidebar {
+    position: fixed; left: -240px; top: 0; bottom: 0; z-index: 9000;
+    width: 220px; min-width: 220px; max-width: 220px;
+    transition: left 0.22s ease; box-shadow: none;
+  }
+  .sidebar.mobile-open {
+    left: 0; box-shadow: 6px 0 32px rgba(0,0,0,0.6);
+  }
+
+  .topbar { padding: 0 10px; gap: 6px; }
+  .topbar-search { max-width: 120px; }
+  .topbar-title { font-size: 13px; min-width: 80px; }
+
+  /* Filter buttons hidden on small screens to save space */
+  #filter-declining, #filter-inactive-btn { display: none !important; }
+
+  /* Account list: hide lower-priority columns */
+  .acct-col-revenue, .acct-col-ytd, .acct-col-total { display: none; }
+
+  /* Detail panel: full width overlay on mobile */
+  .split-panel-right, .detail-panel {
+    position: fixed; inset: 50px 0 0 0;
+    z-index: 500; background: var(--s0);
+    min-width: 0 !important; width: 100% !important;
+    max-width: 100% !important;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.4);
+    display: none;
+  }
+  .split-panel-right.mobile-detail-open,
+  .detail-panel.mobile-detail-open { display: flex; }
+
+  .splitter-h { display: none; }
+}
 </style>
 <script src="https://accounts.google.com/gsi/client" async></script>
 </head>
@@ -973,7 +1026,7 @@ body::before {
 <div id="app">
 <!-- SUGGEST button moved to topbar -->
 
-<div id="suggestion-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10010;align-items:center;justify-content:center">
+<div id="suggestion-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10010;align-items:center;justify-content:center" onclick="if(event.target===this)closeSuggestionModal()">
   <div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid var(--gold);border-radius:var(--r2);width:500px;max-width:94vw;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:modalIn 0.18s ease">
     <div style="padding:16px 20px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start">
       <div>
@@ -1012,8 +1065,9 @@ body::before {
   </div>
 </div>
 
+  <div id="mobile-nav-overlay" onclick="toggleMobileNav()"></div>
   <!-- SIDEBAR -->
-  <div class="sidebar">
+  <div class="sidebar" id="sidebar">
     <div class="sidebar-header" style="position:relative">
       <div class="sidebar-brand">Intransit</div>
       <div class="sidebar-title">Sales Intelligence <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em" id="app-ver-badge" onclick="showChangelog()" title="View changelog" style="font-size:9px;font-family:var(--font-mono);color:var(--text-3);font-weight:400;letter-spacing:0.05em;cursor:pointer">v1.50</span></div>
@@ -1147,6 +1201,7 @@ body::before {
   <!-- MAIN -->
   <div class="main">
     <div class="topbar">
+      <button id="mobile-menu-btn" onclick="toggleMobileNav()" aria-label="Menu">☰</button>
       <div class="topbar-title" id="topbar-title">My Accounts</div>
       <input class="topbar-search" type="text" placeholder="Search accounts..." id="search-input" oninput="filterAccounts()">
       <button class="filter-btn" id="filter-all" onclick="setFilter('all')" style="display:none">ALL</button>
@@ -1187,7 +1242,7 @@ body::before {
 </div>
 
 <!-- HELP MODAL -->
-<div id="help-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:flex-end;justify-content:flex-end;padding:16px">
+<div id="help-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:flex-end;justify-content:flex-end;padding:16px" onclick="if(event.target===this)this.style.display='none'">
   <div style="background:var(--s1);border:1px solid var(--border-hi);border-radius:var(--r2);width:520px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.7)">
     <!-- Header -->
     <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
@@ -2313,6 +2368,18 @@ function initSecurity() {
     }, { passive: true });
   });
 
+  // Unsaved note dirty flag — set when user types in the note textarea or changes the date
+  document.addEventListener('input', e => {
+    if (e.target.id === 'note-text-input' || e.target.id === 'note-followup-date') {
+      state.hasUnsavedNote = true;
+    }
+  });
+  document.addEventListener('change', e => {
+    if (e.target.id === 'note-followup-date' || e.target.id === 'note-status-select') {
+      state.hasUnsavedNote = true;
+    }
+  });
+
   // Start session timer
   resetSessionTimer();
 
@@ -2322,8 +2389,26 @@ function initSecurity() {
     showToast('Right-click disabled for data protection.', 'error');
   });
 
-  // Disable common keyboard shortcuts for saving/printing
+  // Dismiss modals with Escape key
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      // Close dismissible modals in priority order (most recently opened first)
+      const schedModal = document.getElementById('sched-modal');
+      if (schedModal) { schedModal.remove(); return; }
+      const taskModal = document.getElementById('task-modal');
+      if (taskModal) { taskModal.remove(); return; }
+      const iqPanel = document.getElementById('iq-notes-panel');
+      if (iqPanel) { iqPanel.remove(); return; }
+      const suggModal = document.getElementById('suggestion-modal');
+      if (suggModal && suggModal.style.display !== 'none') { closeSuggestionModal(); return; }
+      const helpModal = document.getElementById('help-modal');
+      if (helpModal && helpModal.style.display !== 'none') { helpModal.style.display = 'none'; return; }
+      // Close mobile nav if open
+      const sidebar = document.getElementById('sidebar');
+      if (sidebar && sidebar.classList.contains('mobile-open')) { toggleMobileNav(true); return; }
+    }
+
+    // Disable common keyboard shortcuts for saving/printing
     const blocked = (
       (e.ctrlKey && ['s','p','a'].includes(e.key.toLowerCase())) ||
       (e.key === 'F12') ||
@@ -2425,6 +2510,7 @@ let state = {
   globallyRemovedFromPool: new Set(), // accounts removed from ALL users' pools (admin-approved)
   myHiddenPool: {},           // keyed by repId → Set of account names hidden from own pool only
   loading: false,
+  hasUnsavedNote: false,
   accessToken: null,
   _cacheLoadingPromise: null,
 };
@@ -2451,6 +2537,29 @@ function loadGapi() {
 
 async function initGapiClient() {
   // Not used — kept for compatibility
+}
+
+// Silent token refresh — wraps the GIS tokenClient in a Promise
+function refreshTokenSilent() {
+  return new Promise((resolve, reject) => {
+    const tid = setTimeout(() => reject(new Error('Token refresh timeout')), 12000);
+    try {
+      const tc = google.accounts.oauth2.initTokenClient({
+        client_id: CONFIG.CLIENT_ID,
+        scope: CONFIG.SCOPES,
+        hint: state.user?.email || '',
+        callback: (tr) => {
+          clearTimeout(tid);
+          if (tr.error) { reject(new Error(tr.error)); return; }
+          state.accessToken = tr.access_token;
+          localStorage.setItem('it_token', state.accessToken);
+          localStorage.setItem('it_token_time', Date.now().toString());
+          resolve();
+        },
+      });
+      tc.requestAccessToken({ prompt: '' });
+    } catch(e) { clearTimeout(tid); reject(e); }
+  });
 }
 
 function requestSheetsToken() {
@@ -2547,6 +2656,11 @@ function completeLogin() {
     if (_nfInner && !isAdmin() && !isManager()) _nfInner.innerHTML = '<span class="nav-icon">&#128203;</span> My Notes';
   }
   academyUpdateBadge();
+  // Schedule proactive token refresh at 55 min (Google tokens last 60 min)
+  clearTimeout(state._tokenRefreshTimer);
+  state._tokenRefreshTimer = setTimeout(() => {
+    refreshTokenSilent().catch(() => {}); // silent — if it fails, 401 handler will catch it
+  }, 55 * 60 * 1000);
   // Start loading supplemental data (incl. GP) immediately in background
   // Don't wait for loadAllAccounts — they run in parallel for speed
   ensureCacheLoaded().catch(() => {});
@@ -2616,7 +2730,23 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
   try {
     const res = await fetch(url, { headers: { 'X-Google-Token': state.accessToken } });
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) { handleSignout(); throw new Error('Session expired'); }
+      if (res.status === 401 || res.status === 403) {
+        if (!state._refreshingToken) {
+          state._refreshingToken = true;
+          showToast('Session expired — refreshing...', '');
+          try {
+            await refreshTokenSilent();
+            state._refreshingToken = false;
+            return sheetsGetFrom(spreadsheetId, range); // retry with new token
+          } catch(refreshErr) {
+            state._refreshingToken = false;
+            handleSignout();
+            throw new Error('Session expired — please sign in again');
+          }
+        }
+        handleSignout();
+        throw new Error('Session expired');
+      }
       throw new Error('Sheets API error ' + res.status);
     }
     const data = await res.json();
@@ -2839,8 +2969,30 @@ function ensureCacheLoaded() {
   return state._cacheLoadingPromise;
 }
 
+function toggleMobileNav(forceClose) {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('mobile-nav-overlay');
+  if (!sidebar) return;
+  const isOpen = sidebar.classList.contains('mobile-open');
+  if (forceClose || isOpen) {
+    sidebar.classList.remove('mobile-open');
+    overlay.classList.remove('visible');
+  } else {
+    sidebar.classList.add('mobile-open');
+    overlay.classList.add('visible');
+  }
+}
+
 function switchView(view) {
+  if (state.hasUnsavedNote) {
+    const noteEl = document.getElementById('note-text-input');
+    if (noteEl && noteEl.value.trim()) {
+      if (!confirm('You have an unsaved note — leave without saving?')) return;
+    }
+    state.hasUnsavedNote = false;
+  }
   state.activeView = view;
+  toggleMobileNav(true); // always close nav on mobile when switching views
   state.selectedAccount = null;
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelector(`[data-view="${view}"]`)?.classList.add('active');
@@ -3114,6 +3266,13 @@ function renderAccountsView() {
 //  RENDER — ACCOUNT DETAIL
 // ══════════════════════════════════════════════════════════
 function selectAccount(acc) {
+  if (state.hasUnsavedNote && state.selectedAccount && state.selectedAccount.name !== acc.name) {
+    const noteEl = document.getElementById('note-text-input');
+    if (noteEl && noteEl.value.trim()) {
+      if (!confirm('Unsaved note for ' + state.selectedAccount.name + ' — switch without saving?')) return;
+    }
+    state.hasUnsavedNote = false;
+  }
   state.selectedAccount = acc;
   state.activeDetailTab = 'notes';
   trackAccountView(acc);
@@ -6881,6 +7040,7 @@ async function saveNote() {
       repStatus: status,
     });
 
+    state.hasUnsavedNote = false;
     showToast('Note saved and locked ✓', 'success');
     renderDetail(acc);
     updateBadges();

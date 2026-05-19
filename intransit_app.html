@@ -11237,10 +11237,12 @@ async function renderSuggestionsBoard() {
   let rows = [];
   try { rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SUGGESTIONS'!A1:Z500") || []; }
   catch(e) { el.innerHTML = '<div style="padding:40px;color:var(--red)">Error: ' + escHtml(e.message) + '</div>'; return; }
+  let _rowOffset = 2;
   if (rows.length > 0) {
     const _r0 = rows[0].map(function(c){ return (c||'').toLowerCase(); });
     if (!['date','rep','description','status','category'].some(function(k){ return _r0.includes(k); })) {
       rows.unshift(['date','rep','page','category','description','status','admin_response']);
+      _rowOffset = 1;
     }
   }
   if (rows.length < 2) {
@@ -11250,7 +11252,7 @@ async function renderSuggestionsBoard() {
   const hdrs = rows[0].map(h => (h||'').toLowerCase());
   const get = (row, ...names) => { for (const n of names) { const i=hdrs.indexOf(n); if(i>=0 && row[i]) return row[i]; } return ''; };
   const suggestions = rows.slice(1).filter(r => r.some(c => c)).map((r, i) => ({
-    rowIdx: i + 2,
+    rowIdx: i + _rowOffset,
     rep: get(r,'rep','rep_id','user'),
     category: get(r,'category','type'),
     page: get(r,'page','view','section'),
@@ -11384,13 +11386,18 @@ async function _renderNotesFeed(isTeamView) {
     noteAccs = accs.filter(function(a){ return a.rep === myRep; }); // regular rep: own only
   }
 
-  // Source 1: Rep notes from state.accounts
+  // Source 1: Rep notes and follow-up schedules from state.accounts
   noteAccs.forEach(function(acc) {
     const noteText = acc.repNote || acc.note || '';
     if (noteText && noteText.trim()) {
       allNotes.push({ type:'RepNote', accountName:acc.name, rep:acc.rep||'', text:noteText,
         date:acc.repNoteDate||acc.noteDate||acc.followUpDate||'',
         accTotal:acc.total||0, daysInactive:acc.daysInactive||0, accStatus:acc.status||'' });
+    } else if (acc.followUpDate && (acc.followUpDate+'').trim()) {
+      const _sfx = acc.repStatus ? ' — ' + acc.repStatus : '';
+      allNotes.push({ type:'FollowUp', accountName:acc.name, rep:acc.rep||'',
+        text:'Follow-up: ' + acc.followUpDate + _sfx,
+        date:acc.followUpDate||'', accTotal:acc.total||0, daysInactive:acc.daysInactive||0, accStatus:acc.status||'' });
     }
   });
 
@@ -11452,7 +11459,7 @@ async function _renderNotesFeed(isTeamView) {
   else if (ff.sort === 'value') sorted.sort(function(a,b){ return (b.accTotal||0)-(a.accTotal||0); });
   const displayNotes = sorted.slice(0,100);
 
-  const tColors = {'RepNote':'#3b82f6','ContactNote':'#14b8a6','ManagerNote':'#f59e0b','CollectionsNote':'#ef4444','Outcome':'#22c55e'};
+  const tColors = {'RepNote':'#3b82f6','ContactNote':'#14b8a6','ManagerNote':'#f59e0b','CollectionsNote':'#ef4444','Outcome':'#22c55e','FollowUp':'#8b5cf6'};
 
   const cards = displayNotes.map(function(n) {
     const tc = tColors[n.type] || 'var(--text-3)';
@@ -11480,7 +11487,7 @@ async function _renderNotesFeed(isTeamView) {
   }).join('') || '<div style="padding:40px;text-align:center;color:var(--text-3)">No notes found</div>';
 
   const repOpts = (isAdm || isMgr) ? (['all'].concat(teamReps || (CONFIG.REPS||[]))) : [];
-  const typeOpts = [['all','ALL'],['RepNote','REP'],['ContactNote','CONTACT'],['ManagerNote','MGR'],['CollectionsNote','COLL'],['Outcome','OUTCOME']];
+  const typeOpts = [['all','ALL'],['RepNote','REP'],['ContactNote','CONTACT'],['ManagerNote','MGR'],['CollectionsNote','COLL'],['Outcome','OUTCOME'],['FollowUp','FOLLOW-UP']];
   const sortOpts = [['newest','Newest'],['oldest','Oldest'],['rep','By Rep'],['value','By Value']];
   const headerLabel = isTeamView ? (teamName.toUpperCase() + ' NOTES') : (isAdm ? 'ALL NOTES FEED' : 'MY NOTES');
 

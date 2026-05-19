@@ -996,7 +996,7 @@ body::before {
       </div>
       <div>
         <label style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);text-transform:uppercase;display:block;margin-bottom:6px">Description</label>
-        <textarea id="suggest-desc" rows="4" placeholder="Describe the bug, idea, or improvement…" maxlength="1000"
+        <textarea id="suggest-desc" rows="4" spellcheck="true" lang="en-US" placeholder="Describe the bug, idea, or improvement…" maxlength="1000"
           style="width:100%;box-sizing:border-box;padding:9px 12px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:13px;font-family:var(--font);border-radius:var(--r);resize:vertical;outline:none;line-height:1.5"
           oninput="document.getElementById('suggest-char').textContent=this.value.length+'/1000'"
           onfocus="this.style.borderColor='var(--border-acc)'" onblur="this.style.borderColor='var(--border)'"></textarea>
@@ -1004,6 +1004,7 @@ body::before {
       </div>
       <div style="display:flex;gap:8px;margin-top:2px">
         <button onclick="closeSuggestionModal()" style="flex:0 0 auto;padding:10px 18px;background:transparent;border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;cursor:pointer;border-radius:var(--r)">CANCEL</button>
+        <button onclick="aiGrammarCheck('suggest-desc', this)" style="background:transparent;border:1px solid var(--border-hi);color:var(--blue-b);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em;flex-shrink:0" style="flex:0 0 auto;padding:10px 14px;background:transparent;border:1px solid var(--border-hi);color:var(--blue-b);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">&#10022; Check</button>
         <button id="suggest-submit-btn" onclick="submitSuggestion()" style="flex:1;padding:10px;background:var(--gold);border:none;color:#000;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;cursor:pointer;border-radius:var(--r);transition:opacity 0.15s">💾 SUBMIT FEEDBACK</button>
       </div>
     </div>
@@ -1591,11 +1592,12 @@ function renderContactsTab(acc) {
               <option value="Meeting">Meeting</option>
               <option value="Note">Note</option>
             </select>
-            <textarea class="cnote-text-input" id="cnnote-${safeId}" rows="2"
+            <textarea class="cnote-text-input" id="cnnote-${safeId}" rows="2" spellcheck="true" lang="en-US"
               style="width:100%;box-sizing:border-box;min-height:52px;font-size:12px;line-height:1.5;resize:vertical;font-family:var(--font)"
               placeholder="Log a note for ${escHtml(contactName)}..."></textarea>
           </div>
           <div style="display:flex;gap:6px">
+            <button onclick="aiGrammarCheck('cnnote-${safeId}', this)" style="background:transparent;border:1px solid var(--border-hi);color:var(--blue-b);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em;flex-shrink:0">&#10022; Check</button>
             <button class="cnote-save-btn" onclick="saveContactNote('${escHtml(accountName)}','${escHtml(contactName)}','${safeId}')">SAVE</button>
             <button onclick="toggleCnoteForm('${safeId}')" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r)">CANCEL</button>
           </div>
@@ -3170,7 +3172,7 @@ function renderNoteInput(acc) {
   return `
     <div class="note-input-area" style="padding:16px 20px 20px;flex-shrink:0;width:100%;box-sizing:border-box">
       <div class="note-input-label" style="font-size:13px;margin-bottom:10px">Add Note</div>
-      <textarea class="note-textarea" id="note-text-input" rows="6"
+      <textarea class="note-textarea" id="note-text-input" rows="6" spellcheck="true" lang="en-US"
         style="width:100%;box-sizing:border-box;min-height:120px;font-size:13px;line-height:1.6;resize:vertical"
         placeholder="Type your note here... It will be timestamped and locked when saved.&#10;&#10;Example: Called 5/12 — spoke with Mike, confirmed PO processing, expects delivery by 5/20."></textarea>
 
@@ -3184,6 +3186,7 @@ function renderNoteInput(acc) {
         </select>
         <input type="date" class="note-date-input" id="note-followup-date"
           value="${toInputDate(acc.followUpDate || '')}">
+        <button onclick="aiGrammarCheck('note-text-input', this)" style="background:transparent;border:1px solid var(--border-hi);color:var(--blue-b);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em;flex-shrink:0">&#10022; Check</button>
         <button class="save-note-btn" onclick="saveNote()">SAVE &amp; LOCK</button>
         <button onclick="openScheduleModal('${escHtml(acc.name)}','','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
       </div>
@@ -3238,7 +3241,7 @@ function renderEmailTab(acc) {
         <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:5px">
           TELL AI WHAT TO FOCUS ON (optional)
         </div>
-        <textarea id="email-custom-prompt" rows="3" class="field-input field-textarea"
+        <textarea id="email-custom-prompt" rows="3" spellcheck="true" lang="en-US" class="field-input field-textarea"
           placeholder="e.g. They have 3 plants in Mexico. Ask about Q3 expansion. Reference last invoice #174140..."
           style="font-size:12px;resize:vertical;min-height:60px"></textarea>
       </div>
@@ -3257,11 +3260,12 @@ function renderEmailTab(acc) {
         </div>
         <div>
           <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-bottom:4px">BODY</div>
-          <textarea class="field-input field-textarea" id="email-body" rows="14"
+          <textarea class="field-input field-textarea" id="email-body" rows="14" spellcheck="true" lang="en-US"
             style="font-size:12px;line-height:1.7;min-height:280px;resize:vertical"
             placeholder="Email body will appear here..."></textarea>
         </div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button onclick="aiGrammarCheck('email-body', this)" style="background:transparent;border:1px solid var(--border-hi);color:var(--blue-b);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em;flex-shrink:0">&#10022; Check</button>
           <button class="btn btn-secondary" onclick="copyEmail()">COPY</button>
           <button class="btn btn-primary" onclick="openInEmail()">OPEN IN EMAIL</button>
         </div>
@@ -3381,7 +3385,7 @@ function renderResearchTab(acc) {
 
       <!-- Input -->
       <div style="display:flex;gap:8px;align-items:flex-end">
-        <textarea id="research-input-${safeId}" rows="2"
+        <textarea id="research-input-${safeId}" rows="2" spellcheck="true" lang="en-US"
           class="field-input field-textarea"
           placeholder="Ask anything — locations, industry, competitors, what parts they need, recent news..."
           style="flex:1;font-size:12px;resize:none;line-height:1.5"
@@ -4417,7 +4421,7 @@ function openTaskModal() {
     '<div class="sched-box">' +
       '<div class="sched-title">✅ ADD TASK</div>' +
       '<div class="sched-field"><div class="sched-label">DESCRIPTION</div>' +
-        '<textarea id="sched-note" class="sched-input" rows="3" placeholder="What do you need to do?"></textarea>' +
+        '<textarea id="sched-note" class="sched-input" rows="3" spellcheck="true" lang="en-US" placeholder="What do you need to do?"></textarea>' +
       '</div>' +
       '<div class="sched-row">' +
         '<div class="sched-field"><div class="sched-label">DATE</div>' +
@@ -4508,7 +4512,7 @@ function openScheduleModal(accName, contactName, contactEmail) {
       '</div>' +
     '</div>' +
     '<div class="sched-field"><div class="sched-label">NOTE / AGENDA</div>' +
-      '<textarea id="sched-note" class="sched-input" rows="2" placeholder="What do you want to discuss or follow up on?"></textarea>' +
+      '<textarea id="sched-note" class="sched-input" rows="2" spellcheck="true" lang="en-US" placeholder="What do you want to discuss or follow up on?"></textarea>' +
     '</div>' +
     '<div class="sched-field"><div class="sched-label">REPEAT</div>' +
       '<select id="sched-repeat" class="sched-input">' +
@@ -5187,6 +5191,7 @@ function renderFollowUpCommandCenter() {
       logArea.placeholder = 'Notes (optional)...';
       logArea.style.cssText = 'width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px 7px;border-radius:var(--r);resize:vertical;font-family:var(--font);margin-bottom:5px';
       logArea.id = 'iq-log-note-' + ev.id;
+      logArea.spellcheck = true; logArea.lang = 'en-US';
       const logBtnRow = document.createElement('div');
       logBtnRow.style.cssText = 'display:flex;gap:6px';
       const saveLogBtn = document.createElement('button');
@@ -5507,6 +5512,7 @@ function renderFollowUpCommandCenter() {
   chatInput.id = 'iq-chat-input';
   chatInput.rows = 2;
   chatInput.placeholder = 'Ask about your accounts...';
+  chatInput.spellcheck = true; chatInput.lang = 'en-US';
   chatInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); iqSendChat(); }
   });
@@ -6587,6 +6593,33 @@ function filterByRep(rep) {
 // ══════════════════════════════════════════════════════════
 //  NOTE SAVING
 // ══════════════════════════════════════════════════════════
+async function aiGrammarCheck(textareaId, btnEl) {
+  const ta = typeof textareaId === 'string' ? document.getElementById(textareaId) : textareaId;
+  if (!ta) return;
+  const text = ta.value.trim();
+  if (!text) { showToast('Nothing to check', 'error'); return; }
+  const origText = btnEl.textContent;
+  btnEl.textContent = '...'; btnEl.disabled = true;
+  try {
+    const result = await callAI({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: 'Fix any spelling and grammar errors in the following text. Return only the corrected text, no explanation:\n\n' + text }]
+    });
+    const corrected = (result && result.content && result.content[0] && result.content[0].text || '').trim();
+    if (corrected && corrected !== text) {
+      ta.value = corrected;
+      showToast('\u2713 Grammar checked', 'success');
+    } else {
+      showToast('\u2713 Looks good', 'success');
+    }
+  } catch(e) {
+    showToast('Check failed: ' + e.message, 'error');
+  } finally {
+    btnEl.textContent = origText; btnEl.disabled = false;
+  }
+}
+
 async function saveNote() {
   const acc = state.selectedAccount;
   if (!acc) return;
@@ -7431,7 +7464,7 @@ function selectCollectionsAccount(name) {
         </select>
         <input type="date" id="coll-promised-date" value="${collNote.promisedDate||''}"
           class="field-input" style="font-family:var(--mono);font-size:11px;margin-bottom:8px">
-        <textarea id="coll-note-text" rows="3" placeholder="Collections note — call outcome, promise details, disputes..."
+        <textarea id="coll-note-text" rows="3" spellcheck="true" lang="en-US" placeholder="Collections note — call outcome, promise details, disputes..."
           class="field-input field-textarea" style="margin-bottom:8px">${escHtml(collNote.note||'')}</textarea>
         <button onclick="saveCollectionsNote('${escHtml(name)}')" class="btn btn-primary">SAVE NOTE</button>
       </div>
@@ -7445,7 +7478,7 @@ function selectCollectionsAccount(name) {
             TELL AI WHAT TO FOCUS ON (optional)
           </div>
           <div style="display:flex;gap:8px">
-            <textarea id="coll-email-custom-prompt-${escHtml(name).replace(/[^a-zA-Z0-9]/g,'')}" rows="2"
+            <textarea id="coll-email-custom-prompt-${escHtml(name).replace(/[^a-zA-Z0-9]/g,'')}" rows="2" spellcheck="true" lang="en-US"
               class="field-input field-textarea"
               placeholder="e.g. Customer promised payment by end of month. Reference invoice #175186. Mention we have new stock available..."
               style="font-size:12px;resize:vertical;flex:1;min-height:50px"></textarea>
@@ -7464,8 +7497,9 @@ function selectCollectionsAccount(name) {
         </div>
         <div id="coll-email-fields" style="display:none">
           <input id="coll-email-subject" type="text" placeholder="Subject" class="field-input" style="margin-bottom:6px">
-          <textarea id="coll-email-body" rows="10" class="field-input field-textarea" style="margin-bottom:8px;line-height:1.6"></textarea>
-          <div style="display:flex;gap:8px">
+          <textarea id="coll-email-body" rows="10" spellcheck="true" lang="en-US" class="field-input field-textarea" style="margin-bottom:8px;line-height:1.6"></textarea>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button onclick="aiGrammarCheck('coll-email-body', this)" style="background:transparent;border:1px solid var(--border-hi);color:var(--blue-b);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em;flex-shrink:0">&#10022; Check</button>
             <button onclick="copyCollectionsEmail()" class="btn btn-secondary">COPY</button>
             <button onclick="openCollectionsEmailClientFull()" class="btn btn-primary">OPEN IN EMAIL</button>
           </div>
@@ -8102,7 +8136,7 @@ function selectContactCard(el, accountName, contactName) {
                 <option value="Meeting">🤝 Meeting</option>
                 <option value="Note">📝 Note</option>
               </select>
-              <textarea class="field-input field-textarea" id="cnnote-cv-${safeId}" rows="2"
+              <textarea class="field-input field-textarea" id="cnnote-cv-${safeId}" rows="2" spellcheck="true" lang="en-US"
                 placeholder="Log a note for ${escHtml(contactName||'this contact')}..."
                 style="font-size:12px;line-height:1.5;resize:vertical;min-height:52px;flex:1"></textarea>
             </div>
@@ -8202,7 +8236,7 @@ function selectContactCard(el, accountName, contactName) {
             TELL AI WHAT YOU WANT (optional — or just pick a type below)
           </div>
           <div style="display:flex;gap:8px">
-            <textarea id="ct-email-prompt-${safeId}" rows="2" class="field-input field-textarea"
+            <textarea id="ct-email-prompt-${safeId}" rows="2" spellcheck="true" lang="en-US" class="field-input field-textarea"
               placeholder="e.g. Ask if they need bearings for the new production line. Mention we have the PN they quoted last month..."
               style="font-size:12px;resize:vertical;flex:1;min-height:52px"></textarea>
             <button onclick="generateContactEmail('${escHtml(accountName)}','${escHtml(contactName||'')}','${safeId}','custom')"
@@ -8225,7 +8259,7 @@ function selectContactCard(el, accountName, contactName) {
         <div id="ct-email-fields-${safeId}" style="display:none">
           <input id="ct-email-subject-${safeId}" type="text" placeholder="Subject"
             class="field-input" style="margin-bottom:6px;font-size:13px">
-          <textarea id="ct-email-body-${safeId}" rows="12"
+          <textarea id="ct-email-body-${safeId}" rows="12" spellcheck="true" lang="en-US"
             class="field-input field-textarea" style="margin-bottom:8px;font-size:12px;line-height:1.7"></textarea>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button onclick="copyContactEmail('${safeId}')" class="btn btn-secondary">COPY</button>

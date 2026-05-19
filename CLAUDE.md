@@ -245,3 +245,26 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **New sessionStorage keys:** `it_login_time` — loginTime persisted across page reload
 **Pending (manual):** Add `HIDE_FROM_POOL` column to `_MASTER` and rep tabs in Google Sheets; update `sales_report.py` to pass `hideFromPool` field
 **Commit:** `b37798e`
+
+### 2026-05-19 (session 6 — Task 11 + Task 12)
+**Task 11 completed:**
+- Added `HIDE_FROM_POOL` column to all 9 tabs in Main sheet: `MASTER`, `CKaren`, `BillP`, `PIan`, `RMauricio`, `LMancera`, `bcastor`, `FJohn`, `Anolan`
+- Rep tabs have 3-row merged header structure; actual column headers in row 4; `HIDE_FROM_POOL` appended as next column after `JOHN_APPROVAL`
+- Service account: `sales-report-bot@intransit-reports.iam.gserviceaccount.com`, credentials at `C:\scripts\google_credentials.json`
+- Script written/run/deleted: `C:\scripts\add_hide_from_pool.py`
+
+**Task 12 completed — Transfer Candidates restricted to managers + admin:**
+- `canSeeTransferCandidates()` — new helper: `isAdmin() || !!state.managerRole || state.user.repId === 'BillP'`
+- `renderAttackPlan()`: `otherAccs` gated — returns `[]` for regular reps
+- `apkRender()`: pre-computes `_canTransfer`, `_transferHeaderHtml`, `_transferPanelHtml` before `el.innerHTML`; replaces IIFE with empty placeholder filled via `apkRenderTransferPanel()` post-render (also fixes all nested backtick violations in that function)
+- `apkMove()`: removed unused `otherAccs` line
+- `apkRequestHideTransfer()`: transfer panel re-render gated with `canSeeTransferCandidates()`
+- `apkRenderTransferPanel()`: removed erroneous `loadActiveUsers()` / `clearInterval` block that was copy-pasted from Settings view
+- `apkShowTransferActionModal()`: added ASSIGN DIRECTLY button for admin/manager users (pre-computed `_assignBtnHtml` using `data-n` attribute)
+- `apkDoAssignToMe(name)` — new async function: reassigns account to `window.apkRep` in-memory, logs `ACCOUNT_ASSIGNED` to `_LOG`, re-renders transfer panel
+- Regular reps (PIan, RMauricio, LMancera, bcastor, Anolan): see no transfer header, no transfer panel, no REQUESTS button
+- BillP: sees transfer panel (view-only), no ASSIGN DIRECTLY button
+- Managers + Admin: see all transfer UI + ASSIGN DIRECTLY button
+
+**New functions:** `canSeeTransferCandidates`, `apkDoAssignToMe`
+**Commit:** `69aba6f`

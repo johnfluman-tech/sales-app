@@ -11374,7 +11374,7 @@ async function _renderNotesFeed(isTeamView) {
   const isAdm = isAdmin();
   const isMgr = isManager() && !isAdm;
   const viewingAsMgr = isAdm && state.viewingAsManager;
-  const isActuallyTeamView = isTeamView || state.viewAsRep === '__TEAM_ALL__';
+  const isActuallyTeamView = isTeamView;
   const mgrCfg = (viewingAsMgr || isMgr || isActuallyTeamView) ? getManagerConfig() : null;
   const teamReps = mgrCfg ? mgrCfg.teamReps : null;
   const teamName = mgrCfg ? mgrCfg.teamName : 'All Reps';

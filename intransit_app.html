@@ -2498,8 +2498,6 @@ async function ensureNDALogHeader() {
 async function acceptNDA() {
   document.getElementById('nda-modal').style.display = 'none';
   sessionStorage.setItem('it_nda_accepted', '1');
-  // Show location claim modal before completing login
-  showLocationModal();
   // Ensure _NDA_LOG has header row (creates tab + header if brand new)
   ensureNDALogHeader().catch(() => {});
 
@@ -2829,11 +2827,14 @@ function requestSheetsToken() {
   }
 }
 function completeLogin() {
+  console.log('completeLogin called for:', state.user ? state.user.email : 'unknown', state.repId);
   if (state._loginComplete) return; // prevent double-init from location modal flow
   if (!sessionStorage.getItem('it_session_id')) {
     sessionStorage.setItem('it_session_id', generateSessionId());
   }
   state._loginComplete = true;
+  // Log login event to _LOG for every user (non-blocking, 3-attempt retry)
+  logLoginEvent({ email: state.user ? state.user.email : 'unknown', repId: state.repId || 'unknown' }).catch(function(){});
   state.loginTime = Date.now();
   sessionStorage.setItem('it_login_time', String(state.loginTime));
   document.getElementById('login-screen').style.display = 'none';
@@ -4474,6 +4475,42 @@ function locationNotMe() {
   document.getElementById('location-modal').style.display = 'none';
   showToast('Signed out for security. Contact john.fluman@intransittech.com if you need help.', 'error');
   setTimeout(handleSignout, 2500);
+}
+
+async function getUserIP() {
+  try {
+    const res = await fetch(CONFIG.WORKER_URL + '/get-ip', {
+      signal: AbortSignal.timeout(4000)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.ip || 'unknown';
+    }
+  } catch(e) {}
+  return 'unknown';
+}
+
+async function logLoginEvent(userData) {
+  for (var _i = 0; _i < 3; _i++) {
+    try {
+      var _ip = await getUserIP();
+      var _now = new Date();
+      await sheetsAppend("'_LOG'!A1", [[
+        _now.toISOString(),
+        userData.email || 'unknown',
+        'LOGIN',
+        'Rep ' + (userData.repId || 'unknown') + ' logged in from IP ' + _ip,
+        navigator.userAgent.slice(0, 120),
+        sessionStorage.getItem('it_session_id') || 'unknown'
+      ]]);
+      console.log('Login logged ✓ for', userData.email);
+      return;
+    } catch(e) {
+      console.warn('Login log attempt ' + (_i + 1) + ' failed:', e.message || e);
+      if (_i < 2) await new Promise(function(r){ setTimeout(r, 1000); });
+    }
+  }
+  console.error('Login log failed after 3 attempts for', userData ? userData.email : 'unknown');
 }
 
 async function checkIPAndProceed() {

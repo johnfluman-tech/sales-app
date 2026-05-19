@@ -1345,6 +1345,16 @@ async function loadSupplementalData() {
       }
     }
 
+    // Build normalized (case-insensitive, whitespace-collapsed) lookup for history matching
+    state._historyCacheNorm = {};
+    Object.keys(state.historyCache).forEach(k => {
+      state._historyCacheNorm[k.toLowerCase().replace(/\s+/g,' ').trim()] = k;
+    });
+    state._contactsCacheNorm = {};
+    Object.keys(state.contactsCache).forEach(k => {
+      state._contactsCacheNorm[k.toLowerCase().replace(/\s+/g,' ').trim()] = k;
+    });
+
     // Process collections
     if (collRows.length > 1) {
       const hdrs=collRows[0];
@@ -1547,19 +1557,27 @@ function renderContactsTab(acc) {
     const safeId = btoa(encodeURIComponent(contactName)).replace(/=/g,'');
     return `
       <div class="cnote-form" style="margin-top:8px">
-        <div class="cnote-row">
-          <select class="cnote-type-sel" id="cntype-${safeId}">
-            <option value="Call">Call</option>
-            <option value="Email">Email</option>
-            <option value="Meeting">Meeting</option>
-            <option value="Note">Note</option>
-          </select>
-          <textarea class="cnote-text-input" id="cnnote-${safeId}" rows="5"
-            style="width:100%;box-sizing:border-box;min-height:110px;font-size:13px;line-height:1.6;resize:vertical;font-family:var(--font)"
-            placeholder="Log a call, email, or note for ${escHtml(contactName)}..."></textarea>
+        <div style="display:flex;gap:6px">
+          <button onclick="toggleCnoteForm('${safeId}')" style="background:var(--s3);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em">+ ADD NOTE</button>
+          <button onclick="openScheduleModal('${escHtml(accountName)}','${escHtml(contactName)}','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
         </div>
-        <button class="cnote-save-btn" onclick="saveContactNote('${escHtml(accountName)}','${escHtml(contactName)}','${safeId}')">SAVE NOTE</button>
-        <button onclick="openScheduleModal('${escHtml(accountName)}','${escHtml(contactName)}','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r);margin-left:6px;white-space:nowrap">📅 SCHEDULE</button>
+        <div id="cnote-inline-${safeId}" style="display:none;margin-top:8px">
+          <div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start">
+            <select class="cnote-type-sel" id="cntype-${safeId}" style="flex-shrink:0;margin-top:2px">
+              <option value="Call">Call</option>
+              <option value="Email">Email</option>
+              <option value="Meeting">Meeting</option>
+              <option value="Note">Note</option>
+            </select>
+            <textarea class="cnote-text-input" id="cnnote-${safeId}" rows="2"
+              style="width:100%;box-sizing:border-box;min-height:52px;font-size:12px;line-height:1.5;resize:vertical;font-family:var(--font)"
+              placeholder="Log a note for ${escHtml(contactName)}..."></textarea>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="cnote-save-btn" onclick="saveContactNote('${escHtml(accountName)}','${escHtml(contactName)}','${safeId}')">SAVE</button>
+            <button onclick="toggleCnoteForm('${safeId}')" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r)">CANCEL</button>
+          </div>
+        </div>
       </div>`;
   };
 
@@ -1630,6 +1648,7 @@ async function saveContactNote(accountName, contactName, safeId) {
     // Re-render contacts tab to show new note
     const acc = state.accounts.find(a => a.name === accountName);
     if (acc) renderDetailPanel(acc, 'contacts');
+    promptFollowUp(accountName, contactName);
   } catch(e) {
     showToast('Could not save note — ' + e.message, 'error');
   }
@@ -1792,7 +1811,13 @@ Answer the rep's question concisely and specifically. If you don't know somethin
 
 // ── HISTORY TAB ────────────────────────────────────────────
 function renderHistoryTab(acc) {
-  const h = state.historyCache[acc.name.trim()] || { invoices: [], reqs: [], quotes: [] };
+  const _hKey = acc.name.trim();
+  const _hNorm = _hKey.toLowerCase().replace(/\s+/g,' ');
+  const _hResolved = state.historyCache[_hKey] ? _hKey :
+    (state._historyCacheNorm && state._historyCacheNorm[_hNorm]) ||
+    Object.keys(state.historyCache).find(k => k.replace(/[^a-z0-9]/gi,'').toLowerCase() === _hKey.replace(/[^a-z0-9]/gi,'').toLowerCase()) ||
+    _hKey;
+  const h = state.historyCache[_hResolved] || { invoices: [], reqs: [], quotes: [] };
 
   const section = (title, color, items, renderFn) => {
     if (!items.length) return `
@@ -2950,16 +2975,7 @@ function renderDetail(acc) {
       <div class="revenue-year-row">${years.map(y => `<span class="rev-year-item"><span class="rev-year-label">${y}:</span> <span class="rev-year-val ${ (acc.years[y]||0) === 0 ? 'rev-zero' : '' }">$${formatNum(acc.years[y]||0)}</span></span>`).join('')}</div>
     </div>
 
-    ${acc.contactName ? `
-    <div class="detail-contact-card" style="margin:14px 20px 0">
-      <div class="contact-card-name">${escHtml(acc.contactName)}</div>
-      <div class="contact-card-title">${escHtml(acc.contactTitle)}</div>
-      <div class="contact-card-links">
-        ${acc.contactEmail ? `<a class="contact-link contact-blur" href="mailto:${escHtml(acc.contactEmail)}" title="Click to email">✉ ${escHtml(acc.contactEmail)}</a>` : ''}
-        ${acc.contactPhone ? `<span class="contact-link contact-blur" title="Hover to reveal">☎ ${escHtml(acc.contactPhone)}</span>` : ''}
-        ${acc.contactMobile ? `<span class="contact-link contact-blur" title="Hover to reveal">📱 ${escHtml(acc.contactMobile)}</span>` : ''}
-      </div>
-    </div>` : ''}
+
 
 
     <div class="detail-bottom" id="detail-bottom">
@@ -4325,7 +4341,7 @@ async function schedLoadFromSheets() {
       contactName: r[iCon]||'', contactEmail: r[iEmail]||'',
       date: r[iDate]||'', time: r[iTime]||'', note: r[iNote]||'',
       rep: r[iRep]||'', done: r[iDone]==='YES'
-    })).filter(e => e.date && e.accName);
+    })).filter(e => e.date && (e.accName || e.type === 'Task'));
     localStorage.setItem('iq_schedule', JSON.stringify(events));
   } catch(e) { /* silent */ }
 }
@@ -4347,7 +4363,54 @@ function schedDelete(id) {
 }
 
 // ── SCHEDULE MODAL ────────────────────────────────────────
+function openTaskModal() {
+  const existing = document.getElementById('sched-modal');
+  if (existing) existing.remove();
+  const today = new Date().toISOString().slice(0,10);
+  const modal = document.createElement('div');
+  modal.className = 'sched-modal';
+  modal.id = 'sched-modal';
+  modal.innerHTML = '<div class="sched-box">' +
+    '<div class="sched-title">✅ ADD TASK</div>' +
+    '<div class="sched-field"><div class="sched-label">DESCRIPTION</div>' +
+      '<textarea id="sched-note" class="sched-input" rows="3" placeholder="What do you need to do?"></textarea>' +
+    '</div>' +
+    '<div class="sched-row">' +
+      '<div class="sched-field"><div class="sched-label">DATE</div>' +
+        '<input type="date" id="sched-date" class="sched-input" value="' + today + '">' +
+      '</div>' +
+      '<div class="sched-field"><div class="sched-label">TIME (optional)</div>' +
+        '<input type="time" id="sched-time" class="sched-input" value="09:00">' +
+      '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
+      '<button onclick="document.getElementById('sched-modal').remove()" ' +
+        'style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:11px;padding:8px 18px;cursor:pointer;border-radius:var(--r)">CANCEL</button>' +
+      '<button onclick="confirmTask()" ' +
+        'style="background:var(--green);border:none;color:#000;font-family:var(--mono);font-size:11px;font-weight:700;padding:8px 20px;cursor:pointer;border-radius:var(--r)">ADD TASK ✓</button>' +
+    '</div>' +
+  '</div>';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+  setTimeout(() => document.getElementById('sched-note')?.focus(), 60);
+}
+
+function confirmTask() {
+  const note = document.getElementById('sched-note')?.value.trim() || '';
+  const date = document.getElementById('sched-date')?.value || '';
+  const time = document.getElementById('sched-time')?.value || '';
+  if (!note) { showToast('Please enter a task description', 'error'); return; }
+  if (!date) { showToast('Please pick a date', 'error'); return; }
+  schedAdd({ type: 'Task', accName: '', contactName: '', contactEmail: '', date, time, note, repeat: '' });
+  document.getElementById('sched-modal')?.remove();
+  showToast('Task added ✓', 'success');
+  updateBadges();
+  if (state.activeView === 'followup') renderFollowUpCommandCenter();
+}
+
 function openScheduleModal(accName, contactName, contactEmail) {
+  if (!accName) { openTaskModal(); return; }
+
   const existing = document.getElementById('sched-modal');
   if (existing) existing.remove();
 
@@ -4876,6 +4939,40 @@ function renderFollowUpCommandCenter() {
       '</div>';
   } else {
     allDue.forEach(ev => {
+      if (ev.type === 'Task') {
+        const row = document.createElement('div');
+        row.className = 'iq-row';
+        row.id = 'iq-ev-' + ev.id;
+        row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 12px';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'margin-top:3px;cursor:pointer;width:15px;height:15px;flex-shrink:0';
+        cb.onclick = () => { schedMarkDone(ev.id); renderFollowUpCommandCenter(); };
+        row.appendChild(cb);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'flex:1;min-width:0';
+        const desc = document.createElement('div');
+        desc.style.cssText = 'font-size:13px;font-weight:500;color:var(--text)';
+        desc.textContent = ev.note || 'Task';
+        const meta = document.createElement('div');
+        meta.style.cssText = 'font-family:var(--mono);font-size:10px;color:var(--text-3);margin-top:2px';
+        meta.textContent = (ev.time || '') + (ev.overdue ? ' ⚠ OVERDUE' : '');
+        body.appendChild(desc);
+        body.appendChild(meta);
+        row.appendChild(body);
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'iq-btn';
+        delBtn.textContent = '×';
+        delBtn.onclick = () => { schedDelete(ev.id); renderFollowUpCommandCenter(); };
+        row.appendChild(delBtn);
+
+        todayList.appendChild(row);
+        return;
+      }
+
       const typeIcon = ev.type === 'Call' ? '📞' : ev.type === 'Email' ? '✉' : '👥';
       const row = document.createElement('div');
       row.className = 'iq-row';
@@ -5877,6 +5974,7 @@ async function saveNote() {
     showToast('Note saved and locked ✓', 'success');
     renderDetail(acc);
     updateBadges();
+    promptFollowUp(acc.name, '');
 
   } catch(e) {
     console.error(e);
@@ -7336,23 +7434,29 @@ function selectContactCard(el, accountName, contactName) {
           📋 CONTACT NOTES — ${escHtml(contactName||'')}
         </div>
 
-        <!-- Log new note — large textarea -->
+        <!-- Log new note — compact button + inline form -->
         <div style="margin-bottom:14px">
-          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
-            <select class="field-select" id="cntype-cv-${safeId}" style="width:120px;font-size:12px;flex-shrink:0">
-              <option value="Call">📞 Call</option>
-              <option value="Email">✉ Email</option>
-              <option value="Meeting">🤝 Meeting</option>
-              <option value="Note">📝 Note</option>
-            </select>
-            <div style="font-size:11px;color:var(--text-3)">Log an activity for ${escHtml(contactName||'this contact')}</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <button onclick="toggleCnoteForm('cv-${safeId}')" style="background:var(--s3);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em">+ ADD NOTE</button>
+            <button onclick="openScheduleModal('${escHtml(accountName)}','${escHtml(contactName||'')}','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
           </div>
-          <textarea class="field-input field-textarea" id="cnnote-cv-${safeId}" rows="5"
-            placeholder="Log a call, email, or note for ${escHtml(contactName||'')}...&#10;&#10;Example: Called 5/12 at 2pm — spoke with ${escHtml(contactName?.split(' ')[0]||'contact')}, confirmed PO is being processed, expects payment by 5/20."
-            style="font-size:12px;line-height:1.6;margin-bottom:8px;resize:vertical;min-height:100px"></textarea>
-          <button class="btn btn-primary" onclick="saveContactNoteFromView('${escHtml(accountName)}','${escHtml(contactName||'')}','cv-${safeId}')">
-            SAVE NOTE
-          </button>
+          <div id="cnote-inline-cv-${safeId}" style="display:none;margin-top:8px">
+            <div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start">
+              <select class="field-select" id="cntype-cv-${safeId}" style="width:110px;font-size:12px;flex-shrink:0;margin-top:2px">
+                <option value="Call">📞 Call</option>
+                <option value="Email">✉ Email</option>
+                <option value="Meeting">🤝 Meeting</option>
+                <option value="Note">📝 Note</option>
+              </select>
+              <textarea class="field-input field-textarea" id="cnnote-cv-${safeId}" rows="2"
+                placeholder="Log a note for ${escHtml(contactName||'this contact')}..."
+                style="font-size:12px;line-height:1.5;resize:vertical;min-height:52px;flex:1"></textarea>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-primary btn-sm" onclick="saveContactNoteFromView('${escHtml(accountName)}','${escHtml(contactName||'')}','cv-${safeId}')">SAVE</button>
+              <button onclick="toggleCnoteForm('cv-${safeId}')" class="btn btn-ghost btn-sm">CANCEL</button>
+            </div>
+          </div>
         </div>
 
         <!-- Note history — contact notes + collections notes merged -->
@@ -7508,7 +7612,8 @@ async function saveContactNoteFromView(accountName, contactName, safeId) {
                   now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
   const rep = state.user?.email || 'unknown';
   try {
-    await sheetsAppend("'_CONTACT_NOTES'!A1", [[accountName, contactName, type, note, dateStr, rep]]);
+    try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT','CONTACT','TYPE','NOTE','DATE','REP']]); } catch(_e2) {}
+    await sheetsAppend("'_CONTACT_NOTES'!A2", [[accountName, contactName, type, note, dateStr, rep]]);
     showToast('Note saved ✓', 'success');
     if (!state.contactNotesCache) state.contactNotesCache = {};
     if (!state.contactNotesCache[accountName]) state.contactNotesCache[accountName] = [];
@@ -7516,6 +7621,7 @@ async function saveContactNoteFromView(accountName, contactName, safeId) {
     // Find the list item and re-select to refresh the panel
     const card = document.querySelector(`.contact-card[data-ctname="${CSS.escape(contactName)}"]`);
     selectContactCard(card || document.querySelector('.contact-card[style*="navy-mid"]'), accountName, contactName);
+    promptFollowUp(accountName, contactName);
   } catch(e) { showToast('Could not save: ' + e.message, 'error'); }
 }
 
@@ -9505,6 +9611,84 @@ document.addEventListener('keydown', e => {
     closeSuggestionModal();
   }
 });
+// ══════════════════════════════════════════════════════════
+//  INLINE NOTE FORM TOGGLE
+// ══════════════════════════════════════════════════════════
+function toggleCnoteForm(safeId) {
+  const el = document.getElementById('cnote-inline-' + safeId);
+  if (!el) return;
+  const visible = el.style.display !== 'none';
+  el.style.display = visible ? 'none' : 'block';
+  if (!visible) {
+    const ta = el.querySelector('textarea');
+    if (ta) { ta.value = ''; ta.focus(); }
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  FOLLOW-UP PROMPT (shown after any note save)
+// ══════════════════════════════════════════════════════════
+function promptFollowUp(accName, contactName) {
+  const existing = document.getElementById('followup-prompt');
+  if (existing) existing.remove();
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().slice(0,10);
+
+  const overlay = document.createElement('div');
+  overlay.id = 'followup-prompt';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10020;display:flex;align-items:center;justify-content:center';
+
+  overlay.innerHTML =
+    '<div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid var(--blue-b);border-radius:var(--r2);width:380px;max-width:94vw;padding:20px 22px;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:modalIn 0.15s ease">' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.2em;color:var(--blue-b);margin-bottom:6px">📅 SCHEDULE A FOLLOW-UP?</div>' +
+      '<div style="font-size:14px;font-weight:600;margin-bottom:14px;color:var(--text)">' + (accName ? escHtml(accName) + (contactName ? ' — ' + escHtml(contactName) : '') : 'Add a follow-up reminder') + '</div>' +
+      '<div style="display:flex;gap:10px;margin-bottom:14px">' +
+        '<div style="flex:1">' +
+          '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:4px">DATE</div>' +
+          '<input type="date" id="fup-date" value="' + tomorrowStr + '" style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;border-radius:var(--r)">' +
+        '</div>' +
+        '<div style="flex:0 0 100px">' +
+          '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:4px">TIME</div>' +
+          '<input type="time" id="fup-time" value="09:00" style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;border-radius:var(--r)">' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button onclick="document.getElementById('followup-prompt').remove()" style="flex:0 0 auto;padding:9px 16px;background:transparent;border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;letter-spacing:0.06em;cursor:pointer;border-radius:var(--r)">NO THANKS</button>' +
+        '<button onclick="confirmFollowUp(' + JSON.stringify(accName) + ',' + JSON.stringify(contactName||'') + ')" style="flex:1;padding:9px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.06em;cursor:pointer;border-radius:var(--r)">📅 SCHEDULE FOLLOW-UP</button>' +
+      '</div>' +
+    '</div>';
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  document.addEventListener('keydown', function _fupEsc(e) {
+    if (e.key === 'Escape') { document.getElementById('followup-prompt')?.remove(); document.removeEventListener('keydown', _fupEsc); }
+  });
+}
+
+function confirmFollowUp(accName, contactName) {
+  const date = document.getElementById('fup-date')?.value;
+  const time = document.getElementById('fup-time')?.value || '09:00';
+  if (!date) { showToast('Please pick a date', 'error'); return; }
+
+  const contacts = accName ? (state.contactsCache[accName] || []) : [];
+  const ct = contacts.find(c => c.name === contactName) || {};
+  schedAdd({
+    type: 'Call',
+    accName: accName || '',
+    contactName: contactName || '',
+    contactEmail: ct.email || '',
+    contactPhone: ct.phone || '',
+    contactMobile: ct.mobile || '',
+    date, time,
+    note: 'Follow-up',
+    repeat: ''
+  });
+  document.getElementById('followup-prompt')?.remove();
+  showToast('Follow-up scheduled ✓', 'success');
+  updateBadges();
+}
 </script>
 </body>
 </html>

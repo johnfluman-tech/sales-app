@@ -654,6 +654,21 @@ body::before {
 .iq-panels{flex:1;display:flex;overflow:hidden;min-height:0}
 .iq-today{flex:1;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)}
 .iq-ai{width:320px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden}
+.dm-resizer{width:5px;flex-shrink:0;background:transparent;cursor:col-resize;transition:background 0.15s;z-index:10}
+.dm-resizer:hover,.dm-resizer.dragging{background:var(--blue-b)}
+.iq-ai-compact .iq-ai-reason,.iq-ai-compact .iq-ai-parts{display:none!important}
+.iq-ai-compact .iq-ai-row{padding:3px 8px!important}
+.iq-ai-compact .iq-btn-row{display:none!important}
+.iq-chat-wrap{flex-shrink:0;border-top:1px solid var(--border);display:flex;flex-direction:column;background:var(--s0)}
+.iq-chat-msgs{overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px;max-height:260px;min-height:60px}
+.iq-chat-msg{font-size:11px;line-height:1.45;padding:6px 8px;border-radius:var(--r);white-space:pre-wrap;word-break:break-word}
+.iq-chat-msg.user{background:var(--blue-b);color:#fff;align-self:flex-end;max-width:88%}
+.iq-chat-msg.ai{background:var(--s2);color:var(--text);align-self:flex-start;max-width:96%}
+.iq-chat-msg.sys{background:var(--s1);color:var(--text-3);font-style:italic;font-size:10px;align-self:center;max-width:100%;text-align:center}
+.iq-chat-input-row{display:flex;gap:4px;padding:6px 8px;border-top:1px solid var(--border);flex-shrink:0}
+.iq-chat-input{flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 8px;border-radius:var(--r);outline:none;resize:none}
+.iq-chat-send{background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r)}
+.iq-list-bar{padding:5px 10px;background:rgba(245,158,11,0.08);border-bottom:1px solid var(--gold);display:flex;align-items:center;gap:6px;flex-shrink:0;font-family:var(--mono);font-size:10px;color:var(--gold)}
 .iq-list{flex:1;overflow-y:auto}
 .iq-row{display:flex;align-items:stretch;border-bottom:1px solid var(--border);transition:background 0.1s}
 .iq-row:hover{background:rgba(59,130,246,0.03)}
@@ -1049,7 +1064,7 @@ body::before {
            style="display:none;border-left:2px solid var(--red)">
         <div class="nav-item-inner">
           <span class="nav-icon">🗑</span> Requests
-          <span class="nav-badge red" id="badge-removals"></span>
+          <span class="nav-badge red" id="badge-removals"></span><span class="nav-badge red" id="badge-suggestions" style="margin-left:2px"></span>
         </div>
       </div>
       <!-- Admin-only: Access Activity Log -->
@@ -2373,6 +2388,7 @@ function completeLogin() {
     const accessNav = document.getElementById('nav-access');
     if (accessNav) accessNav.style.display = 'block';
   }
+  if (state.isAdmin) loadSuggestionsBadge();
   // Start loading supplemental data (incl. GP) immediately in background
   // Don't wait for loadAllAccounts — they run in parallel for speed
   ensureCacheLoaded().catch(() => {});
@@ -5178,17 +5194,70 @@ function renderFollowUpCommandCenter() {
   const aiHdr = document.createElement('div');
   aiHdr.className = 'iq-shdr';
   aiHdr.style.gap = '0';
-  aiHdr.innerHTML =
-    '<div style="display:flex;gap:0;flex:1">' +
-      '<button id="iq-tab-picks" onclick="iqSwitchTab(\'picks\')" style="flex:1;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer;letter-spacing:0.08em">✦ AI PICKS (' + aiPicks.length + ')</button>' +
-      '<button id="iq-tab-hidden" onclick="iqSwitchTab(\'hidden\')" style="flex:1;background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer;letter-spacing:0.08em">HIDDEN (' + hiddenPicks.length + ')</button>' +
-    '</div>' +
-    '<div style="display:flex;gap:0;border-top:1px solid var(--border)">' +
-      '<span style="font-family:var(--mono);font-size:8px;color:var(--text-3);padding:4px 8px;align-self:center">SORT:</span>' +
-      '<button id="iq-sort-score" onclick="iqSetSort(\'score\')" style="flex:1;background:var(--blue-b);border:none;border-left:1px solid var(--border);color:#fff;font-family:var(--mono);font-size:8px;padding:4px 6px;cursor:pointer">AI SCORE</button>' +
-      '<button id="iq-sort-buyer" onclick="iqSetSort(\'buyer\')" style="flex:1;background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:8px;padding:4px 6px;cursor:pointer">BUYER $</button>' +
-      '<button id="iq-sort-acct" onclick="iqSetSort(\'acct\')" style="flex:1;background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:8px;padding:4px 6px;cursor:pointer">ACCT $</button>' +
-    '</div>';
+  // Build aiHdr with DOM nodes (avoids backslash-quote escaping in onclick attrs)
+  (function() {
+    var tabRow = document.createElement('div');
+    tabRow.style.cssText = 'display:flex;gap:0;align-items:center';
+
+    var tabPicks = document.createElement('button');
+    tabPicks.id = 'iq-tab-picks';
+    tabPicks.style.cssText = 'flex:1;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer;letter-spacing:0.08em';
+    tabPicks.textContent = '✦ AI PICKS (' + aiPicks.length + ')';
+    tabPicks.onclick = function() { iqSwitchTab('picks'); };
+    tabRow.appendChild(tabPicks);
+
+    var tabHidden = document.createElement('button');
+    tabHidden.id = 'iq-tab-hidden';
+    tabHidden.style.cssText = 'flex:1;background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer;letter-spacing:0.08em';
+    tabHidden.textContent = 'HIDDEN (' + hiddenPicks.length + ')';
+    tabHidden.onclick = function() { iqSwitchTab('hidden'); };
+    tabRow.appendChild(tabHidden);
+
+    var btnFull = document.createElement('button');
+    btnFull.id = 'iq-view-full';
+    btnFull.style.cssText = 'background:var(--blue-b);border:none;border-left:1px solid var(--border);color:#fff;font-family:var(--mono);font-size:9px;padding:6px 6px;cursor:pointer';
+    btnFull.textContent = 'FULL';
+    btnFull.onclick = function() { iqSetView('full'); };
+    tabRow.appendChild(btnFull);
+
+    var btnCompact = document.createElement('button');
+    btnCompact.id = 'iq-view-compact';
+    btnCompact.style.cssText = 'background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:6px 6px;cursor:pointer';
+    btnCompact.textContent = 'CMPCT';
+    btnCompact.onclick = function() { iqSetView('compact'); };
+    tabRow.appendChild(btnCompact);
+
+    var btnChat = document.createElement('button');
+    btnChat.id = 'iq-chat-btn';
+    btnChat.style.cssText = 'background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer';
+    btnChat.textContent = '✦ Chat';
+    btnChat.onclick = function() { iqToggleChat(); };
+    tabRow.appendChild(btnChat);
+
+    aiHdr.appendChild(tabRow);
+
+    var sortRow = document.createElement('div');
+    sortRow.style.cssText = 'display:flex;gap:0;border-top:1px solid var(--border)';
+
+    var sortLabel = document.createElement('span');
+    sortLabel.style.cssText = 'font-family:var(--mono);font-size:8px;color:var(--text-3);padding:4px 8px;align-self:center';
+    sortLabel.textContent = 'SORT:';
+    sortRow.appendChild(sortLabel);
+
+    [['score', 'AI SCORE'], ['buyer', 'BUYER $'], ['acct', 'ACCT $'], ['name', 'NAME']].forEach(function(pair) {
+      var m = pair[0]; var lbl = pair[1];
+      var btn = document.createElement('button');
+      btn.id = 'iq-sort-' + m;
+      var isActive = (m === 'score');
+      btn.style.cssText = 'flex:1;border:none;border-left:1px solid var(--border);font-family:var(--mono);font-size:8px;padding:4px 3px;cursor:pointer;'
+        + (isActive ? 'background:var(--blue-b);color:#fff' : 'background:transparent;color:var(--text-3)');
+      btn.textContent = lbl;
+      btn.onclick = function() { iqSetSort(m); };
+      sortRow.appendChild(btn);
+    });
+
+    aiHdr.appendChild(sortRow);
+  })()
   aiPanel.appendChild(aiHdr);
 
   // Render a single AI row
@@ -5290,17 +5359,42 @@ function renderFollowUpCommandCenter() {
       }
 
       const btnRow = document.createElement('div');
+      btnRow.className = 'iq-btn-row';
       btnRow.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-top:4px';
+
       const schedBtn = document.createElement('button');
       schedBtn.className = 'iq-btn blue';
       schedBtn.textContent = '📅 Schedule';
       schedBtn.onclick = () => openScheduleModal(c.accName, c.contactName||'', c.contactEmail||'');
       btnRow.appendChild(schedBtn);
+
       const viewBtn = document.createElement('button');
       viewBtn.className = 'iq-btn';
-      viewBtn.textContent = '→ View';
+      viewBtn.textContent = '👁️ View';
       viewBtn.onclick = () => { const a = state.accounts.find(x=>x.name===c.accName); if(a){switchView('accounts');setTimeout(()=>selectAccount(a),400);} };
       btnRow.appendChild(viewBtn);
+
+      const allAcctsBtn = document.createElement('button');
+      allAcctsBtn.className = 'iq-btn';
+      allAcctsBtn.textContent = '🏢 All Accts';
+      allAcctsBtn.onclick = () => iqShowAllAccts(repKey);
+      btnRow.appendChild(allAcctsBtn);
+
+      const listBtn = document.createElement('button');
+      listBtn.className = 'iq-btn';
+      listBtn.id = 'iq-list-btn-' + idx;
+      const _inList = (window._iqList||[]).some(x=>x.accName===c.accName);
+      listBtn.textContent = _inList ? '✓ Listed' : '+ List';
+      if (_inList) listBtn.style.color = 'var(--green)';
+      listBtn.onclick = () => iqToggleList(c, idx);
+      btnRow.appendChild(listBtn);
+
+      const askAiBtn = document.createElement('button');
+      askAiBtn.className = 'iq-btn';
+      askAiBtn.textContent = '✦ Ask AI';
+      askAiBtn.onclick = () => iqAskAboutAccount(c);
+      btnRow.appendChild(askAiBtn);
+
       aiRow.appendChild(btnRow);
     }
 
@@ -5327,9 +5421,10 @@ function renderFollowUpCommandCenter() {
         let sortedPicks = [...aiPicks];
         if (iqSortMode === 'buyer') sortedPicks.sort((a,b) => (b.contactRevenue||0) - (a.contactRevenue||0));
         else if (iqSortMode === 'acct') sortedPicks.sort((a,b) => (b.totalRevenue||0) - (a.totalRevenue||0));
+        else if (iqSortMode === 'name') sortedPicks.sort((a,b) => (a.accName||'').localeCompare(b.accName||''));
         else sortedPicks.sort((a,b) => b.score - a.score);
         // Update sort button highlights
-        ['score','buyer','acct'].forEach(m => {
+        ['score','buyer','acct','name'].forEach(m => {
           const btn = document.getElementById('iq-sort-' + m);
           if (btn) {
             btn.style.background = m === iqSortMode ? 'var(--blue-b)' : 'transparent';
@@ -5344,12 +5439,96 @@ function renderFollowUpCommandCenter() {
   window._iqShowTab = showAiTab;
   showAiTab('picks');
 
+  // List bar (shown when accounts are in the list, above aiList)
+  window._iqList = window._iqList || [];
+  const listBar = document.createElement('div');
+  listBar.className = 'iq-list-bar';
+  listBar.id = 'iq-list-bar';
+  listBar.style.display = 'none';
+  aiPanel.appendChild(listBar);
+
   aiPanel.appendChild(aiList);
+
+  // AI Chat panel (below aiList, toggled by ✦ Chat button)
+  const chatWrap = document.createElement('div');
+  chatWrap.className = 'iq-chat-wrap';
+  chatWrap.id = 'iq-chat-wrap';
+  chatWrap.style.display = 'none';
+  const chatMsgs = document.createElement('div');
+  chatMsgs.className = 'iq-chat-msgs';
+  chatMsgs.id = 'iq-chat-msgs';
+  chatWrap.appendChild(chatMsgs);
+  const chatInputRow = document.createElement('div');
+  chatInputRow.className = 'iq-chat-input-row';
+  const chatInput = document.createElement('textarea');
+  chatInput.className = 'iq-chat-input';
+  chatInput.id = 'iq-chat-input';
+  chatInput.rows = 2;
+  chatInput.placeholder = 'Ask about your accounts...';
+  chatInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); iqSendChat(); }
+  });
+  const chatSendBtn = document.createElement('button');
+  chatSendBtn.className = 'iq-chat-send';
+  chatSendBtn.textContent = 'Send';
+  chatSendBtn.onclick = () => iqSendChat();
+  chatInputRow.appendChild(chatInput);
+  chatInputRow.appendChild(chatSendBtn);
+  chatWrap.appendChild(chatInputRow);
+  aiPanel.appendChild(chatWrap);
+
+  // Resizer between today panel and AI panel
+  const resizer2 = document.createElement('div');
+  resizer2.className = 'dm-resizer';
+  resizer2.id = 'dm-resizer-ai';
+  panels.appendChild(resizer2);
   panels.appendChild(aiPanel);
+
   mainPanel.appendChild(panels);
+
+  // Resizer between calendar and main panel
+  const resizer1 = document.createElement('div');
+  resizer1.className = 'dm-resizer';
+  resizer1.id = 'dm-resizer-cal';
+  body.appendChild(resizer1);
   body.appendChild(mainPanel);
   page.appendChild(body);
   el.appendChild(page);
+
+  // Drag-resize logic + restore saved widths
+  (function() {
+    var savedCalW = parseInt(localStorage.getItem('dm_cal_w'), 10);
+    var savedPicksW = parseInt(localStorage.getItem('dm_picks_w'), 10);
+    if (savedCalW > 100) calPanel.style.width = savedCalW + 'px';
+    if (savedPicksW > 100) aiPanel.style.width = savedPicksW + 'px';
+
+    function makeDragger(resEl, getPanel, direction, storageKey) {
+      resEl.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        var startX = e.clientX;
+        var startW = getPanel().offsetWidth;
+        resEl.classList.add('dragging');
+        function onMove(mv) {
+          var delta = mv.clientX - startX;
+          var newW = Math.max(120, Math.min(700, startW + direction * delta));
+          getPanel().style.width = newW + 'px';
+        }
+        function onUp() {
+          resEl.classList.remove('dragging');
+          localStorage.setItem(storageKey, getPanel().offsetWidth);
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    }
+
+    var r1 = document.getElementById('dm-resizer-cal');
+    var r2 = document.getElementById('dm-resizer-ai');
+    if (r1) makeDragger(r1, function() { return calPanel; }, 1, 'dm_cal_w');
+    if (r2) makeDragger(r2, function() { return aiPanel; }, -1, 'dm_picks_w');
+  })();
 
   // Render calendar after DOM is ready
   setTimeout(renderCalendar, 10);
@@ -5395,6 +5574,247 @@ function iqToggleHide(accName, repKey) {
   localStorage.setItem('iq_hidden_' + repKey, JSON.stringify([...hiddenSet]));
   // Re-render
   renderFollowUpCommandCenter();
+}
+
+// ── AI PICKS EXTRA FUNCTIONS ─────────────────────────────────────────
+
+let iqViewMode = 'full';
+function iqSetView(mode) {
+  iqViewMode = mode;
+  const list = document.getElementById('iq-ai-list');
+  if (list) {
+    if (mode === 'compact') list.classList.add('iq-ai-compact');
+    else list.classList.remove('iq-ai-compact');
+  }
+  const btnF = document.getElementById('iq-view-full');
+  const btnC = document.getElementById('iq-view-compact');
+  if (btnF) { btnF.style.background = mode==='full'?'var(--blue-b)':'transparent'; btnF.style.color = mode==='full'?'#fff':'var(--text-3)'; }
+  if (btnC) { btnC.style.background = mode==='compact'?'var(--blue-b)':'transparent'; btnC.style.color = mode==='compact'?'#fff':'var(--text-3)'; }
+}
+
+function iqToggleChat() {
+  const wrap = document.getElementById('iq-chat-wrap');
+  const btn = document.getElementById('iq-chat-btn');
+  if (!wrap) return;
+  const showing = wrap.style.display !== 'none';
+  wrap.style.display = showing ? 'none' : 'flex';
+  if (!showing) wrap.style.flexDirection = 'column';
+  if (btn) {
+    btn.style.background = showing ? 'transparent' : 'var(--blue-b)';
+    btn.style.color = showing ? 'var(--text-3)' : '#fff';
+  }
+  if (!showing) {
+    const msgs = document.getElementById('iq-chat-msgs');
+    if (msgs && msgs.children.length === 0) {
+      const sysMsg = document.createElement('div');
+      sysMsg.className = 'iq-chat-msg sys';
+      sysMsg.textContent = "I can build you a call list, analyze your picks, or answer questions about your accounts. Try: 'Show me stalled accounts over $50k' or 'Which picks haven't been contacted in 90 days?'";
+      msgs.appendChild(sysMsg);
+    }
+    setTimeout(function() { const inp = document.getElementById('iq-chat-input'); if (inp) inp.focus(); }, 60);
+  }
+}
+
+window._iqList = window._iqList || [];
+function iqToggleList(c, idx) {
+  window._iqList = window._iqList || [];
+  const pos = window._iqList.findIndex(x => x.accName === c.accName);
+  if (pos >= 0) {
+    window._iqList.splice(pos, 1);
+  } else {
+    window._iqList.push(c);
+  }
+  iqUpdateListBar();
+  const btn = document.getElementById('iq-list-btn-' + idx);
+  if (btn) {
+    const inList = window._iqList.some(x => x.accName === c.accName);
+    btn.textContent = inList ? '✓ Listed' : '+ List';
+    btn.style.color = inList ? 'var(--green)' : '';
+  }
+}
+
+function iqUpdateListBar() {
+  const bar = document.getElementById('iq-list-bar');
+  if (!bar) return;
+  const list = window._iqList || [];
+  if (!list.length) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML = '';
+
+  const label = document.createElement('span');
+  label.style.flex = '1';
+  label.textContent = '📋 List: ' + list.length + ' account' + (list.length !== 1 ? 's' : '');
+  bar.appendChild(label);
+
+  const viewListBtn = document.createElement('button');
+  viewListBtn.className = 'iq-btn';
+  viewListBtn.textContent = 'View List';
+  viewListBtn.onclick = function() {
+    if (document.getElementById('iq-chat-wrap') && document.getElementById('iq-chat-wrap').style.display === 'none') iqToggleChat();
+    const msgs = document.getElementById('iq-chat-msgs');
+    if (msgs) {
+      const msg = document.createElement('div');
+      msg.className = 'iq-chat-msg sys';
+      msg.textContent = 'List (' + list.length + '): ' + list.map(x => x.accName).join(', ');
+      msgs.appendChild(msg);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+  };
+  bar.appendChild(viewListBtn);
+
+  const exportBtn = document.createElement('button');
+  exportBtn.className = 'iq-btn';
+  exportBtn.textContent = 'Export / Email';
+  exportBtn.onclick = function() {
+    iqAskWithText('Draft an action plan for these accounts: ' + list.map(x => x.accName).join(', '));
+  };
+  bar.appendChild(exportBtn);
+
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'iq-btn';
+  clearBtn.style.marginLeft = '4px';
+  clearBtn.textContent = '×';
+  clearBtn.title = 'Clear list';
+  clearBtn.onclick = function() {
+    window._iqList = [];
+    iqUpdateListBar();
+    document.querySelectorAll('[id^="iq-list-btn-"]').forEach(function(b) {
+      b.textContent = '+ List';
+      b.style.color = '';
+    });
+  };
+  bar.appendChild(clearBtn);
+}
+
+function iqShowAllAccts(repKey) {
+  const picks = window._iqLastPicks || [];
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:16px;max-width:480px;width:90%;max-height:70vh;overflow-y:auto;font-family:var(--mono)';
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:11px;font-weight:700;margin-bottom:10px;letter-spacing:0.1em';
+  title.textContent = 'ALL AI PICKS (' + picks.length + ')';
+  box.appendChild(title);
+  picks.forEach(function(p) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(82,130,190,0.08);cursor:pointer';
+    row.onmouseenter = function() { row.style.background = 'var(--s2)'; };
+    row.onmouseleave = function() { row.style.background = ''; };
+    const score = document.createElement('span');
+    score.style.cssText = 'font-size:9px;color:var(--text-3);min-width:22px';
+    score.textContent = p.score;
+    const name = document.createElement('span');
+    name.style.cssText = 'font-size:11px;flex:1';
+    name.textContent = p.accName;
+    row.appendChild(score);
+    row.appendChild(name);
+    row.onclick = function() { modal.remove(); selectAccountByName(p.accName); };
+    box.appendChild(row);
+  });
+  const closeBtn = document.createElement('button');
+  closeBtn.style.cssText = 'margin-top:12px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:11px;padding:6px 16px;cursor:pointer;border-radius:var(--r)';
+  closeBtn.textContent = 'CLOSE';
+  closeBtn.onclick = function() { modal.remove(); };
+  box.appendChild(closeBtn);
+  modal.appendChild(box);
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+function iqAskAboutAccount(c) {
+  if (document.getElementById('iq-chat-wrap') && document.getElementById('iq-chat-wrap').style.display === 'none') iqToggleChat();
+  const inp = document.getElementById('iq-chat-input');
+  if (inp) {
+    inp.value = 'Tell me about ' + c.accName + ' and suggest the best outreach approach.';
+    inp.focus();
+  }
+}
+
+function iqAskWithText(text) {
+  if (document.getElementById('iq-chat-wrap') && document.getElementById('iq-chat-wrap').style.display === 'none') iqToggleChat();
+  const inp = document.getElementById('iq-chat-input');
+  if (inp) { inp.value = text; inp.focus(); }
+}
+
+async function iqSendChat() {
+  const inp = document.getElementById('iq-chat-input');
+  const msgs = document.getElementById('iq-chat-msgs');
+  if (!inp || !msgs) return;
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = '';
+  inp.disabled = true;
+
+  const userEl = document.createElement('div');
+  userEl.className = 'iq-chat-msg user';
+  userEl.textContent = text;
+  msgs.appendChild(userEl);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  window._iqChatHistory = window._iqChatHistory || [];
+  window._iqChatHistory.push({ role: 'user', content: text });
+
+  const repLabel = state.isAdmin ? 'Admin (all reps)' : (state.user && state.user.name ? state.user.name : (state.repId || 'Rep'));
+  const accs = (window._iqLastPicks || []).slice(0, 60).map(function(a) {
+    return a.accName + ' | score:' + a.score + ' | rev:$' + formatNum(a.totalRevenue||0) + ' | last:' + (a.daysSince != null ? a.daysSince + 'd ago' : 'unknown');
+  }).join('\n');
+  const listed = (window._iqList || []).map(function(x) { return x.accName; }).join(', ');
+  const sysCtx = 'You are a sales intelligence assistant for ' + repLabel + '.'
+    + ' Today is ' + new Date().toISOString().slice(0,10) + '.'
+    + ' Top AI picks by score (name | score | revenue | last order):\n' + (accs || 'No data loaded yet.')
+    + (listed ? '\n\nCurrent list: ' + listed : '')
+    + '\n\nWhen you mention a specific account name from the picks list, wrap it like [ACCTLINK:AccountName] so the user can click it.';
+
+  try {
+    const res = await callAI({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: sysCtx,
+      messages: window._iqChatHistory.slice(-20)
+    });
+    const aiText = (res.content && res.content[0] && res.content[0].text) ? res.content[0].text : 'No response';
+    window._iqChatHistory.push({ role: 'assistant', content: aiText });
+
+    const aiEl = document.createElement('div');
+    aiEl.className = 'iq-chat-msg ai';
+    // Parse [ACCTLINK:name] markers into clickable spans
+    const segments = aiText.split(/\[ACCTLINK:([^\]]+)\]/);
+    segments.forEach(function(seg, i) {
+      if (i % 2 === 0) {
+        if (seg) aiEl.appendChild(document.createTextNode(seg));
+      } else {
+        const lnk = document.createElement('span');
+        lnk.style.cssText = 'color:var(--blue-bright);cursor:pointer;text-decoration:underline';
+        lnk.textContent = seg;
+        const accName = seg;
+        lnk.onclick = function() { selectAccountByName(accName); };
+        aiEl.appendChild(lnk);
+      }
+    });
+    msgs.appendChild(aiEl);
+    msgs.scrollTop = msgs.scrollHeight;
+  } catch(e) {
+    const errEl = document.createElement('div');
+    errEl.className = 'iq-chat-msg sys';
+    errEl.textContent = 'Error: ' + e.message;
+    msgs.appendChild(errEl);
+    msgs.scrollTop = msgs.scrollHeight;
+  } finally {
+    inp.disabled = false;
+    inp.focus();
+  }
+}
+
+async function loadSuggestionsBadge() {
+  if (!state.isAdmin) return;
+  try {
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SUGGESTIONS'!A:F");
+    const newCount = rows.length > 1 ? rows.slice(1).filter(function(r) { return (r[5]||'').toString().trim() === 'New'; }).length : 0;
+    window._suggestionsNewCount = newCount;
+    const el = document.getElementById('badge-suggestions');
+    if (el) el.textContent = newCount || '';
+  } catch(e) { /* ignore */ }
 }
 
 function iqCalNav(dir) {
@@ -7809,6 +8229,7 @@ function updateBadges() {
   // Removal requests badge
   const pendingRemovals = accs.filter(a => a.removeFlag && a.removeFlag.trim() && a.removeFlag.toUpperCase() !== 'YES' && a.johnApproval?.toUpperCase() !== 'YES').length;
   setB('badge-removals', pendingRemovals || '');
+  if (window._suggestionsNewCount) setB('badge-suggestions', window._suggestionsNewCount);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -9662,6 +10083,16 @@ async function submitSuggestion() {
     await sheetsAppend("'_SUGGESTIONS'!A1", [
       [dateStr, repName, page, _suggestCat, desc, 'New']
     ], CONFIG.HISTORY_SPREADSHEET_ID);
+    fetch(CONFIG.WORKER_URL + '/send-alert', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Google-Token': state.accessToken},
+      body: JSON.stringify({
+        to: 'john.fluman@intransittech.com',
+        subject: 'New Feedback: ' + _suggestCat + ' from ' + repName,
+        body: 'Page: ' + page + '\nCategory: ' + _suggestCat + '\nFrom: ' + ((state.user&&state.user.email)?state.user.email:rep) + '\n\n' + desc
+      })
+    }).catch(function(){});
+    loadSuggestionsBadge();
     closeSuggestionModal();
     showToast('💾 Feedback saved — thank you!', 'success');
   } catch(e) {

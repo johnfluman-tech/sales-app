@@ -312,3 +312,28 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - `repEmailMap` hoisted to be shared across all branches
 
 **Commit:** `c6700a8`
+
+### 2026-05-19 (session 9 — Task 16)
+**Task 16: Audit + console logs + tightened allowlist**
+
+**Audit findings (all clean after Task 15):**
+- NDA check: `completeLogin()` lines 2832-2836, fires before `_loginComplete` is set or app shows — no isAdmin guard
+- `logLoginEvent()` called at line 2842, NOT inside any if() block
+- `canSeeTransferCandidates()` called at line 10004 before `el.innerHTML` — layout already expands when panel absent (flex:1 fills full width)
+- No `sessionStorage.clear()` or `removeItem('it_nda_accepted')` found anywhere
+
+**Changes made:**
+- `completeLogin()`: replaced generic console.log with `[AUTH] Login started for:` + `[NDA] sessionStorage it_nda_accepted:` diagnostic lines
+- `showNDA()`: added `[NDA] Showing NDA modal for:` log at function entry
+- `acceptNDA()`: added `[NDA] Accepted by:` log at function entry
+- `logLoginEvent()`: updated to `[LOG] Writing login event for:` format (both entry and per-attempt)
+- `canSeeTransferCandidates()`: replaced `repId === 'BillP' || repId === 'CKaren'` with explicit allowlist `['ADMIN','BillP','CKaren','CMancilla','MPerezfreye']`; added `[ATTACK] canSeeTransferCandidates:` log
+
+**How to verify in browser DevTools (F12 → Console):**
+- On any login: `[AUTH] Login started for: ...` then `[NDA] sessionStorage it_nda_accepted: null`
+- NDA modal: `[NDA] Showing NDA modal for: ...`
+- After accept: `[NDA] Accepted by: ...`
+- Login logging: `[LOG] Writing login event for: ...` then `Login logged ✓ for ...`
+- Attack Plan open: `[ATTACK] canSeeTransferCandidates: true/false for rep: ...`
+
+**Commit:** `ebdbb1b`

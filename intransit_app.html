@@ -9174,6 +9174,7 @@ async function renderAttackPlan() {
     });
   }
   window.apkState = planState;
+  apkLoadZoneDates(repFilter);
   apkLoadHiddenTransferAccounts();
   await apkLoadGloballyRemoved(); // must complete before building otherAccs
   // Init MY HIDDEN badge immediately
@@ -9212,6 +9213,9 @@ function apkMove(name, toZone) {
     return;
   }
   window.apkState[name] = toZone;
+  if (!window.apkZoneDates) window.apkZoneDates = {};
+  window.apkZoneDates[name] = { zone: toZone, t: Date.now() };
+  apkSaveZoneDates(window.apkRep);
   // Re-render just the columns (not the whole board)
   const repAccs = state.accounts.filter(a => a.rep === window.apkRep).sort((a, b) => (b.total || 0) - (a.total || 0));
   const otherAccs = state.accounts.filter(a => a.rep !== window.apkRep && isInactive(a) && !state.globallyRemovedFromPool.has(a.name)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
@@ -9344,6 +9348,17 @@ function apkRender(repAccs, otherAccs, rep) {
   apkRenderPool(repAccs);
 }
 
+function apkLoadZoneDates(repId) {
+  try {
+    const stored = localStorage.getItem('it_apk_zdates_' + repId);
+    window.apkZoneDates = stored ? JSON.parse(stored) : {};
+  } catch(e) { window.apkZoneDates = {}; }
+}
+
+function apkSaveZoneDates(repId) {
+  try { localStorage.setItem('it_apk_zdates_' + repId, JSON.stringify(window.apkZoneDates || {})); } catch(e) {}
+}
+
 function apkCardHtml(name, zone) {
   const acc = state.accounts.find(a => a.name === name);
   const rawStatus = acc?.status || '';
@@ -9351,6 +9366,27 @@ function apkCardHtml(name, zone) {
   const yrs = acc?.years ? Object.keys(acc.years).filter(y => acc.years[y] > 0).sort() : [];
   const range = yrs.length >= 2 ? yrs[0] + '–' + yrs[yrs.length - 1] : yrs[0] || '';
   const safeName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const daysIna = acc?.daysInactive || 0;
+
+  // Rotation signals (zone cards only)
+  const _signals = [];
+  if (zone !== 'pool') {
+    if ((zone === 'solid' || zone === 'center') && rawStatus.includes('DECLINE'))
+      _signals.push('<span style="font-family:var(--mono);font-size:8px;padding:1px 5px;border-radius:2px;background:rgba(239,68,68,0.18);color:var(--red);border:1px solid rgba(239,68,68,0.3)">' + (rawStatus.includes('SEVERE') ? '&#8595; SEVERE' : '&#8595; DECLINING') + '</span>');
+    if (zone === 'solid' && daysIna >= 90)
+      _signals.push('<span style="font-family:var(--mono);font-size:8px;padding:1px 5px;border-radius:2px;background:rgba(249,115,22,0.18);color:var(--orange);border:1px solid rgba(249,115,22,0.3)">&#9888; COLD</span>');
+    if (acc && acc.followUpDate) {
+      const _fd = new Date(acc.followUpDate); _fd.setHours(0,0,0,0);
+      const _td = new Date(); _td.setHours(0,0,0,0);
+      if (_fd < _td) _signals.push('<span style="font-family:var(--mono);font-size:8px;padding:1px 5px;border-radius:2px;background:rgba(139,92,246,0.18);color:#8b5cf6;border:1px solid rgba(139,92,246,0.3)">&#128197; OVERDUE</span>');
+    }
+    const _zd = window.apkZoneDates && window.apkZoneDates[name];
+    if (_zd && _zd.zone === zone) {
+      const _diz = Math.floor((Date.now() - _zd.t) / 86400000);
+      if (_diz >= 30) _signals.push('<span style="font-family:var(--mono);font-size:8px;padding:1px 5px;border-radius:2px;background:var(--s1);color:var(--text-3);border:1px solid var(--border)">' + _diz + 'd in zone</span>');
+    }
+  }
+  const _signalHtml = _signals.length ? '<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:4px">' + _signals.join('') + '</div>' : '';
 
   // Status dot color
   const dotColor = rawStatus.includes('🔴') ? 'var(--red)'
@@ -9372,13 +9408,15 @@ function apkCardHtml(name, zone) {
       `<button onclick="apkMove('${safeName}','${z.key}')" class="apk-zone-btn" title="→ ${z.label}">${z.icon}</button>`
     ).join('');
     const poolDotColor = rawStatus.includes('🔴') ? 'var(--red)' : rawStatus.includes('🟠') ? 'var(--orange)' : rawStatus.includes('🟡') ? 'var(--gold)' : rawStatus.includes('⚫') ? 'var(--text-3)' : 'var(--green)';
-    const daysIna = acc?.daysInactive || 0;
     const hideBtn = '<button data-n="' + escHtml(name) + '" onclick="apkHideAccount(this.dataset.n)" title="Hide from pool" class="apk-zone-btn" style="color:var(--text-3);border-color:transparent">&#215;</button>';
+    const _revive = (acc && (acc.total||0) >= 20000 && daysIna >= 180 && daysIna < 730)
+      ? '<div style="font-family:var(--mono);font-size:8px;color:#14b8a6;margin-bottom:2px;letter-spacing:0.03em">&#9670; REVIVE</div>'
+      : '';
     return `<div style="background:var(--s2);border:1px solid var(--border);border-left:3px solid ${poolDotColor};border-radius:var(--r);padding:4px 7px;width:150px;flex-shrink:0;min-height:0">
       <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;cursor:default" data-poolname="${escHtml(name).toLowerCase()}" title="${escHtml(name)}">
         <span onclick="apkOpenAccount('${escHtml(name)}')" style="cursor:pointer" onmouseover="this.style.color='var(--blue-b)'" onmouseout="this.style.color=''">${escHtml(name)}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
+      ${_revive}<div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:var(--mono);font-size:9px;color:var(--gold)">$${formatNum(acc?.total||0)}</span>
         <span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">${daysIna > 0 ? daysIna + 'd' : 'active'}</span>
         <div style="display:flex;gap:2px">${btnHtml + hideBtn}</div>
@@ -9398,7 +9436,8 @@ function apkCardHtml(name, zone) {
       <div class="apk-zone-card-name">
         <span onclick="apkOpenAccount('${escHtml(name)}')" style="cursor:pointer" onmouseover="this.style.color='var(--blue-b)'" onmouseout="this.style.color=''">${escHtml(name)}</span>
       </div>
-      <div class="apk-zone-card-meta">$${formatNum(acc?.total||0)}${range ? ' · ' + range : ''}${st ? ' · ' + st.slice(0,22) : ''}</div>
+      <div class="apk-zone-card-meta">$${formatNum(acc?.total||0)}${range ? ' · ' + range : ''}${daysIna > 0 ? ' · ' + daysIna + 'd' : ''}${st ? ' · ' + st.slice(0,22) : ''}</div>
+      ${_signalHtml}
     </div>
     <div class="apk-zone-card-btns">${btnHtml}</div>
   </div>`;

@@ -3105,14 +3105,25 @@ async function forceLogoutUser(repId, targetEmail) {
   }
 }
 
+function _forcedLogoutReload() {
+  // Clear NDA + session flags before reloading so next login shows NDA
+  sessionStorage.removeItem('it_nda_accepted');
+  sessionStorage.removeItem('it_session_id');
+  sessionStorage.removeItem('it_login_time');
+  location.reload();
+}
 function showForcedLogoutMessage() {
   clearInterval(window._forceLogoutPoll);
+  // Clear session flags NOW — before user can click "Log back in"
+  sessionStorage.removeItem('it_nda_accepted');
+  sessionStorage.removeItem('it_session_id');
+  sessionStorage.removeItem('it_login_time');
   document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;'
     + 'height:100vh;background:#0a1628;flex-direction:column;gap:16px">'
     + '<div style="font-size:36px">&#128274;</div>'
     + '<p style="color:#e2e8f0;font-size:18px;font-weight:500;margin:0">You have been signed out</p>'
     + '<p style="color:#94a3b8;font-size:14px;margin:0;text-align:center">An administrator has ended all active sessions.<br>Please log back in to continue.</p>'
-    + '<button onclick="location.reload()" style="margin-top:8px;padding:10px 24px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-family:sans-serif">Log back in</button>'
+    + '<button onclick="_forcedLogoutReload()" style="margin-top:8px;padding:10px 24px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-family:sans-serif">Log back in</button>'
     + '</div>';
 }
 
@@ -3134,6 +3145,8 @@ async function checkForceLogout() {
       if (ts <= state.loginTime) break; // reached entries from before this login
       const evt = (row[2] || '').toUpperCase();
       const detail = row[3] || '';
+      // Skip non-logout event rows (LOGIN rows have email at index 2, not event)
+      if (evt !== 'FORCE_LOGOUT_ALL' && evt !== 'FORCE_LOGOUT_USER') continue;
       if (evt === 'FORCE_LOGOUT_ALL') {
         showForcedLogoutMessage();
         setTimeout(handleSignout, 1500);

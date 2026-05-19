@@ -851,6 +851,21 @@ body::before {
   border-top: 3px solid var(--gold); border-radius: var(--r2);
   padding: 32px 36px; box-shadow: 0 24px 64px rgba(0,0,0,0.7);
 }
+
+/* ── SUGGEST FAB ───────────────────────── */
+.suggest-fab {
+  position: fixed; bottom: 72px; right: 18px;
+  background: var(--s2); border: 1px solid var(--border-hi);
+  color: var(--text-2); font-family: var(--mono); font-size: 10px;
+  letter-spacing: 0.08em; padding: 7px 13px; cursor: pointer;
+  border-radius: var(--r2); z-index: 9990;
+  display: flex; align-items: center; gap: 6px;
+  transition: all 0.15s; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.suggest-fab:hover {
+  background: var(--s3); border-color: var(--border-acc);
+  color: var(--text); box-shadow: 0 6px 20px rgba(59,130,246,0.15);
+}
 </style>
 <script src="https://accounts.google.com/gsi/client" async></script>
 </head>
@@ -935,6 +950,46 @@ body::before {
 
 <!-- APP -->
 <div id="app">
+<button class="suggest-fab" onclick="openSuggestionModal()" title="Send feedback or suggest a feature">💡 SUGGEST</button>
+
+<div id="suggestion-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10010;align-items:center;justify-content:center">
+  <div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid var(--gold);border-radius:var(--r2);width:500px;max-width:94vw;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:modalIn 0.18s ease">
+    <div style="padding:16px 20px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.2em;color:var(--gold);text-transform:uppercase;margin-bottom:3px">💡 Feedback</div>
+        <div style="font-size:16px;font-weight:700">Suggest an Improvement</div>
+      </div>
+      <button onclick="closeSuggestionModal()" class="modal-close">ESC</button>
+    </div>
+    <div style="padding:18px 20px 20px;display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);text-transform:uppercase;display:block;margin-bottom:6px">Category</label>
+        <div style="display:flex;gap:8px" id="suggest-cat-btns">
+          <button onclick="setSuggestCat(this,'Bug')" class="suggest-cat-btn" style="flex:1;padding:9px 6px;background:var(--s2);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;letter-spacing:0.06em;cursor:pointer;border-radius:var(--r);transition:all 0.12s">🐛 Bug</button>
+          <button onclick="setSuggestCat(this,'Feature Idea')" class="suggest-cat-btn" style="flex:1;padding:9px 6px;background:var(--s2);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;letter-spacing:0.06em;cursor:pointer;border-radius:var(--r);transition:all 0.12s">✨ Feature Idea</button>
+          <button onclick="setSuggestCat(this,'Improvement')" class="suggest-cat-btn" style="flex:1;padding:9px 6px;background:var(--s2);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;letter-spacing:0.06em;cursor:pointer;border-radius:var(--r);transition:all 0.12s">🔧 Improvement</button>
+        </div>
+      </div>
+      <div>
+        <label style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);text-transform:uppercase;display:block;margin-bottom:6px">Page</label>
+        <div id="suggest-page-display" style="padding:7px 11px;background:var(--s2);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:11px;border-radius:var(--r)"></div>
+      </div>
+      <div>
+        <label style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3);text-transform:uppercase;display:block;margin-bottom:6px">Description</label>
+        <textarea id="suggest-desc" rows="4" placeholder="Describe the bug, idea, or improvement…" maxlength="1000"
+          style="width:100%;box-sizing:border-box;padding:9px 12px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:13px;font-family:var(--font);border-radius:var(--r);resize:vertical;outline:none;line-height:1.5"
+          oninput="document.getElementById('suggest-char').textContent=this.value.length+'/1000'"
+          onfocus="this.style.borderColor='var(--border-acc)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+        <div id="suggest-char" style="text-align:right;font-family:var(--mono);font-size:9px;color:var(--text-3);margin-top:3px">0/1000</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:2px">
+        <button onclick="closeSuggestionModal()" style="flex:0 0 auto;padding:10px 18px;background:transparent;border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;cursor:pointer;border-radius:var(--r)">CANCEL</button>
+        <button id="suggest-submit-btn" onclick="submitSuggestion()" style="flex:1;padding:10px;background:var(--gold);border:none;color:#000;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;cursor:pointer;border-radius:var(--r);transition:opacity 0.15s">💾 SUBMIT FEEDBACK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
   <!-- SIDEBAR -->
   <div class="sidebar">
     <div class="sidebar-header" style="position:relative">
@@ -9366,6 +9421,90 @@ async function sbUpsert(table, rows) {
 }
 
 // Restore positions after any view switch
+// ══════════════════════════════════════════════════════════
+//  SUGGESTION / FEEDBACK
+// ══════════════════════════════════════════════════════════
+let _suggestCat = '';
+
+const SUGGEST_PAGE_LABELS = {
+  accounts:    'My Accounts',
+  followup:    'Daily Mission',
+  dashboard:   'Dashboard',
+  collections: 'Collections',
+  contacts:    'Contacts',
+  attack:      'Attack Plan',
+  removals:    'Requests',
+  access:      'Access Log',
+  settings:    'Settings',
+};
+
+function openSuggestionModal() {
+  _suggestCat = '';
+  document.querySelectorAll('.suggest-cat-btn').forEach(b => {
+    b.style.background = 'var(--s2)';
+    b.style.borderColor = 'var(--border)';
+    b.style.color = 'var(--text-2)';
+  });
+  document.getElementById('suggest-desc').value = '';
+  document.getElementById('suggest-char').textContent = '0/1000';
+  const page = SUGGEST_PAGE_LABELS[state.activeView] || state.activeView || 'Unknown';
+  document.getElementById('suggest-page-display').textContent = page;
+  const m = document.getElementById('suggestion-modal');
+  m.style.display = 'flex';
+  setTimeout(() => document.getElementById('suggest-desc').focus(), 80);
+}
+
+function closeSuggestionModal() {
+  document.getElementById('suggestion-modal').style.display = 'none';
+}
+
+function setSuggestCat(btn, cat) {
+  _suggestCat = cat;
+  document.querySelectorAll('.suggest-cat-btn').forEach(b => {
+    b.style.background = 'var(--s2)';
+    b.style.borderColor = 'var(--border)';
+    b.style.color = 'var(--text-2)';
+  });
+  btn.style.background = 'var(--gold-bg)';
+  btn.style.borderColor = 'var(--gold)';
+  btn.style.color = 'var(--gold)';
+}
+
+async function submitSuggestion() {
+  const desc = document.getElementById('suggest-desc').value.trim();
+  if (!_suggestCat) { showToast('Please select a category', 'error'); return; }
+  if (!desc) { showToast('Please enter a description', 'error'); return; }
+
+  const btn = document.getElementById('suggest-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'SAVING…';
+
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  const rep = state.repId || (state.isAdmin ? 'ADMIN' : 'unknown');
+  const repName = (state.user && state.user.name) ? state.user.name : rep;
+  const page = SUGGEST_PAGE_LABELS[state.activeView] || state.activeView || 'Unknown';
+
+  try {
+    await sheetsAppend("'_SUGGESTIONS'!A1", [
+      [dateStr, repName, page, _suggestCat, desc, 'New']
+    ], CONFIG.HISTORY_SPREADSHEET_ID);
+    closeSuggestionModal();
+    showToast('💾 Feedback saved — thank you!', 'success');
+  } catch(e) {
+    showToast('Error saving feedback: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💾 SUBMIT FEEDBACK';
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('suggestion-modal') &&
+      document.getElementById('suggestion-modal').style.display === 'flex') {
+    closeSuggestionModal();
+  }
+});
 </script>
 </body>
 </html>

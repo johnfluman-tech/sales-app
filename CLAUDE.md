@@ -268,3 +268,21 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 
 **New functions:** `canSeeTransferCandidates`, `apkDoAssignToMe`
 **Commit:** `69aba6f`
+
+### 2026-05-19 (session 7 — Task 13)
+**Task 13: Fix login + NDA logging for all users**
+
+**Root cause:** `completeLogin()` had no login event write — logging only happened via `acceptNDA()` → `checkIPAndProceed()` → `logAccessEntry()`, which has race conditions and only writes to `_ACCESS_LOG` (History), not `_LOG` (Main). Also `acceptNDA()` was calling `showLocationModal()` unconditionally at its start, before `checkIPAndProceed()` had run — causing the location modal to appear twice for new IPs.
+
+**Bugs fixed:**
+- `acceptNDA()`: removed spurious `showLocationModal()` call at top of function; `checkIPAndProceed()` already handles showing the location modal for new IPs — the early call caused a double-modal bug
+- `completeLogin()`: now always calls `logLoginEvent()` immediately after the `_loginComplete` guard, so every login (new OR returning user with cached token) is logged to `_LOG` Main Sheet with 3-attempt retry
+
+**Features added:**
+- `getUserIP()` — calls Worker `/get-ip` (unauthenticated) to get caller's real IP; used by `logLoginEvent()`
+- `logLoginEvent(userData)` — writes LOGIN event to `'_LOG'!A1` (Main Sheet) with: ISO timestamp, email, event=LOGIN, details (repId + IP), user agent, session ID; retries up to 3× with 1s delay on failure
+- `console.log('completeLogin called for:', email, repId)` — diagnostic log at start of `completeLogin()`
+
+**New functions:** `getUserIP`, `logLoginEvent`
+**Worker:** `/get-ip` route already existed (added in Task 9) — no Worker changes needed
+**Commit:** `aba1556`

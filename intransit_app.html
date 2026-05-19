@@ -3230,6 +3230,15 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
         handleSignout();
         throw new Error('Session expired');
       }
+      if (res.status === 429) {
+        // Rate limited — back off and retry up to 3 times
+        const attempt = typeof _retry === 'number' ? _retry : 0;
+        if (attempt < 3) {
+          await new Promise(r => setTimeout(r, (attempt + 1) * 4000));
+          return sheetsGetFrom(spreadsheetId, range, attempt + 1);
+        }
+        throw new Error('API error 429 — too many requests, please wait a moment and try again');
+      }
       throw new Error('Sheets API error ' + res.status);
     }
     const data = await res.json();

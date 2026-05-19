@@ -987,10 +987,17 @@ body::before {
         style="width:100%;box-sizing:border-box;padding:8px 12px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;border-radius:var(--r);outline:none"
         onkeydown="if(event.key==='Enter')confirmLocation()">
     </div>
+    <!-- New IP warning — shown when IP doesn't match known IPs -->
+    <div id="loc-new-ip-warn" style="display:none;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--r);padding:10px 12px;margin-bottom:14px;font-size:11px;color:var(--red);line-height:1.5">
+      ⚠ We noticed you're signing in from a new location. Confirm where you are or click "This isn't me" to sign out immediately.
+    </div>
     <div style="display:flex;gap:8px">
       <button id="location-confirm-btn" onclick="confirmLocation()" disabled
         style="flex:1;padding:10px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;cursor:not-allowed;border-radius:var(--r);opacity:0.5;letter-spacing:0.08em">
         CONFIRM & CONTINUE
+      </button>
+      <button onclick="locationNotMe()" style="padding:10px 14px;background:transparent;border:1px solid var(--red);color:var(--red);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em;white-space:nowrap">
+        This isn't me
       </button>
     </div>
     <div style="font-size:10px;color:var(--text-3);text-align:center;margin-top:10px;line-height:1.5">
@@ -1222,6 +1229,7 @@ body::before {
     </div>
         <div class="sidebar-footer">
       <button class="signout-btn" onclick="handleSignout()">Sign Out</button>
+      <button id="force-logout-btn" onclick="confirmForceLogoutAll()" style="display:none;margin-top:6px;width:100%;padding:8px;background:transparent;border:1px solid rgba(239,68,68,0.5);color:var(--red);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.06em">⏏ LOG OUT ALL</button>
     </div>
   </div>
   <div id="sidebar-splitter" onmousedown="startSplitH(event,'sidebar-splitter','__main__','sidebar-splitter')" style="width:5px;min-width:5px;flex-shrink:0;background:var(--border);cursor:col-resize;transition:background 0.15s;z-index:10" onmouseover="this.style.background='var(--blue-b)'" onmouseout="if(!this.classList.contains('dragging'))this.style.background='var(--border)'"></div>
@@ -1409,7 +1417,7 @@ const MANAGERS = { 'CKaren': ['PIan','RMauricio','LMancera','bcastor'] };
 //  SECURITY SYSTEM
 // ══════════════════════════════════════════════════════
 const SECURITY = {
-  SESSION_TIMEOUT_MS: 30 * 60 * 1000,   // 30 min inactivity
+  SESSION_TIMEOUT_MS: 60 * 60 * 1000,   // 60 min inactivity
   MAX_ACCOUNTS_PER_SESSION: 200,          // flag if user views > 200 accounts (admin exempt)
   activityLog: [],
   accountsViewed: new Set(),
@@ -2343,6 +2351,7 @@ async function acceptNDA() {
       userAgent,          // J: Browser/device info
       ndaTextEN,          // K: EN agreement summary
       ndaTextES,          // L: ES agreement summary
+      sessionStorage.getItem('it_session_id') || 'unknown',  // M: Session ID
     ];
 
     await sheetsAppend("'_NDA_LOG'!A1", [
@@ -2355,9 +2364,8 @@ async function acceptNDA() {
     // Don't block the user — just log the failure silently
     console.warn('NDA log write failed (non-blocking):', e.message);
   }
-  // Log access entry immediately — captures login even if location modal is abandoned
-  // confirmLocation() will update this row with the actual location claim
-  logAccessEntry('PENDING').catch(e => console.warn('Access log (pending) failed:', e));
+  // Fetch geo, check known IPs, then show location modal only for new IPs
+  checkIPAndProceed().catch(e => console.warn('IP check failed:', e));
 }
 
 async function declineNDA() {
@@ -2468,8 +2476,12 @@ function updateWatermark() {
 
 function resetSessionTimer() {
   clearTimeout(SECURITY.timeoutTimer);
+  clearTimeout(SECURITY._warnTimer);
+  SECURITY._warnTimer = setTimeout(() => {
+    showToast('Your session will expire in 5 minutes due to inactivity', 'warning');
+  }, SECURITY.SESSION_TIMEOUT_MS - 5 * 60 * 1000);
   SECURITY.timeoutTimer = setTimeout(() => {
-    logSecurityEvent('SESSION_TIMEOUT', 'Auto sign-out after 30 min inactivity');
+    logSecurityEvent('SESSION_TIMEOUT', 'Auto sign-out after 60 min inactivity');
     showToast('Session expired due to inactivity. Signing out...', 'error');
     setTimeout(handleSignout, 2000);
   }, SECURITY.SESSION_TIMEOUT_MS);
@@ -2513,6 +2525,11 @@ let state = {
   user: null,
   repId: null,
   isAdmin: false,
+  loginTime: null,     // set at completeLogin for force-logout check
+  userIP: null,        // pre-fetched at NDA accept
+  userCity: null,
+  userCountry: null,
+  userOrg: null,
   accounts: [],
   filteredAccounts: [],
   selectedAccount: null,
@@ -2617,7 +2634,11 @@ function requestSheetsToken() {
 }
 function completeLogin() {
   if (state._loginComplete) return; // prevent double-init from location modal flow
+  if (!sessionStorage.getItem('it_session_id')) {
+    sessionStorage.setItem('it_session_id', generateSessionId());
+  }
   state._loginComplete = true;
+  state.loginTime = Date.now();
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').classList.add('visible');
   document.getElementById('sidebar-user-name').textContent = state.user?.name || state.user?.email || '—';
@@ -2634,6 +2655,8 @@ function completeLogin() {
     if (removalsNav) removalsNav.style.display = 'block';
     const accessNav = document.getElementById('nav-access');
     if (accessNav) accessNav.style.display = 'block';
+    const _flBtn = document.getElementById('force-logout-btn');
+    if (_flBtn) _flBtn.style.display = 'block';
     const suggBoardNav = document.getElementById('nav-suggestions-board');
     if (suggBoardNav) suggBoardNav.style.display = 'block';
     const notesFeedNav = document.getElementById('nav-notes-feed');
@@ -2678,7 +2701,14 @@ function completeLogin() {
       }
     }
   }
-  if (state.isAdmin) { loadSuggestionsBadge(); startNotificationPolling(); }
+  if (state.isAdmin) {
+    loadSuggestionsBadge();
+    startNotificationPolling();
+    setTimeout(checkUnusualActivity, 8000); // check after data loads
+  }
+  // Start force-logout polling for all users
+  clearInterval(window._forceLogoutPoll);
+  window._forceLogoutPoll = setInterval(checkForceLogout, 2 * 60 * 1000);
   // Show notes feed nav for ALL users (label varies by role)
   const _nfNavAll = document.getElementById('nav-notes-feed');
   if (_nfNavAll && _nfNavAll.style.display !== 'block') {
@@ -2696,6 +2726,9 @@ function completeLogin() {
   // Don't wait for loadAllAccounts — they run in parallel for speed
   ensureCacheLoaded().catch(() => {});
   loadAllAccounts().then(() => {
+    if (state.repId === 'bcastor') {
+      console.log('bcastor accounts loaded:', state.accounts.filter(a => a.rep === 'bcastor').length);
+    }
     renderAccountsView();
     updateBadges();
     initSecurity();
@@ -2705,6 +2738,10 @@ function completeLogin() {
 function handleLogin() {
   // Fallback — trigger GIS button click
   document.querySelector('.g_id_signin')?.click();
+}
+
+function generateSessionId() {
+  return 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
 function handleSignout() {
@@ -2717,6 +2754,70 @@ function handleSignout() {
   try { google.accounts.id.disableAutoSelect(); } catch(e){}
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app').classList.remove('visible');
+}
+
+function confirmForceLogoutAll() {
+  if (!isAdmin()) return;
+  document.getElementById('force-logout-modal').style.display = 'flex';
+}
+
+async function forceLogoutAll() {
+  document.getElementById('force-logout-modal').style.display = 'none';
+  try {
+    await sheetsAppend("'_LOG'!A1", [[
+      new Date().toISOString(),
+      state.user?.email || 'admin',
+      'FORCE_LOGOUT_ALL',
+      'TARGET:ALL BY:' + (state.user?.email || 'admin')
+    ]]);
+    showToast('Force logout signal sent — all reps will be signed out within 2 minutes', 'success');
+  } catch(e) {
+    showToast('Force logout failed: ' + e.message, 'error');
+  }
+}
+
+async function forceLogoutUser(repId, targetEmail) {
+  try {
+    await sheetsAppend("'_LOG'!A1", [[
+      new Date().toISOString(),
+      state.user?.email || 'admin',
+      'FORCE_LOGOUT_USER',
+      'TARGET:' + repId + ' EMAIL:' + (targetEmail || '') + ' BY:' + (state.user?.email || 'admin')
+    ]]);
+    showToast('Force logout signal sent for ' + repId, 'success');
+  } catch(e) {
+    showToast('Force logout failed: ' + e.message, 'error');
+  }
+}
+
+async function checkForceLogout() {
+  if (!state.accessToken || !state.loginTime) return;
+  try {
+    const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_LOG'!A1:D20");
+    if (!raw || raw.length < 2) return;
+    const myEmail = state.user?.email || '';
+    const myRepId = state.repId || '';
+    for (const row of raw.slice(1).reverse()) {
+      const ts = row[0] ? new Date(row[0]).getTime() : 0;
+      if (ts <= state.loginTime) break; // older than login — stop
+      const evt = (row[2] || '').toUpperCase();
+      const detail = row[3] || '';
+      if (evt === 'FORCE_LOGOUT_ALL') {
+        showToast('You have been signed out by the administrator. Please log back in.', 'error');
+        clearInterval(window._forceLogoutPoll);
+        setTimeout(handleSignout, 2500);
+        return;
+      }
+      if (evt === 'FORCE_LOGOUT_USER') {
+        if (detail.includes('TARGET:' + myRepId) || detail.includes('EMAIL:' + myEmail)) {
+          showToast('You have been signed out by the administrator. Please log back in.', 'error');
+          clearInterval(window._forceLogoutPoll);
+          setTimeout(handleSignout, 2500);
+          return;
+        }
+      }
+    }
+  } catch(e) { /* non-blocking */ }
 }
 
 function setRepFromEmail(email) {
@@ -3932,7 +4033,7 @@ function openAccountFromContact(accountName) {
 // State for location modal
 let _selectedLocation = null;
 
-function showLocationModal() {
+function showLocationModal(isNewIP) {
   _selectedLocation = null;
   const modal = document.getElementById('location-modal');
   modal.style.display = 'flex';
@@ -3978,18 +4079,68 @@ async function confirmLocation() {
     : _selectedLocation;
 
   document.getElementById('location-modal').style.display = 'none';
-  // Update the PENDING row written at NDA accept, or fall back to a full new entry
-  if (window._accessLogPendingRow) {
-    const rowNum = window._accessLogPendingRow;
-    window._accessLogPendingRow = null;
-    sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!F" + rowNum, [[locationClaim]])
-      .catch(e => console.warn('Access log location update failed:', e));
-  } else {
-    logAccessEntry(locationClaim).catch(e => console.warn('Access log failed:', e));
+  // Add IP to known IPs so next login from same IP skips location modal
+  if (state.userIP && state.userIP !== 'unknown') {
+    const _rk = state.repId || state.user?.email || 'unknown';
+    const _kk = 'it_known_ips_' + _rk;
+    const _kn = JSON.parse(localStorage.getItem(_kk) || '[]');
+    if (!_kn.includes(state.userIP)) {
+      _kn.push(state.userIP);
+      if (_kn.length > 10) _kn.shift();
+      localStorage.setItem(_kk, JSON.stringify(_kn));
+    }
   }
+  // Log access entry
+  logAccessEntry(locationClaim).catch(e => console.warn('Access log failed:', e));
   // Now complete the real login flow
   loadAllAccounts();
   showNDA_or_complete();
+}
+
+function locationNotMe() {
+  // User claims suspicious login — log it and sign out
+  const _ip = state.userIP || 'unknown';
+  sheetsAppend("'_LOG'!A1", [[
+    new Date().toISOString(),
+    state.user?.email || 'unknown',
+    'SUSPICIOUS_LOGIN',
+    'User clicked This isn\'t me — IP: ' + _ip + ' City: ' + (state.userCity || '?')
+  ]]).catch(() => {});
+  document.getElementById('location-modal').style.display = 'none';
+  showToast('Signed out for security. Contact john.fluman@intransittech.com if you need help.', 'error');
+  setTimeout(handleSignout, 2500);
+}
+
+async function checkIPAndProceed() {
+  // Fetch geo data (cached in state so logAccessEntry reuses it)
+  state.userIP = 'unknown';
+  try {
+    const _gr = await fetch(CONFIG.WORKER_URL + '/geoip', {
+      headers: { 'X-Google-Token': state.accessToken },
+      signal: AbortSignal.timeout(5000)
+    });
+    if (_gr.ok) {
+      const _gd = await _gr.json();
+      state.userIP      = _gd.ip      || 'unknown';
+      state.userCity    = _gd.city    || 'unknown';
+      state.userCountry = _gd.country || 'unknown';
+      state.userOrg     = _gd.org     || 'unknown';
+    }
+  } catch(e) {}
+
+  const _repKey = state.repId || state.user?.email || 'unknown';
+  const _knownKey = 'it_known_ips_' + _repKey;
+  const _knownIPs = JSON.parse(localStorage.getItem(_knownKey) || '[]');
+
+  if (state.userIP !== 'unknown' && _knownIPs.includes(state.userIP)) {
+    // Known IP — skip location modal, auto-proceed
+    logAccessEntry('Known Location').catch(() => {});
+    loadAllAccounts();
+    showNDA_or_complete();
+  } else {
+    // New or unknown IP — show location modal with optional security note
+    showLocationModal(state.userIP !== 'unknown' && _knownIPs.length > 0);
+  }
 }
 
 function showNDA_or_complete() {
@@ -4021,33 +4172,34 @@ async function logAccessEntry(locationClaim) {
   const browserMatch = ua.match(/(Chrome|Firefox|Safari|Edge|OPR)[\/]([\d.]+)/);
   const browser = browserMatch ? browserMatch[1] + ' ' + browserMatch[2].split('.')[0] : 'Unknown';
 
-  // IP/geo lookup via Worker (uses CF-Connecting-IP + Cloudflare geo — no rate limits)
-  let ipAddress = 'unknown';
-  let ipCity    = 'unknown';
-  let ipCountry = 'unknown';
-  let ipOrg     = 'unknown';
+  // Use pre-fetched geo from checkIPAndProceed if available, else fetch fresh
+  let ipAddress = state.userIP      || 'unknown';
+  let ipCity    = state.userCity    || 'unknown';
+  let ipCountry = state.userCountry || 'unknown';
+  let ipOrg     = state.userOrg     || 'unknown';
   let isSuspicious = false;
   let suspicionReason = '';
 
-  try {
-    const geoRes = await fetch(CONFIG.WORKER_URL + '/geoip', {
-      headers: { 'X-Google-Token': state.accessToken },
-      signal: AbortSignal.timeout(4000)
-    });
-    if (geoRes.ok) {
-      const geoData = await geoRes.json();
-      ipAddress = geoData.ip      || 'unknown';
-      ipCity    = geoData.city    || 'unknown';
-      ipCountry = geoData.country || 'unknown';
-      ipOrg     = geoData.org     || 'unknown';
-
-      // Suspicion checks (CF country is a 2-letter code)
-      const isVPN = ipOrg && /(vpn|proxy|hosting|cloud|digital ocean|linode|vultr|aws|azure|google cloud)/i.test(ipOrg);
-      const isOddCountry = ipCountry && ipCountry !== 'unknown' && !['US', 'MX', 'CA'].includes(ipCountry);
-      if (isVPN) { isSuspicious = true; suspicionReason = 'VPN/Hosting IP: ' + ipOrg; }
-      else if (isOddCountry) { isSuspicious = true; suspicionReason = 'Unusual country: ' + ipCountry; }
-    }
-  } catch(e) { /* geo lookup failed — non-blocking */ }
+  if (ipAddress === 'unknown') {
+    try {
+      const geoRes = await fetch(CONFIG.WORKER_URL + '/geoip', {
+        headers: { 'X-Google-Token': state.accessToken },
+        signal: AbortSignal.timeout(4000)
+      });
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        ipAddress = geoData.ip      || 'unknown';
+        ipCity    = geoData.city    || 'unknown';
+        ipCountry = geoData.country || 'unknown';
+        ipOrg     = geoData.org     || 'unknown';
+      }
+    } catch(e) { /* geo lookup failed — non-blocking */ }
+  }
+  // Suspicion checks
+  const isVPN = ipOrg && /(vpn|proxy|hosting|cloud|digital ocean|linode|vultr|aws|azure|google cloud)/i.test(ipOrg);
+  const isOddCountry = ipCountry && ipCountry !== 'unknown' && !['US', 'MX', 'CA'].includes(ipCountry);
+  if (isVPN) { isSuspicious = true; suspicionReason = 'VPN/Hosting IP: ' + ipOrg; }
+  else if (isOddCountry) { isSuspicious = true; suspicionReason = 'Unusual country: ' + ipCountry; }
 
   // Cross-check: location claim vs. IP geo
   if (locationClaim !== 'PENDING' && locationClaim === 'Office' && ipCity && !['Rancho Santa Margarita','Irvine','Mission Viejo','Lake Forest','Foothill Ranch'].includes(ipCity)) {
@@ -4080,7 +4232,7 @@ async function logAccessEntry(locationClaim) {
         await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!A1:P1", [[
           'TIMESTAMP','ISO_TIME','EMAIL','NAME','REP_ID','LOCATION_CLAIM',
           'IP_ADDRESS','CITY','COUNTRY','ORG','DEVICE','BROWSER',
-          'TIMEZONE','LANGUAGE','SUSPICIOUS','SUSPICION_REASON'
+          'TIMEZONE','LANGUAGE','SUSPICIOUS','SUSPICION_REASON','SESSION_ID'
         ]]);
       }
     } catch(e) { /* create tab first */
@@ -4093,7 +4245,7 @@ async function logAccessEntry(locationClaim) {
         await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!A1:P1", [[
           'TIMESTAMP','ISO_TIME','EMAIL','NAME','REP_ID','LOCATION_CLAIM',
           'IP_ADDRESS','CITY','COUNTRY','ORG','DEVICE','BROWSER',
-          'TIMEZONE','LANGUAGE','SUSPICIOUS','SUSPICION_REASON'
+          'TIMEZONE','LANGUAGE','SUSPICIOUS','SUSPICION_REASON','SESSION_ID'
         ]]);
       } catch(e2) { /* give up silently */ }
     }
@@ -4105,7 +4257,8 @@ async function logAccessEntry(locationClaim) {
     ipAddress, ipCity, ipCountry, ipOrg, deviceType, browser,
     timezone, lang,
     isSuspicious ? 'YES' : 'NO',
-    suspicionReason || ''
+    suspicionReason || '',
+    sessionStorage.getItem('it_session_id') || 'unknown'
   ]], CONFIG.HISTORY_SPREADSHEET_ID);
 
   // Store row number so confirmLocation() can patch in the actual location claim
@@ -4142,6 +4295,64 @@ function completeLoginAfterLocation() {
 }
 
 // ── ACCESS LOG ADMIN PAGE ───────────────────────────────────────────────
+async function checkUnusualActivity() {
+  if (!isAdmin() || state.viewAsRep) return;
+  try {
+    const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!A1:P500");
+    if (!raw || raw.length < 2) return;
+    const hdrs = raw[0];
+    const iRep = hdrs.indexOf('REP_ID'), iIP = hdrs.indexOf('IP_ADDRESS'),
+          iTs  = hdrs.indexOf('ISO_TIME'), iSusp = hdrs.indexOf('SUSPICIOUS');
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const oneDayAgo    = Date.now() - 24 * 60 * 60 * 1000;
+    // Group by rep: distinct IPs (7d) and new-IP count (24h)
+    const repIPs = {}, repNewIP24 = {};
+    raw.slice(1).forEach(r => {
+      const repId = r[iRep] || '', ip = r[iIP] || '', ts = r[iTs] || '';
+      if (!repId || !ip) return;
+      const t = ts ? new Date(ts).getTime() : 0;
+      if (t > sevenDaysAgo) {
+        if (!repIPs[repId]) repIPs[repId] = new Set();
+        repIPs[repId].add(ip);
+      }
+      if (t > oneDayAgo && (r[iSusp] || '').toUpperCase() === 'YES') {
+        repNewIP24[repId] = (repNewIP24[repId] || 0) + 1;
+      }
+    });
+    const alerts = [];
+    Object.entries(repIPs).forEach(([repId, ips]) => {
+      if (ips.size >= 5) alerts.push({ repId, type: 'UNUSUAL_IP_COUNT', detail: ips.size + ' distinct IPs this week' });
+    });
+    Object.entries(repNewIP24).forEach(([repId, n]) => {
+      if (n >= 3) alerts.push({ repId, type: 'HIGH_SUSPICIOUS_24H', detail: n + ' suspicious logins in 24h' });
+    });
+    if (alerts.length === 0) return;
+    // Show banner
+    let _bannerId = 'unusual-activity-banner';
+    if (document.getElementById(_bannerId)) document.getElementById(_bannerId).remove();
+    const _banner = document.createElement('div');
+    _banner.id = _bannerId;
+    _banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#7f1d1d;border-bottom:2px solid #ef4444;padding:10px 20px;display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px;color:#fca5a5;';
+    const _alertHtml = alerts.map(a => '<strong style="color:#fff">' + a.repId + '</strong>: ' + a.detail).join(' &nbsp;|&nbsp; ');
+    _banner.innerHTML = '<span style="font-size:13px">⚠</span> <span style="flex:1">UNUSUAL ACTIVITY — ' + _alertHtml + '</span>'
+      + '<button onclick="switchView(\'access\')" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-family:var(--mono);font-size:10px;padding:4px 10px;cursor:pointer;border-radius:3px">REVIEW</button>'
+      + '<button onclick="document.getElementById(\'unusual-activity-banner\').remove()" style="background:transparent;border:none;color:#fca5a5;font-size:16px;cursor:pointer;padding:0 4px">×</button>';
+    document.body.prepend(_banner);
+    // Email alert for each rep with issues
+    alerts.forEach(a => {
+      fetch(CONFIG.WORKER_URL + '/send-alert', {
+        method: 'POST',
+        headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: 'john.fluman@intransittech.com',
+          subject: '\u26a0 Unusual Activity: ' + a.repId + ' — Intransit Sales App',
+          body: 'Unusual login activity detected for ' + a.repId + '.\n\nEvent: ' + a.type + '\nDetail: ' + a.detail + '\nTime: ' + new Date().toISOString() + '\n\nPlease review the Access Log in the app.'
+        })
+      }).catch(() => {});
+    });
+  } catch(e) { /* non-blocking */ }
+}
+
 async function renderAccessLog() {
   if (!state.isAdmin || state.viewAsRep) {
     document.getElementById('main-content').innerHTML = '<div style="padding:40px;color:var(--text-3)">Admin only.</div>';
@@ -4303,6 +4514,9 @@ async function renderAccessLog() {
                    <div style="font-size:10px;color:var(--red);margin-top:2px">${escHtml(r.reason.slice(0,50))}</div>`
                 : '<div style="display:inline-block;background:rgba(34,197,94,0.12);color:var(--green);font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:10px">✓ NORMAL</div>'
               }
+              ${isAdmin() && !state.viewAsRep && r.rep && r.rep !== 'FJohn' && r.rep !== 'ADMIN'
+                ? `<br><button onclick="forceLogoutUser('${escHtml(r.rep)}','${escHtml(r.email)}')" style="margin-top:4px;background:transparent;border:1px solid rgba(239,68,68,0.4);color:var(--red);font-family:var(--mono);font-size:9px;padding:2px 7px;cursor:pointer;border-radius:2px">⏏ Force Logout</button>`
+                : ''}
             </td>
           </tr>`).join('')}
         </tbody>
@@ -7336,8 +7550,10 @@ function renderSettingsView() {
         <div id="sig-preview" style="display:none;margin-top:16px;padding:14px 16px;background:#ffffff;border:1px solid var(--border);border-left:3px solid var(--blue);font-size:13px;line-height:1.7;color:#000"></div>
       </div>
 
-      <!-- AI Configuration — admin only -->
-      ${isAdmin() && !state.viewAsRep ? '<div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px"><div style="font-size:15px;font-weight:600;margin-bottom:4px">AI Configuration</div><div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">AI email generation is powered by the Intransit Cloudflare Worker. The API key is stored securely in Cloudflare — no browser key needed.</div><div style="background:rgba(39,174,96,0.1);border-left:3px solid var(--green);padding:12px 14px;font-size:12px;color:var(--green)">✓ AI emails enabled — key secured in Cloudflare Worker</div></div>' : ''}
+      <!-- AI Configuration -->
+      ${isAdmin() && !state.viewAsRep
+        ? '<div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px"><div style="font-size:15px;font-weight:600;margin-bottom:4px">AI Configuration</div><div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">AI email generation is powered by the Intransit Cloudflare Worker. The API key is stored securely in Cloudflare — no browser key needed.</div><div style="background:rgba(39,174,96,0.1);border-left:3px solid var(--green);padding:12px 14px;font-size:12px;color:var(--green)">✓ AI emails enabled — key secured in Cloudflare Worker</div></div>'
+        : '<div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px"><div style="font-size:15px;font-weight:600;margin-bottom:4px">AI Features</div><div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">AI emails are powered by the Intransit Cloudflare Worker — no setup needed.</div><div style="background:rgba(39,174,96,0.1);border-left:3px solid var(--green);padding:12px 14px;font-size:12px;color:var(--green)">✓ AI features enabled — ready to use</div></div>'}
       <!-- Dev Tools — admin only -->
       ${isAdmin() && !state.viewAsRep ? '<div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px"><div style="font-size:15px;font-weight:600;margin-bottom:4px">Developer Tools</div><div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Copy your current OAuth session token for use in pre-deploy testing.</div><button onclick="copySessionToken()" style="background:var(--navy-mid);border:1px solid var(--gold);color:var(--gold);font-family:var(--font-mono);font-size:11px;padding:8px 16px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em">📋 COPY SESSION TOKEN</button><span id="copy-token-msg" style="font-size:11px;color:var(--green);margin-left:12px;display:none">✓ Copied to clipboard</span><div style="font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.6">Paste into <strong style="color:var(--text)">intransit_test.html</strong> to validate a new build before deploying.<br>Token expires after ~50 min. If test fails auth, sign out and back in to get a fresh one.</div></div>' : ''}
 
@@ -11060,15 +11276,15 @@ function academyGetLessonContent(lessonId, progress) {
 
     acadSteps([
       { n: 1, text: '<strong>Click Sign In with Google</strong>. Use your @intransittech.com account — personal Gmail won\'t work. Allow the pop-up on first use.' },
-      { n: 2, text: '<strong>Enter your Claude API key</strong> in Settings → AI Config. This powers the AI email generator and Daily Mission analysis. Get your key from john.fluman@intransittech.com.' },
+      { n: 2, text: '<strong>Set your email signature</strong> in Settings → Email Signature. Your name and contact info will auto-fill every AI email — AI is already connected via the Intransit platform, no API key needed.' },
       { n: 3, text: '<strong>Set your email signature</strong> in Settings → Email Signature. Your name and contact info will auto-fill every AI-generated email.' },
       { n: 4, text: '<strong>Verify My Accounts</strong> — your territory should load automatically. If you see the wrong accounts, contact John immediately.' },
       { n: 5, text: '<strong>Bookmark the URL</strong> for quick daily access. The app works on desktop and mobile — add it to your home screen for one-tap access on the road.' },
     ]) +
 
     acadTipCards([
-      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Complete your API key and signature setup before you make your first call. These unlock the most powerful features.' },
-      { color: 'var(--gold)', label: 'Security', text: 'Your session auto-expires after 30 minutes of inactivity. Just click Sign In again to resume — your data is never lost.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Set your email signature before your first AI email — the AI is already connected via the Intransit platform, no API key needed.' },
+      { color: 'var(--gold)', label: 'Security', text: 'Your session auto-expires after 60 minutes of inactivity. Just click Sign In again to resume — your data is never lost.' },
       { color: 'var(--green)', label: 'Mobile', text: 'The app is fully functional on mobile. Add it to your iPhone or Android home screen for between-call access.' },
     ]) +
 
@@ -12848,7 +13064,7 @@ const HELP_GUIDES = {
       { icon: '👁', heading: 'Signature preview', text: 'The white WYSIWYG box shows exactly how your signature will look. What you see is what recipients will get. Make edits directly in the box.' },
       { icon: '💾', heading: 'Saving your signature', text: 'Click SAVE SIGNATURE. The signature is saved to the _SIGNATURES tab in the Google Sheet — this means it persists across devices and browser sessions. All your AI-generated emails will automatically include this signature.' },
       { icon: '👥', heading: 'Admin: editing rep signatures', text: 'Admins can select any rep from the REP dropdown at the top and edit their signature. Reps can only edit their own. This is useful for setting up signatures for new reps or making company-wide updates.' },
-      { icon: '🔑', heading: 'Anthropic API key', text: 'The API key is required for all AI features: outreach emails, collections emails, AI research, Next Best Action, and the AI Advisor in Attack Plan. Enter your key from console.anthropic.com. The key is stored ONLY in your browser\'s localStorage — it is never sent to any server or saved to Google Sheets. You\'ll need to re-enter it if you clear your browser or use a different device.' },
+      { icon: '🔑', heading: 'AI features', text: 'All AI features are powered by the Intransit Cloudflare Worker — no API key needed. Outreach emails, collections emails, AI research, Next Best Action, and the AI Advisor all work automatically through the secure Worker proxy.' },
       { icon: '💵', heading: 'API cost', text: 'Each AI generation costs approximately $0.01–$0.05 depending on length. A typical month of heavy use (50–100 emails) costs $1–$5 total. You can monitor usage and load credits at console.anthropic.com.' },
       { icon: '🌐', heading: 'Language toggle', text: 'The ES/EN button at the top of the sidebar switches the app between English and Spanish. All navigation labels, filter buttons, tab names, and UI text switch languages. Notes and account data remain as entered. Your language preference is saved in the browser.' },
     ]

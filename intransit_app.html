@@ -2792,14 +2792,20 @@ async function forceLogoutUser(repId, targetEmail) {
 
 async function checkForceLogout() {
   if (!state.accessToken || !state.loginTime) return;
+  // Admin who issued the command should not be logged out by it
+  if (isAdmin() && !state.viewAsRep) return;
   try {
-    const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_LOG'!A1:D20");
+    // Read from Main sheet (_LOG lives there, not History)
+    const raw = await sheetsGetFrom(CONFIG.SPREADSHEET_ID, "'_LOG'!A1:D5000");
     if (!raw || raw.length < 2) return;
     const myEmail = state.user?.email || '';
     const myRepId = state.repId || '';
-    for (const row of raw.slice(1).reverse()) {
+    // Scan from newest (bottom) — stop once we hit rows older than login
+    const dataRows = raw.slice(1);
+    for (let i = dataRows.length - 1; i >= 0; i--) {
+      const row = dataRows[i];
       const ts = row[0] ? new Date(row[0]).getTime() : 0;
-      if (ts <= state.loginTime) break; // older than login — stop
+      if (ts <= state.loginTime) break; // reached entries from before this login
       const evt = (row[2] || '').toUpperCase();
       const detail = row[3] || '';
       if (evt === 'FORCE_LOGOUT_ALL') {

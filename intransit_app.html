@@ -12161,7 +12161,9 @@ async function init() {
   // Restore sidebar width immediately before anything else renders
   const savedSidebar = localStorage.getItem('it_split_sidebar');
   if (savedSidebar) {
-    document.documentElement.style.setProperty('--sidebar-w', savedSidebar + 'px');
+    const clampedW = Math.max(220, parseInt(savedSidebar));
+    document.documentElement.style.setProperty('--sidebar-w', clampedW + 'px');
+    localStorage.setItem('it_split_sidebar', clampedW);
   }
 
   setLoading(true, currentLang==='es' ? 'VERIFICANDO SESIÓN...' : 'CHECKING SESSION...', 10);
@@ -12197,7 +12199,7 @@ function startSplitH(e, leftId, rightId, splitterId) {
     const startW = sidebar.getBoundingClientRect().width;
 
     function onMove(ev) {
-      const newW = Math.max(160, Math.min(startW + (ev.clientX - startX), 380));
+      const newW = Math.max(220, Math.min(startW + (ev.clientX - startX), 380));
       document.documentElement.style.setProperty('--sidebar-w', newW + 'px');
       try { localStorage.setItem('it_split_sidebar', newW); } catch(e){}
     }
@@ -12308,7 +12310,8 @@ function restoreSplitPositions() {
   // Restore sidebar width via CSS variable (survives re-renders)
   const savedSidebar = localStorage.getItem('it_split_sidebar');
   if (savedSidebar) {
-    document.documentElement.style.setProperty('--sidebar-w', savedSidebar + 'px');
+    const clampedW = Math.max(220, parseInt(savedSidebar));
+    document.documentElement.style.setProperty('--sidebar-w', clampedW + 'px');
   }
   // Restore panel splitter positions
   const panels = [

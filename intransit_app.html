@@ -3227,8 +3227,8 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
             throw new Error('Session expired — please sign in again');
           }
         }
-        handleSignout();
-        throw new Error('Session expired');
+        // Another refresh already in progress — don't sign out, let that refresh finish
+        throw new Error('Token refresh in progress, retry shortly');
       }
       if (res.status === 429) {
         // Rate limited — back off and retry up to 3 times
@@ -4499,8 +4499,7 @@ async function confirmLocation() {
   }
   // Log access entry
   logAccessEntry(locationClaim).catch(e => console.warn('Access log failed:', e));
-  // Now complete the real login flow
-  loadAllAccounts();
+  // Now complete the real login flow (loadAllAccounts runs inside completeLogin)
   showNDA_or_complete();
 }
 
@@ -4583,7 +4582,6 @@ async function checkIPAndProceed() {
   if (state.userIP !== 'unknown' && _knownIPs.includes(state.userIP)) {
     // Known IP — skip location modal, auto-proceed
     logAccessEntry('Known Location').catch(() => {});
-    loadAllAccounts();
     showNDA_or_complete();
   } else {
     // New or unknown IP — show location modal with optional security note

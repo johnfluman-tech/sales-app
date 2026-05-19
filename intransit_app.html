@@ -9640,10 +9640,16 @@ function promptFollowUp(accName, contactName) {
   overlay.id = 'followup-prompt';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10020;display:flex;align-items:center;justify-content:center';
 
+  // Build inner HTML without putting JS function calls inside attribute strings
+  // (avoids quote-escaping SyntaxErrors)
+  const label = accName
+    ? escHtml(accName) + (contactName ? ' — ' + escHtml(contactName) : '')
+    : 'Add a follow-up reminder';
+
   overlay.innerHTML =
     '<div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid var(--blue-b);border-radius:var(--r2);width:380px;max-width:94vw;padding:20px 22px;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:modalIn 0.15s ease">' +
       '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.2em;color:var(--blue-b);margin-bottom:6px">📅 SCHEDULE A FOLLOW-UP?</div>' +
-      '<div style="font-size:14px;font-weight:600;margin-bottom:14px;color:var(--text)">' + (accName ? escHtml(accName) + (contactName ? ' — ' + escHtml(contactName) : '') : 'Add a follow-up reminder') + '</div>' +
+      '<div style="font-size:14px;font-weight:600;margin-bottom:14px;color:var(--text)">' + label + '</div>' +
       '<div style="display:flex;gap:10px;margin-bottom:14px">' +
         '<div style="flex:1">' +
           '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:4px">DATE</div>' +
@@ -9654,11 +9660,23 @@ function promptFollowUp(accName, contactName) {
           '<input type="time" id="fup-time" value="09:00" style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:12px;border-radius:var(--r)">' +
         '</div>' +
       '</div>' +
-      '<div style="display:flex;gap:8px">' +
-        '<button onclick="document.getElementById('followup-prompt').remove()" style="flex:0 0 auto;padding:9px 16px;background:transparent;border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;letter-spacing:0.06em;cursor:pointer;border-radius:var(--r)">NO THANKS</button>' +
-        '<button onclick="confirmFollowUp(' + JSON.stringify(accName) + ',' + JSON.stringify(contactName||'') + ')" style="flex:1;padding:9px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.06em;cursor:pointer;border-radius:var(--r)">📅 SCHEDULE FOLLOW-UP</button>' +
-      '</div>' +
+      '<div id="fup-btns" style="display:flex;gap:8px"></div>' +
     '</div>';
+
+  // Create buttons as DOM nodes so onclick closures avoid all quote issues
+  const btnNo = document.createElement('button');
+  btnNo.style.cssText = 'flex:0 0 auto;padding:9px 16px;background:transparent;border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;letter-spacing:0.06em;cursor:pointer;border-radius:var(--r)';
+  btnNo.textContent = 'NO THANKS';
+  btnNo.onclick = () => overlay.remove();
+
+  const btnYes = document.createElement('button');
+  btnYes.style.cssText = 'flex:1;padding:9px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.06em;cursor:pointer;border-radius:var(--r)';
+  btnYes.textContent = '📅 SCHEDULE FOLLOW-UP';
+  btnYes.onclick = () => confirmFollowUp(accName, contactName);
+
+  const btnRow = overlay.querySelector('#fup-btns');
+  btnRow.appendChild(btnNo);
+  btnRow.appendChild(btnYes);
 
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   document.body.appendChild(overlay);

@@ -6381,6 +6381,10 @@ async function refreshDashboard() {
   const from = document.getElementById('dash-from')?.value || '';
   const to   = document.getElementById('dash-to')?.value   || '';
   const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
+  const _teamRepsFilter = (repFilter === '__TEAM_ALL__') ?
+    (function(){ const mc = getManagerConfig(); return mc ? mc.teamReps : null; })() : null;
+  const repMatchesFn = !repFilter ? function(){ return true; } :
+    (_teamRepsFilter ? function(r){ return _teamRepsFilter.includes(r); } : function(r){ return r === repFilter; });
 
   if (state.accounts.length === 0) {
     const kpiEl = document.getElementById('dash-kpis');
@@ -6404,7 +6408,7 @@ async function refreshDashboard() {
   const reqRepCol  = reqHdrs.find(h => /SELLER|SALES_REP/i.test(h)) || 'SELLER';
 
   // ── Filter data by date range and rep ────────────────────────
-  const accs     = repFilter ? state.accounts.filter(a => a.rep === repFilter) : state.accounts;
+  const accs     = repFilter ? state.accounts.filter(a => repMatchesFn(a.rep)) : state.accounts;
   const inactive = accs.filter(a => isInactive(a));
   const declining = accs.filter(a => {
     const s = (a.status || '').toLowerCase();
@@ -6421,7 +6425,7 @@ async function refreshDashboard() {
     if (!d || d < from || d > to) return false;
     if (repFilter) {
       const rep = (r[gpSalesRepCol] || r.SALES_REP || '').trim();
-      return rep === repFilter;
+      return repMatchesFn(rep);
     }
     return true;
   });
@@ -6458,7 +6462,7 @@ async function refreshDashboard() {
   const ordersFiltered = (state.ordersHistoryCache.length > 0 ? state.ordersHistoryCache : state.ordersCache).filter(r => {
     const d = (r.ORDER_DATE || r.order_date || '').slice(0,10);
     if (!d || d < from || d > to) return false;
-    if (repFilter) return (r.SALES_REP || '').trim() === repFilter;
+    if (repFilter) return repMatchesFn((r.SALES_REP || '').trim());
     return true;
   });
   const booked     = ordersFiltered.reduce((s, r) => s + parseMoney(r.EXTENDED_PRICE || r.ORDER_TOTAL || 0), 0);
@@ -6477,7 +6481,7 @@ async function refreshDashboard() {
     const raw = r[reqDateCol] || r.DATE || r.DATE_ENTERED || '';
     const d = normDate(raw);
     if (!d || d < from || d > to) return false;
-    if (repFilter) return (r[reqRepCol] || r.SALES_REP || r.SELLER || '').trim() === repFilter;
+    if (repFilter) return repMatchesFn((r[reqRepCol] || r.SALES_REP || r.SELLER || '').trim());
     return true;
   });
 
@@ -11233,6 +11237,12 @@ async function renderSuggestionsBoard() {
   let rows = [];
   try { rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SUGGESTIONS'!A1:Z500") || []; }
   catch(e) { el.innerHTML = '<div style="padding:40px;color:var(--red)">Error: ' + escHtml(e.message) + '</div>'; return; }
+  if (rows.length > 0) {
+    const _r0 = rows[0].map(function(c){ return (c||'').toLowerCase(); });
+    if (!['date','rep','description','status','category'].some(function(k){ return _r0.includes(k); })) {
+      rows.unshift(['date','rep','page','category','description','status','admin_response']);
+    }
+  }
   if (rows.length < 2) {
     el.innerHTML = '<div style="padding:60px;text-align:center;color:var(--text-3)"><div style="font-size:40px;margin-bottom:16px">&#128161;</div><div>No suggestions yet</div></div>';
     return;
@@ -11308,8 +11318,8 @@ async function renderSuggestionsBoard() {
 async function suggUpdateStatus(rowIdx, newStatus) {
   try {
     const h = (await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SUGGESTIONS'!A1:Z1"))[0].map(x => (x||'').toLowerCase());
-    const col = h.indexOf('status');
-    if (col < 0) { showToast('No STATUS column in _SUGGESTIONS', 'error'); return; }
+    let col = h.indexOf('status');
+    if (col < 0) col = 5;
     await sheetsUpdate("'_SUGGESTIONS'!" + String.fromCharCode(65+col) + rowIdx, [[newStatus]], CONFIG.HISTORY_SPREADSHEET_ID);
     showToast('Status updated', 'success');
     renderSuggestionsBoard();
@@ -11321,8 +11331,8 @@ async function suggSaveReply(rowIdx) {
   if (!input) return;
   try {
     const h = (await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SUGGESTIONS'!A1:Z1"))[0].map(x => (x||'').toLowerCase());
-    const col = h.indexOf('admin_response');
-    if (col < 0) { showToast('No ADMIN_RESPONSE column in _SUGGESTIONS', 'error'); return; }
+    let col = h.indexOf('admin_response');
+    if (col < 0) col = 6;
     await sheetsUpdate("'_SUGGESTIONS'!" + String.fromCharCode(65+col) + rowIdx, [[input.value.trim()]], CONFIG.HISTORY_SPREADSHEET_ID);
     showToast('Reply saved', 'success');
     renderSuggestionsBoard();

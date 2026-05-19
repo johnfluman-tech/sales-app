@@ -193,3 +193,16 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - CKaren (manager): dropdown shows MX team reps, sees own + team accounts
 - Regular rep (Anolan, etc.): no dropdown, sees own notes only
 - Suggestions Board: admin/FJohn only — hidden and redirected for everyone else
+
+### 2026-05-19 (session 3)
+**Features added:**
+- Academy: added full lesson content for all 23 previously-empty "coming soon" lessons across 5 tracks:
+  - Track 3 (My Accounts): t3-1 (Account Detail Tabs), t3-3 (Setting Follow-Up Dates), t3-5 (Requesting Account Removal)
+  - Track 4 (Attack Plan): t4-1 (Zone Strategy), t4-2 (Building Your First Plan), t4-3 (Using AI Advisor), t4-4 (Rotating Accounts), t4-5 (Territory Transfers)
+  - Track 5 (Collections): t5-1 (AR Dashboard), t5-2 (Risk Badges), t5-3 (Gentle Reminder Email), t5-4 (Escalating to Firm/Final), t5-5 (Requesting Credit Hold)
+  - Track 6 (AI Email Mastery): t6-1 (How Email Generator Works), t6-2 (Customizing Tone), t6-3 (Using Part Number History), t6-4 (Email Signature Setup), t6-5 (Grammar Check)
+  - Track 8 (Sales Playbooks): t8-1 (Re-Engagement Playbook), t8-2 (Declining Account Rescue), t8-3 (High-Value Lost Account), t8-4 (Collections Escalation Playbook), t8-5 (New Account Onboarding)
+- All lessons use existing helper functions (acadSection, acadTipCards, acadSteps, acadQuiz, acadKeyTakeaway, acadCompleteBtn, acadSequenceStep, acadDayStep, acadOutcomeRow, acadSignalRow, acadNoteTemplate)
+- All content is aligned with actual app features (Collections badge system, Attack Plan zones, AI email generator, Settings signature, etc.)
+
+**Academy content coverage:** All 37 lessons now have real content — `acadDefaultLesson` fallback no longer reached for any defined lesson.

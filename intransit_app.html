@@ -11201,6 +11201,785 @@ function academyGetLessonContent(lessonId, progress) {
   );
 },
 
+
+// ══ TRACK 3 — My Accounts (missing lessons) ══════════════════
+
+'t3-1': function() {
+  return acadLessonWrap('Account Detail Tabs', 't3-1', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:16px">Click any account to open the detail panel on the right. Four tabs give you a different angle on each customer.</p>' +
+
+    '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">' +
+      '<div style="background:var(--s2);border-left:3px solid var(--blue-b);border-radius:var(--r2);padding:14px">' +
+        '<div style="font-weight:600;font-size:13px;margin-bottom:4px;color:var(--blue-b)">Overview tab</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Status badge, days inactive, lifetime revenue, your rep note, follow-up date, and status dropdown. This is your working tab — you\'ll use it on every call.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border-left:3px solid var(--gold);border-radius:var(--r2);padding:14px">' +
+        '<div style="font-weight:600;font-size:13px;margin-bottom:4px;color:var(--gold)">Revenue tab</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Bar chart of monthly revenue with prior-year comparison. Spot at a glance whether they\'re buying more or less — and which months are strongest.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border-left:3px solid var(--green);border-radius:var(--r2);padding:14px">' +
+        '<div style="font-weight:600;font-size:13px;margin-bottom:4px;color:var(--green)">Contacts tab</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">All known contacts — name, title, email, and phone. Click an email address to open a pre-addressed AI email draft instantly.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border-left:3px solid var(--text-3);border-radius:var(--r2);padding:14px">' +
+        '<div style="font-weight:600;font-size:13px;margin-bottom:4px">History tab</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Recent invoices, open orders, and RFQ activity. Reference specific part numbers before a call to show you know their business, not just their name.</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Open Revenue before every call — knowing if they\'re up or down vs. last year gives you the perfect conversation opener.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Check Contacts before calling to find the right person. AP contacts (for collections) and purchasing contacts are listed separately.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Reps who review account history before calling have 37% longer conversations and are 2x more likely to uncover an upsell.' },
+    ]) +
+
+    acadKeyTakeaway(
+      'The History tab is your secret weapon — referencing a specific part number or order from 6 months ago shows the customer you know their business, not just their name.',
+      'Click any account in My Accounts to explore the detail tabs →',
+      'accounts'
+    ) +
+    acadCompleteBtn('t3-1')
+  );
+},
+
+'t3-3': function() {
+  return acadLessonWrap('Setting Follow-Up Dates', 't3-3', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:16px">A follow-up date is a commitment you make to yourself. Set it on every account where you\'re waiting for something — a callback, a decision, a check clearing.</p>' +
+
+    acadSteps([
+      { n: 1, text: 'Open any account and go to the <strong>Overview tab</strong>.' },
+      { n: 2, text: 'Click the <strong>Follow-Up Date</strong> field and pick a date from the calendar.' },
+      { n: 3, text: 'Optionally update the note to describe why you\'re following up. Then click <strong>SAVE &amp; LOCK</strong>.' },
+      { n: 4, text: 'On that date, the account appears at the top of <strong>Daily Mission</strong> with a FOLLOW-UP badge.' },
+    ]) +
+
+    '<div style="background:rgba(212,175,55,0.1);border:1px solid var(--gold);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:9px;color:var(--gold);margin-bottom:8px">TIMING GUIDE</div>' +
+      '<div style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">' +
+        '<div><strong>Left voicemail:</strong> +2 days, different time of day</div>' +
+        '<div><strong>No answer:</strong> +2 days</div>' +
+        '<div><strong>"Call me next week":</strong> Exact day they said</div>' +
+        '<div><strong>Sent email, no reply:</strong> +2 days</div>' +
+        '<div><strong>Active check-in:</strong> +30 days</div>' +
+        '<div><strong>Dormant re-engagement:</strong> +14 days</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Never leave an account without a next step. Even "no answer" gets a follow-up date. Accounts with no date fall through the cracks.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Set follow-ups while still in the call — the context is fresh. Doing it after the fact leads to vague notes and forgotten reasons.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: '80% of deals require 5+ touchpoints. Reps who schedule the next follow-up immediately average 3x more total attempts.' },
+    ]) +
+
+    acadQuiz('t3-3', 0, 'You just left a voicemail. When should you set the follow-up date for?', [
+      'Same day — call back immediately',
+      '2 days from now, preferably at a different time of day',
+      '2 weeks — give them space',
+      'No follow-up needed — they\'ll call back if interested',
+    ], 1, 'Two days is the sweet spot for voicemail follow-ups. Short enough to stay top of mind, long enough for them to listen and respond. A different time of day increases your chances of reaching them.') +
+
+    acadCompleteBtn('t3-3')
+  );
+},
+
+'t3-5': function() {
+  return acadLessonWrap('Requesting Account Removal', 't3-5', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:16px">Sometimes an account in your territory shouldn\'t be there — a competitor\'s house account, a closed business, or a geographic mismatch. Here\'s how to handle it correctly.</p>' +
+
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:10px">VALID REASONS TO REQUEST REMOVAL</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+        acadOutcomeRow('Wrong territory', 'var(--text-3)', 'Account is geographically outside your region') +
+        acadOutcomeRow('Already transferred', 'var(--text-3)', 'Account moved to another rep but still showing in your list') +
+        acadOutcomeRow('Out of business', 'var(--red)', 'Company is closed, bankrupt, or no longer purchasing') +
+        acadOutcomeRow('Competitor house account', 'var(--text-3)', 'Buying exclusively from a competitor with no path to win') +
+        acadOutcomeRow('Duplicate entry', 'var(--text-3)', 'Same account appears under two different names or numbers') +
+      '</div>' +
+    '</div>' +
+
+    acadSection('How to request removal', 'Contact john.fluman@intransittech.com with the account name, account number if known, and the reason. Add a note to the account so there\'s a record of the request while you wait for processing.') +
+    acadSection('What to do in the meantime', 'Set REP_STATUS to "Dead" in the Overview tab. This removes the account from your Daily Mission AI picks immediately — no need to wait for admin processing.') +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Always leave a note before requesting removal. "Dead — competitor house account, no path to win" gives context that survives the handoff.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Before requesting removal, check the Revenue tab. A dormant account with $80K+ lifetime is worth one re-engagement attempt before writing it off.' },
+      { color: 'var(--text-3)', label: 'Process', text: 'Admin processes removal requests weekly. REP_STATUS = Dead is effective immediately in the app.' },
+    ]) +
+
+    acadCompleteBtn('t3-5')
+  );
+},
+
+
+// ══ TRACK 4 — Attack Plan ══════════════════════════════════
+
+'t4-1': function() {
+  return acadLessonWrap('Zone Strategy', 't4-1', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Attack Plan organizes your territory into 4 zones. Where you place an account determines how much time it gets from you each month.</p>' +
+
+    '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">' +
+      '<div style="background:rgba(212,175,55,0.15);border:1px solid var(--gold);border-radius:var(--r2);padding:14px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+          '<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);background:rgba(212,175,55,0.2);padding:3px 8px;border-radius:3px">SOLID CORE</span>' +
+          '<span style="font-family:var(--mono);font-size:10px;color:var(--text-3)">10–15 accounts · Weekly contact</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Your top revenue accounts. Protect and grow these relationships. Any slip here directly hits your numbers.</div>' +
+      '</div>' +
+      '<div style="background:rgba(59,130,246,0.1);border:1px solid var(--blue-b);border-radius:var(--r2);padding:14px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+          '<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--blue-b);background:rgba(59,130,246,0.2);padding:3px 8px;border-radius:3px">CLOSE RANGE</span>' +
+          '<span style="font-family:var(--mono);font-size:10px;color:var(--text-3)">25–35 accounts · Monthly contact</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Growing accounts and strong at-risk accounts. These are your future Solid Core — invest now before a competitor does.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+          '<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text-2);background:var(--s1);padding:3px 8px;border-radius:3px">OUTER RING</span>' +
+          '<span style="font-family:var(--mono);font-size:10px;color:var(--text-3)">50–75 accounts · Quarterly contact</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Smaller stable accounts and dormant re-engagement targets. If an Outer Ring account spikes — promote to Close Range immediately.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+          '<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text-3);background:var(--s1);padding:3px 8px;border-radius:3px">POOL</span>' +
+          '<span style="font-family:var(--mono);font-size:10px;color:var(--text-3)">Unlimited · No commitment</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Unclassified, long-dormant, and dead accounts. Review monthly — there are sleeping giants in here.</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Sort My Accounts by VALUE descending. Your top 10–15 revenue accounts are your Solid Core. If they\'re not there already, fix that first.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Keep Solid Core tight. 15 accounts maximum. Putting 30 in there dilutes your attention and defeats the purpose of the zone.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Reps with a defined zone strategy have 40% higher top-account retention vs. those who treat all accounts equally.' },
+    ]) +
+
+    acadKeyTakeaway(
+      '15 Solid Core accounts × weekly calls = 60 targeted calls per month for your most valuable relationships. That\'s the math behind how top performers protect their top accounts.',
+      'Open Attack Plan and start placing your top revenue accounts in Solid Core →',
+      'attackPlan'
+    ) +
+    acadCompleteBtn('t4-1')
+  );
+},
+
+'t4-2': function() {
+  return acadLessonWrap('Building Your First Plan', 't4-2', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Your first Attack Plan forces you to look at your entire territory and make deliberate decisions about where to invest your time. A rough plan built today is worth more than a perfect plan built next month.</p>' +
+
+    acadSteps([
+      { n: 1, text: 'Open <strong>Attack Plan</strong> in the sidebar. You\'ll see 4 columns: Solid Core, Close Range, Outer Ring, Pool.' },
+      { n: 2, text: 'Open <strong>My Accounts</strong> sorted by VALUE (highest first). Your top 10–15 accounts are Solid Core candidates.' },
+      { n: 3, text: 'In Attack Plan, drag cards from Pool into Solid Core starting with your top revenue accounts.' },
+      { n: 4, text: 'Continue placing — accounts at $10K–$100K/year go to Close Range, smaller accounts to Outer Ring.' },
+      { n: 5, text: 'Click <strong>AI Advisor</strong> to analyze your plan and get suggestions for which accounts need to move.' },
+      { n: 6, text: 'Review monthly. Accounts that grow get promoted. Accounts that go silent get demoted.' },
+    ]) +
+
+    '<div style="background:rgba(16,185,129,0.1);border:1px solid var(--green);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--green);margin-bottom:6px">FIRST PLAN CHECKLIST</div>' +
+      '<div style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">' +
+        '<div>☐ Top 10–15 revenue accounts are in Solid Core</div>' +
+        '<div>☐ Growing / at-risk accounts are in Close Range</div>' +
+        '<div>☐ Every account has a zone (Pool is fine as a staging area)</div>' +
+        '<div>☐ AI Advisor has been run and suggestions reviewed</div>' +
+        '<div>☐ Plan saves automatically after each card move</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Don\'t overthink the first draft. Get everything placed, run AI Advisor, then refine. Any plan beats no plan.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'The Pool is infinite — don\'t leave large dormant accounts there unreviewed. Set a monthly calendar reminder to scan Pool for hidden opportunities.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Reps who maintain an active Attack Plan close 27% more re-engagement opportunities in their existing account base.' },
+    ]) +
+
+    acadKeyTakeaway(
+      'Your Attack Plan is a living document, not a one-time exercise. The most successful reps update it monthly as accounts move, grow, or go quiet.',
+      'Open Attack Plan now and place your first 5 accounts →',
+      'attackPlan'
+    ) +
+    acadCompleteBtn('t4-2')
+  );
+},
+
+'t4-3': function() {
+  return acadLessonWrap('Using AI Advisor', 't4-3', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">AI Advisor analyzes every account in your plan against your revenue data and flags mismatches — accounts in the wrong zone, hidden Pool opportunities, and urgent moves you might be missing.</p>' +
+
+    acadSection('How to access', 'In Attack Plan, click the <strong>AI Advisor</strong> button. A panel opens where you type requests or use the quick-prompt buttons. Account names in the response are clickable — they open the account detail directly.') +
+
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:10px">BEST PROMPTS TO USE</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+        acadOutcomeRow('Analyze my plan', 'var(--blue-b)', 'Full overview — zone mismatches, underserved high-value accounts, Pool opportunities') +
+        acadOutcomeRow('Who should be in Solid Core?', 'var(--gold)', 'AI ranks by revenue × recency to suggest your true top 15') +
+        acadOutcomeRow('Which accounts am I neglecting?', 'var(--red)', 'Finds Close Range and Solid Core accounts with no recent contact') +
+        acadOutcomeRow('What Pool accounts should I revive?', 'var(--green)', 'Scans Pool for high-lifetime accounts with re-engagement potential') +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Run "Analyze my plan" at the start of every month before making calls. 5 minutes of AI review can redirect your whole month\'s priorities.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Ask follow-up questions. "Tell me more about [account name]" pulls their full revenue and contact history from the data.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Reps who use AI-assisted territory planning identify 3x more re-engagement opportunities in their existing account base.' },
+    ]) +
+
+    acadKeyTakeaway(
+      'AI Advisor doesn\'t just analyze — it gives you specific accounts to move, call, or revive. The value is in acting on its suggestions, not just reading them.',
+      'Open Attack Plan and run an AI Advisor analysis →',
+      'attackPlan'
+    ) +
+    acadCompleteBtn('t4-3')
+  );
+},
+
+'t4-4': function() {
+  return acadLessonWrap('Rotating Accounts', 't4-4', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Your zones aren\'t permanent. Accounts should move based on behavior — promoting when they grow, demoting when they go quiet. A static plan is a plan that stops working.</p>' +
+
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:10px">WHEN TO PROMOTE</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+        acadSignalRow('⬆', 'Revenue increased 20%+ this year', 'PROMOTE', 'Move up one zone — they\'re becoming more important', 'var(--green)') +
+        acadSignalRow('⬆', 'RFQ activity spiked (3+ in last 30 days)', 'PROMOTE', 'Move to Close Range minimum — they\'re actively shopping now', 'var(--green)') +
+        acadSignalRow('⬆', 'New buyer contact identified', 'PROMOTE', 'New buying influence = new opportunity, increase contact frequency', 'var(--green)') +
+      '</div>' +
+    '</div>' +
+
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:10px">WHEN TO DEMOTE</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+        acadSignalRow('⬇', 'No response after 3 contacts in Close Range', 'DEMOTE', 'Move to Outer Ring and set a 90-day snooze', 'var(--red)') +
+        acadSignalRow('⬇', 'Revenue dropped 50%+ with no recovery signal', 'DEMOTE', 'Move to Outer Ring, start re-engagement sequence', 'var(--orange)') +
+        acadSignalRow('⬇', 'Confirmed buying from competitor only', 'DEMOTE', 'Move to Pool, mark REP_STATUS = Dead', 'var(--text-3)') +
+      '</div>' +
+    '</div>' +
+
+    acadSection('How to move a card', 'In Attack Plan, drag any card to a new column. The plan auto-saves immediately after every move — no Save button needed.') +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Review Solid Core during the last week of every month. If an account didn\'t get a call this month, ask yourself why — and consider demoting it.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Don\'t demote based on one bad month. Look for 2–3 consecutive months of decline before moving out of a high zone.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Accounts promoted within 30 days of a buying signal convert at 4x the rate of accounts where the signal was missed.' },
+    ]) +
+
+    acadCompleteBtn('t4-4')
+  );
+},
+
+'t4-5': function() {
+  return acadLessonWrap('Territory Transfers', 't4-5', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Territory transfers happen when accounts are reassigned between reps. Whether receiving or giving up accounts, there\'s a process that protects the customer relationship.</p>' +
+
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:10px">WHEN YOU RECEIVE NEW ACCOUNTS</div>' +
+      acadSteps([
+        { n: 1, text: '<strong>Research before calling.</strong> Check the Revenue tab and read any existing Rep Notes from the previous rep.' },
+        { n: 2, text: '<strong>Check the Contacts tab.</strong> Know who the right person is before you reach out.' },
+        { n: 3, text: '<strong>Don\'t open with "Hi, I\'m your new rep."</strong> Lead with something specific from their history instead.' },
+        { n: 4, text: '<strong>Place in Attack Plan from day 1.</strong> Sort by lifetime revenue and assign zones appropriately.' },
+        { n: 5, text: '<strong>Make first contact within 7 days.</strong> First impressions set the tone for the entire relationship.' },
+      ]) +
+    '</div>' +
+
+    acadSection('When you give up accounts', 'Write a thorough Rep Note covering: key contacts, buying patterns, any open issues, and recent interactions. The incoming rep will use this to hit the ground running. A good handoff reflects well on you.') +
+    acadSection('Incorrect assignments', 'If an account shouldn\'t be yours, set REP_STATUS = "Dead" to remove it from Daily Mission picks, then email john.fluman@intransittech.com to request reassignment.') +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Treat inherited accounts like new sales prospects. They don\'t know you yet — earn their loyalty from scratch rather than assuming continuity.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'First call on an inherited account: reference something specific from their history. "I see you were ordering [part] regularly — are you still using those?"' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Accounts with a proper handoff (notes + personal first call within 7 days) have 65% retention vs. 38% for cold transfers.' },
+    ]) +
+
+    acadCompleteBtn('t4-5')
+  );
+},
+
+
+// ══ TRACK 5 — Collections ══════════════════════════════════
+
+'t5-1': function() {
+  return acadLessonWrap('AR Dashboard', 't5-1', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Collections shows your accounts receivable — who owes money, how much, and how overdue. Learning to read this dashboard protects your territory\'s cash flow and your commissions.</p>' +
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">' +
+      '<div style="background:var(--s2);border-left:3px solid var(--red);border-radius:var(--r2);padding:12px">' +
+        '<div style="font-family:var(--mono);font-size:9px;color:var(--red);margin-bottom:5px">BALANCE</div>' +
+        '<div style="font-size:12px;line-height:1.6">Total outstanding AR per account. The authoritative number comes directly from INVCHEA.BALANCE in CCCRM.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border-left:3px solid var(--orange);border-radius:var(--r2);padding:12px">' +
+        '<div style="font-family:var(--mono);font-size:9px;color:var(--orange);margin-bottom:5px">DAYS OVERDUE</div>' +
+        '<div style="font-size:12px;line-height:1.6">Days past payment terms. Net 30 customer with a 45-day-old invoice = 15 days overdue. Over 90 days is a serious delinquency.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border-left:3px solid var(--gold);border-radius:var(--r2);padding:12px">' +
+        '<div style="font-family:var(--mono);font-size:9px;color:var(--gold);margin-bottom:5px">RISK BADGE</div>' +
+        '<div style="font-size:12px;line-height:1.6">LOW / MODERATE / HIGH — based on balance size and days overdue combined. Focus on HIGH RISK accounts every week without fail.</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border-left:3px solid var(--blue-b);border-radius:var(--r2);padding:12px">' +
+        '<div style="font-family:var(--mono);font-size:9px;color:var(--blue-b);margin-bottom:5px">AP CONTACT</div>' +
+        '<div style="font-size:12px;line-height:1.6">The accounts payable contact who actually processes payments — not your sales contact. Always call AP for collections.</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadSection('How to prioritize', 'Sort by Risk Badge first (HIGH → MODERATE → LOW), then by balance within each tier. Address HIGH RISK accounts every week. MODERATE monthly. LOW quarterly.') +
+
+    acadTipCards([
+      { color: 'var(--red)', label: 'Priority Rule', text: 'Any account with a balance over $5,000 and 60+ days overdue gets a call this week — no exceptions. Large balances get harder to collect the longer they age.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Always call AP directly, not your sales contact. Your sales contact can\'t cut a check. AP can.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Check Collections every Monday morning. Balances change when invoices go out on Friday — your numbers are freshest at week start.' },
+    ]) +
+
+    acadKeyTakeaway(
+      'Collections isn\'t about being the bad guy — it\'s about protecting cash flow and your own commissions. Unpaid invoices affect both.',
+      'Open Collections now and sort by Risk Badge →',
+      'collections'
+    ) +
+    acadCompleteBtn('t5-1')
+  );
+},
+
+'t5-2': function() {
+  return acadLessonWrap('Risk Badges', 't5-2', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Every account in Collections has a risk badge that tells you how urgently to act. It combines balance size and days overdue into a single priority signal.</p>' +
+
+    '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">' +
+      '<div style="background:rgba(239,68,68,0.1);border:1px solid var(--red);border-radius:var(--r2);padding:14px">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+          '<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:#fff;background:var(--red);padding:3px 10px;border-radius:3px">HIGH RISK</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Balance over $5,000 AND 60+ days overdue — OR any balance 90+ days overdue. Call this week. High probability of escalation to credit hold if not addressed.</div>' +
+      '</div>' +
+      '<div style="background:rgba(249,115,22,0.1);border:1px solid var(--orange);border-radius:var(--r2);padding:14px">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+          '<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:#fff;background:var(--orange);padding:3px 10px;border-radius:3px">MODERATE RISK</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Balance $1,000–$5,000 and 30–60 days overdue. Contact this month — a gentle reminder usually resolves these before they escalate.</div>' +
+      '</div>' +
+      '<div style="background:rgba(16,185,129,0.1);border:1px solid var(--green);border-radius:var(--r2);padding:14px">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+          '<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:#fff;background:var(--green);padding:3px 10px;border-radius:3px">LOW RISK</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-2);line-height:1.6">Balance under $1,000 or recently invoiced (under 30 days). Monitor only — no action needed unless the balance grows or ages past 30 days.</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadSection('What changes the badge', 'Risk badges update automatically when new invoice data loads. A MODERATE account that doesn\'t pay this month becomes HIGH RISK next month. This is why weekly reviews matter.') +
+
+    acadTipCards([
+      { color: 'var(--red)', label: 'Rule', text: 'HIGH RISK = call this week, no exceptions. Every week you wait increases the probability the account enters the credit hold queue.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Don\'t judge by badge alone — check the Notes tab for context. A HIGH RISK account with a logged promise-to-pay is less urgent than one with zero contact history.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'After every collections call, log a note with the date, what was said, and any payment promise made.' },
+    ]) +
+
+    acadQuiz('t5-2', 0, 'An account has a $3,200 balance and is 45 days overdue. What badge and action applies?', [
+      'LOW RISK — wait and see',
+      'MODERATE RISK — contact this month with a gentle reminder',
+      'HIGH RISK — call this week',
+      'Collections doesn\'t track balances under $5,000',
+    ], 1, '$3,200 balance and 45 days overdue is MODERATE RISK. A gentle reminder call or AI-generated email this month will usually resolve it before it escalates to HIGH.') +
+
+    acadCompleteBtn('t5-2')
+  );
+},
+
+'t5-3': function() {
+  return acadLessonWrap('Gentle Reminder Email', 't5-3', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">The gentle reminder is your first collections touchpoint. The goal is to prompt payment without damaging the relationship. Most overdue accounts aren\'t ignoring you — they just need a nudge.</p>' +
+
+    acadSection('When to use', 'Accounts 30–60 days overdue with no prior contact. This is the friendly check-in stage — assume good faith and ask politely.') +
+
+    acadSteps([
+      { n: 1, text: 'Open the account in <strong>Collections</strong> and expand the detail panel.' },
+      { n: 2, text: 'Click <strong>Generate Email</strong> to have AI draft a collections email based on the balance, days overdue, and your notes.' },
+      { n: 3, text: 'Review the tone — gentle reminder should be polite and non-threatening. Adjust if needed.' },
+      { n: 4, text: 'Copy the email and send to the <strong>AP contact</strong> (not the sales contact).' },
+      { n: 5, text: 'Log a note in Collections Notes: date sent, AP contact name, balance amount mentioned.' },
+    ]) +
+
+    '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-bottom:8px">GENTLE REMINDER CHECKLIST</div>' +
+      '<div style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">' +
+        '<div>✓ Opens with a friendly greeting by name</div>' +
+        '<div>✓ References the specific invoice or balance amount</div>' +
+        '<div>✓ Asks if there\'s anything you can help with</div>' +
+        '<div>✓ Includes your direct contact info</div>' +
+        '<div>✗ Does NOT threaten credit hold</div>' +
+        '<div>✗ Does NOT CC their manager on first contact</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Send gentle reminders Tuesday–Thursday 9–11am. These get the highest open and response rates in B2B collections.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'If you have a personal relationship with the sales contact, a quick call often works better than email for the first touchpoint.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: '73% of overdue invoices under $5,000 resolve after the first gentle reminder that references a specific invoice number.' },
+    ]) +
+
+    acadCompleteBtn('t5-3')
+  );
+},
+
+'t5-4': function() {
+  return acadLessonWrap('Escalating to Firm / Final', 't5-4', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">When gentle reminders don\'t work, you escalate. Firm and Final emails have a stronger tone and introduce consequences — but remain professional at all times.</p>' +
+
+    '<div style="margin-bottom:20px">' +
+      acadSequenceStep('Step 1 · Day 0', 'Gentle Reminder', 'Friendly first contact. Assume good faith. Reference the specific invoice. Ask if they need anything.', 'var(--green)') +
+      acadSequenceStep('Step 2 · Day 7', 'Firm Follow-Up', 'No response to gentle reminder. Direct tone. State exact past-due amount and payment terms. Request a commitment date.', 'var(--orange)') +
+      acadSequenceStep('Step 3 · Day 14', 'Final Notice', 'Still no response or payment. State account will be reviewed for credit hold. Give a firm deadline. CC credit department.', 'var(--red)') +
+    '</div>' +
+
+    acadSection('Firm tone guidelines', 'Firm emails are professional but direct. Reference the exact invoice amount, state days overdue, and ask for a specific payment commitment date. No threats — just clarity and urgency.') +
+    acadSection('Final notice guidelines', 'Final notices state consequences clearly: credit hold review, possible service interruption. Always log when you send a Final notice — this documentation is required before requesting a hold.') +
+
+    acadTipCards([
+      { color: 'var(--red)', label: 'Rule', text: 'Never skip steps. Jumping to Final before a Firm notice damages the relationship and looks unprofessional. Follow the sequence.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Log every escalation step in Collections Notes with the date, tone used, and any response received.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'A phone call between Firm and Final is often more effective than email alone. People respond to voices differently than text.' },
+    ]) +
+
+    acadQuiz('t5-4', 0, 'You sent a gentle reminder 8 days ago with no response. What should you do next?', [
+      'Wait another 2 weeks before contacting again',
+      'Immediately threaten credit hold',
+      'Send a Firm follow-up referencing the invoice and requesting a payment commitment date',
+      'Write off the invoice and stop contacting',
+    ], 2, 'After 7 days with no response to a gentle reminder, the next step is a Firm follow-up. Direct, specific amounts, request a payment date. Don\'t escalate to Final yet — give the Firm 7 days to work first.') +
+
+    acadCompleteBtn('t5-4')
+  );
+},
+
+'t5-5': function() {
+  return acadLessonWrap('Requesting a Credit Hold', 't5-5', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">A credit hold stops new orders from processing until the outstanding balance is resolved. It\'s the last resort in the collections sequence — use it after completing every prior step.</p>' +
+
+    acadSection('When to request a hold', 'Consider a credit hold when: the account has not responded after the full Gentle → Firm → Final sequence, the balance is over $2,500 and more than 90 days overdue, or the account has broken a payment promise twice.') +
+    acadSection('How to request', 'Email john.fluman@intransittech.com with: account name, total balance, days overdue, and a summary of your escalation attempts (dates, methods, responses). Your Collections Notes log is the documentation needed.') +
+
+    '<div style="background:rgba(239,68,68,0.1);border:1px solid var(--red);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:6px">BEFORE REQUESTING — CHECKLIST</div>' +
+      '<div style="font-size:12px;color:var(--text-2);line-height:1.7">' +
+        '<div style="margin-bottom:5px">✓ Completed Gentle → Firm → Final sequence</div>' +
+        '<div style="margin-bottom:5px">✓ At least 21 days since first reminder</div>' +
+        '<div style="margin-bottom:5px">✓ All attempts documented in Collections Notes</div>' +
+        '<div style="margin-bottom:5px">✓ Spoken with manager about the account</div>' +
+        '<div>✓ Considered the impact on the sales relationship</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--red)', label: 'Rule', text: 'Never request a hold without completing the full sequence. Skipping steps makes collection harder and damages the relationship needlessly.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Call the customer directly on the same day you request the hold. A heads-up call often triggers faster payment than the hold itself.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Your Collections Notes log is your evidence. If challenged, it proves every reasonable step was taken before escalating.' },
+    ]) +
+
+    acadCompleteBtn('t5-5')
+  );
+},
+
+
+// ══ TRACK 6 — AI Email Mastery ══════════════════════════════════
+
+'t6-1': function() {
+  return acadLessonWrap('How the Email Generator Works', 't6-1', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">The AI email generator turns your account data into a ready-to-send email in seconds. It knows the account\'s revenue history, recent activity, and your past notes — so every email is personalized to that specific customer.</p>' +
+
+    acadSection('Where to find it', 'Access the generator from three places: (1) The <strong>✦ ASK AI</strong> button in the top-right toolbar — works on any view. (2) The <strong>Contacts tab</strong> in any account detail panel — pre-addresses the email. (3) The <strong>Collections detail panel</strong> — generates collections-specific emails automatically.') +
+
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:10px">WHAT THE AI KNOWS WHEN IT WRITES YOUR EMAIL</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+        acadOutcomeRow('Account history', 'var(--blue-b)', 'Revenue by year and month, last order date, product categories') +
+        acadOutcomeRow('Contact info', 'var(--green)', 'Name, title, and email of the person being contacted') +
+        acadOutcomeRow('Your rep notes', 'var(--gold)', 'Any notes you\'ve saved — previous conversations, preferences, context') +
+        acadOutcomeRow('Recent RFQs', 'var(--orange)', 'Quote requests with specific part numbers to reference') +
+        acadOutcomeRow('Your signature', 'var(--text-3)', 'Your name and contact info from Settings → Email Signature') +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'The more context you give in your prompt, the better the email. "Write a re-engagement email for a $45K account that went quiet 8 months ago" beats "write a follow-up."' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Always review and personalize AI emails before sending. Add one specific detail the AI might not know — something from your last conversation.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Personalized sales emails have a 26% higher open rate and 14% higher reply rate than generic templates.' },
+    ]) +
+
+    acadKeyTakeaway(
+      'The AI is a draft engine, not a send button. It gives you a strong starting point in 10 seconds. Your job is to add the human touch that turns a good email into a great one.',
+      'Try the Ask AI button on any account in My Accounts →',
+      'accounts'
+    ) +
+    acadCompleteBtn('t6-1')
+  );
+},
+
+'t6-2': function() {
+  return acadLessonWrap('Customizing Tone', 't6-2', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">The same message lands very differently depending on tone. Direct your AI prompt clearly — the generator adjusts word choice, urgency level, and call-to-action accordingly.</p>' +
+
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:10px">TONE TEMPLATES</div>' +
+      acadNoteTemplate('Warm / Re-connecting', 'Write a friendly re-engagement email for [account]. They were a $30K/year customer and haven\'t ordered in 8 months. Warm, no pressure, reference their product history.', 'var(--blue-b)') +
+      acadNoteTemplate('Professional / Check-in', 'Write a professional follow-up for [account] after our call today. Reference their Q3 orders and ask about Q4 needs.', 'var(--gold)') +
+      acadNoteTemplate('Firm / Collections', 'Write a firm collections email for [account]. Balance $4,200, 55 days overdue. Direct but professional. Request a specific payment date.', 'var(--orange)') +
+      acadNoteTemplate('Final Notice', 'Write a final payment notice for [account]. $6,800 overdue 87 days. Mention credit hold review. Clear deadline. Professional tone.', 'var(--red)') +
+    '</div>' +
+
+    acadSection('How tone changes the output', 'The AI adjusts opening lines, word choice, urgency language, and closing CTAs. A warm email opens with a personal reference and closes with an open question. A firm email states numbers, deadlines, and asks for a commitment.') +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Even a collections email should open by acknowledging the business relationship before mentioning the balance. Lead with the relationship, not the transaction.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Match tone to account history. A $100K lifetime account with a one-time late payment gets "professional." A chronic late payer gets "firm" faster.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Personalized tone increases reply rates by 22% vs. template emails. Customers can tell the difference between a mass send and a personal note.' },
+    ]) +
+
+    acadCompleteBtn('t6-2')
+  );
+},
+
+'t6-3': function() {
+  return acadLessonWrap('Using Part Number History', 't6-3', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">The strongest sales emails reference specific things the customer actually bought. When you mention a part number they ordered 6 months ago, it proves you know their business — not just their name.</p>' +
+
+    acadSection('Where to find order history', 'Click any account → <strong>History tab</strong> → Recent Invoices. You\'ll see part numbers, quantities, and order dates. Note 2–3 relevant items before writing your prompt.') +
+
+    acadSteps([
+      { n: 1, text: 'Open the account and go to the <strong>History tab</strong> to see recent invoices and part numbers.' },
+      { n: 2, text: 'Note the top 2–3 part categories or numbers they order regularly.' },
+      { n: 3, text: 'Click <strong>✦ ASK AI</strong> or generate email from the Contacts tab.' },
+      { n: 4, text: 'Include the specific context in your prompt: "They regularly order [part category]. Reference their last order of [part#] from [date]."' },
+      { n: 5, text: 'The AI incorporates those specifics into the email body, making it read like a personal note rather than a template.' },
+    ]) +
+
+    '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-bottom:8px">EXAMPLE PROMPT</div>' +
+      '<div style="font-size:12px;line-height:1.8;font-style:italic;color:var(--text-2)">"Write a re-engagement email for Acme Corp. They last ordered 500 units of connector part CAT-220 in November. They were buying monthly then went quiet. Friendly tone — reference the CAT-220 and ask about new projects coming up."</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'If the account submitted an RFQ recently, that part number is your strongest reference — they\'re actively shopping for it right now.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Don\'t guess at part numbers. Read the actual History tab first. One wrong part number destroys the personalization effect entirely.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Emails referencing a specific past order get 3.4x more responses than generic "just checking in" messages in electronics distribution.' },
+    ]) +
+
+    acadCompleteBtn('t6-3')
+  );
+},
+
+'t6-4': function() {
+  return acadLessonWrap('Email Signature Setup', 't6-4', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Your email signature auto-fills every AI-generated email. Set it up once and every email looks professional and complete without any extra work.</p>' +
+
+    acadSteps([
+      { n: 1, text: 'Click <strong>Settings</strong> in the sidebar.' },
+      { n: 2, text: 'Find the <strong>Email Signature</strong> section and enter your signature.' },
+      { n: 3, text: 'Keep it short — Name, Title, Phone, Email. 4–5 lines maximum.' },
+      { n: 4, text: 'Click <strong>Save Signature</strong>. It will be injected into every AI email from this point on.' },
+      { n: 5, text: 'Test it: generate any email and verify your signature appears at the bottom.' },
+    ]) +
+
+    '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-bottom:8px">RECOMMENDED FORMAT</div>' +
+      '<div style="font-family:monospace;font-size:12px;color:var(--text-2);line-height:2">' +
+        '[Your Full Name]<br>' +
+        'Sales Representative | Intransit Technologies<br>' +
+        'Direct: (555) 555-5555<br>' +
+        '[your.email@intransittech.com]' +
+      '</div>' +
+    '</div>' +
+
+    acadSection('Why it matters', 'Every email you send represents Intransit Technologies. A professional signature signals you\'re a real person, makes it easy for customers to call you back, and ensures nothing important is missing from any AI draft.') +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Include your direct phone number. Many customers will call rather than reply to email — make that as easy as possible.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Keep it short. 4 lines maximum. Long signatures with logos and disclaimers often get flagged as marketing email and hurt deliverability.' },
+      { color: 'var(--green)', label: 'Security', text: 'Your signature is stored in your browser\'s localStorage — it\'s private to you and never synced to any external system.' },
+    ]) +
+
+    acadKeyTakeaway(
+      'Setting your email signature once saves 10–15 seconds per email and ensures every AI draft looks polished and complete from day one.',
+      'Open Settings and set your signature now →',
+      'settings'
+    ) +
+    acadCompleteBtn('t6-4')
+  );
+},
+
+'t6-5': function() {
+  return acadLessonWrap('Grammar Check & Final Review', 't6-5', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">AI writes fast — but it\'s not perfect. A 30-second review before sending can catch wrong names, awkward phrasing, and tone issues that would undermine your professionalism.</p>' +
+
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:10px">PRE-SEND REVIEW CHECKLIST</div>' +
+      '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 18px">' +
+        '<div style="display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--text-2)">' +
+          '<div><strong>Name:</strong> Is the customer\'s name spelled correctly? AI occasionally guesses wrong on uncommon names.</div>' +
+          '<div><strong>Company:</strong> Does the company name exactly match CCCRM? Abbreviations look careless.</div>' +
+          '<div><strong>Numbers:</strong> Are invoice amounts, part numbers, and dates accurate? Verify against History tab.</div>' +
+          '<div><strong>Tone:</strong> Read it aloud — does it sound like you? Adjust any phrases that feel robotic.</div>' +
+          '<div><strong>CTA:</strong> Is there a clear next step? "Reply to this email" or "call me at [number]."</div>' +
+          '<div><strong>Signature:</strong> Is your signature present and correct?</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadSection('How to edit AI output', 'The AI email is shown in a text panel — click into it and edit directly before copying to your email client. For small fixes, edit in place. For a major tone mismatch, adjust the prompt and regenerate.') +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Add one personal sentence the AI couldn\'t write — something from your last conversation. This is the human touch that turns a good email into a great one.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Read the subject line last. AI-generated subjects are often too long. A punchy, specific subject line is the most important part of the email.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Subject lines under 50 characters have 12% higher open rates. Including the company name in the subject raises open rates 26%.' },
+    ]) +
+
+    acadCompleteBtn('t6-5')
+  );
+},
+
+
+// ══ TRACK 8 — Sales Playbooks ══════════════════════════════════
+
+'t8-1': function() {
+  return acadLessonWrap('Re-Engagement Playbook', 't8-1', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Dormant accounts that receive a personalized re-engagement call convert at 22% — far higher than cold prospects at 3%. They already know you. Your job is just to remind them you\'re there.</p>' +
+
+    '<div style="margin-bottom:24px">' +
+      acadSequenceStep('Day 1 · Research', 'Review their history first', 'Check Revenue and History tabs. Know their last purchase amount, product category, and how long they\'ve been inactive. Never call without this context.', 'var(--blue-b)') +
+      acadSequenceStep('Day 1 · Call', 'Personalized call #1', '"I noticed you were ordering [part type] regularly and things slowed down — did anything change?" Never lead with price. Lead with a question about their business.', 'var(--gold)') +
+      acadSequenceStep('Day 3 · Email', 'Follow-up if no answer', 'AI email referencing their buying history + a concrete offer relevant to what they order. Subject: mention the part category — not "just following up."', 'var(--blue-b)') +
+      acadSequenceStep('Day 7 · Call', 'Second attempt', 'Different time of day. Leave a voicemail. Reference the email. One more specific reason to reconnect.', 'var(--orange)') +
+      acadSequenceStep('Day 14 · Decision', 'Evaluate and route', 'No response after 3 touches: move to Outer Ring, set 90-day snooze. Responded: move to Close Range and start normal cadence.', 'var(--text-3)') +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: '"We just got new stock of [part they used to buy]" beats "just checking in" every time. Give them a business reason to call back, not a social one.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Log every step in Rep Notes. If re-engagement succeeds, you\'ll want that context for the next call. If it fails, the log shows due diligence.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Dormant accounts re-engaged with a personalized 3-touch sequence convert at 22%. Generic mass emails: under 2%.' },
+    ]) +
+
+    acadKeyTakeaway(
+      'Dormant accounts aren\'t lost — they\'re distracted. A specific, personalized touchpoint at the right moment reminds them why they bought from you.',
+      'Filter My Accounts by "Dormant" or "AT RISK" to find re-engagement targets →',
+      'accounts'
+    ) +
+    acadCompleteBtn('t8-1')
+  );
+},
+
+'t8-2': function() {
+  return acadLessonWrap('Declining Account Rescue', 't8-2', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">A declining account is still buying from you — just less. The window to reverse the decline is smaller than most reps realize. Act within 30 days of the first decline signal.</p>' +
+
+    acadSection('Spotting the decline', 'Watch for: SEVERE DECLINE or MOD DECLINE status badges, a Revenue tab where bars are consistently shrinking year-over-year, or an account that was ordering monthly now ordering quarterly.') +
+
+    '<div style="margin-bottom:20px">' +
+      acadSequenceStep('Week 1', 'Investigate first', 'Before calling, review full revenue history and recent RFQs. Is the decline across all products or one category? Is it seasonal? Know the numbers before you ask.', 'var(--blue-b)') +
+      acadSequenceStep('Week 1', 'Call with a question, not a pitch', '"I noticed your orders have slowed this year — is there anything we can do better?" is more powerful than leading with pricing. Find the real reason first.', 'var(--gold)') +
+      acadSequenceStep('Week 2', 'Address the root cause', 'Common causes: competitor offer, service issue, budget cut, product change. Each needs a different response. A competitor threat needs pricing. A service issue needs resolution.', 'var(--orange)') +
+      acadSequenceStep('Week 3–4', 'Provide a reason to return', 'Based on what you learned: a new product, price adjustment, faster lead time, or service reaffirmation. Tie it to a specific need they mentioned.', 'var(--green)') +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--red)', label: 'Urgency Rule', text: 'SEVERE DECLINE means they\'re on pace to drop 50%+ vs. last year. Every week without a call is revenue walking out the door.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Never assume a declining account is "just slow." Always call to find out why. The ones you don\'t call are the ones that disappear completely.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: '68% of declining accounts that receive a proactive rescue call stabilize within 60 days. Without a call, 72% continue declining for 6+ months.' },
+    ]) +
+
+    acadKeyTakeaway(
+      'Declining accounts are recoverable — but only if you act early. By the time an account shows SEVERE DECLINE, you have maybe 60 days before they find a new supplier.',
+      'Filter My Accounts by "Severe Decline" or "Mod Decline" status →',
+      'accounts'
+    ) +
+    acadCompleteBtn('t8-2')
+  );
+},
+
+'t8-3': function() {
+  return acadLessonWrap('High-Value Lost Account Recovery', 't8-3', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">HI VALUE LOST accounts spent $100K+ historically and are now inactive. Recovering even one represents your highest-impact quarter. But the approach must be different from standard re-engagement.</p>' +
+
+    acadSection('Why HI VALUE LOST is different', 'A $200K account that stopped buying isn\'t just dormant — something happened. They may have moved to a competitor who made an aggressive offer, had a service failure that was never resolved, or lost their internal champion. Find out which before calling.') +
+
+    acadSteps([
+      { n: 1, text: '<strong>Deep research first.</strong> Check the History tab for the last 3 orders. When did they stop? Gradual or sudden? A sudden stop often signals a specific incident.' },
+      { n: 2, text: '<strong>Check for prior issues.</strong> Were there late deliveries, pricing complaints? Ask your manager if there\'s any context from when the account was active.' },
+      { n: 3, text: '<strong>Reach the decision maker.</strong> For a $100K+ account, you may need VP of Operations or the owner — not just purchasing. Research who that is first.' },
+      { n: 4, text: '<strong>Lead with acknowledgment.</strong> "We haven\'t had the pleasure of your business in a while — I\'d love to understand what we could do better" is more disarming than a pitch.' },
+      { n: 5, text: '<strong>Bring something new.</strong> A new product line, service improvement, or pricing guarantee. Don\'t ask for the business back without bringing something to the table.' },
+    ]) +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Use AI Advisor in Attack Plan to analyze your HI VALUE LOST accounts — it can cross-reference their history and suggest the strongest re-entry angle.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'If your first call reaches a gatekeeper, leave a voicemail referencing a specific product from their history. Generic voicemails get deleted.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Large account recovery (>$50K annual) converts at 31% once you get a meeting — the highest win rate in the entire sales funnel.' },
+    ]) +
+
+    acadKeyTakeaway(
+      'One recovered $200K account outperforms a hundred cold prospect calls. Invest real time in research before the first contact — it\'s your highest-leverage activity.',
+      'Filter My Accounts by "HI VALUE LOST" status →',
+      'accounts'
+    ) +
+    acadCompleteBtn('t8-3')
+  );
+},
+
+'t8-4': function() {
+  return acadLessonWrap('Collections Escalation Playbook', 't8-4', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">A step-by-step sequence for recovering past-due invoices while preserving the customer relationship wherever possible.</p>' +
+
+    '<div style="margin-bottom:24px">' +
+      acadSequenceStep('Day 1–30 overdue · Phase 1', 'Gentle Reminder', 'Assume a simple oversight. AI-generated gentle email to the AP contact referencing the specific invoice number and amount.', 'var(--green)') +
+      acadSequenceStep('Day 31–60 overdue · Phase 2', 'Firm Follow-Up', 'No payment after gentle reminder. Direct email + follow-up call. Request a specific payment commitment date. Professional but clear.', 'var(--orange)') +
+      acadSequenceStep('Day 61–90 overdue · Phase 3', 'Final Notice', 'Broken commitment or no response to Firm. Send Final Notice and call same day. Mention credit review. CC credit department.', 'var(--red)') +
+      acadSequenceStep('Day 90+ · Phase 4', 'Credit Hold Request', 'Compile escalation summary with all contact dates and amounts from Collections Notes. Submit to credit department for hold review.', 'var(--red)') +
+    '</div>' +
+
+    acadSection('Documentation requirements', 'At each phase, log in Collections Notes: the date, method (call/email), who you reached, what was said, and any payment commitment. This log is required before requesting a credit hold.') +
+    acadSection('Protecting the sales relationship', 'Keep every conversation professional. Your collections contacts and sales contacts may be different people — don\'t let a collections issue poison a good buying relationship.') +
+
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Involve your manager before Phase 3. A manager-level call can sometimes unlock payment faster than another rep-level contact.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Offer a payment plan for large balances. A customer who can\'t pay $8,000 at once may pay $2,000 monthly — and you keep the relationship.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'Collections resolved in Phases 1 or 2 (under 60 days) have 89% customer retention. Credit hold (Phase 4) drops retention to 43%.' },
+    ]) +
+
+    acadCompleteBtn('t8-4')
+  );
+},
+
+'t8-5': function() {
+  return acadLessonWrap('New Account Onboarding', 't8-5', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">The first 90 days of a new account relationship determines whether they become a long-term customer or a one-time buyer. Most churn happens in the first quarter.</p>' +
+
+    '<div style="margin-bottom:24px">' +
+      acadDayStep('01', 'Week 1', 'Welcome call within 3 days', 'Call to confirm the first order is on track. Ask: Who approves purchases? What do you mainly buy? What\'s your biggest supply headache right now?', 'var(--blue-b)') +
+      acadDayStep('02', 'Week 2', 'Follow up on delivery', 'Confirm the first order arrived in good condition. This call sets expectations apart from every other supplier: "We follow up on every order."', 'var(--green)') +
+      acadDayStep('03', 'Month 1', 'Needs discovery call', 'Based on their Week 1 answers, prepare 2–3 product suggestions relevant to their industry. This shows you listened and know electronics distribution.', 'var(--gold)') +
+      acadDayStep('04', 'Month 2', 'Check-in and expand', 'Review their first month of orders. Are they buying across multiple categories? Ask about needs in categories they haven\'t tried yet.', 'var(--blue-b)') +
+      acadDayStep('05', 'Month 3', '90-day review', 'Brief review of what worked and what can improve. Now place them in Attack Plan: Solid Core if large, Close Range if growing, Outer Ring if small.', 'var(--gold)') +
+    '</div>' +
+
+    '<div style="background:rgba(16,185,129,0.1);border:1px solid var(--green);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--green);margin-bottom:6px">3 QUESTIONS TO ASK EVERY NEW ACCOUNT</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-2)">' +
+        '<div><strong>1.</strong> "Who else besides you is involved in purchasing decisions?"</div>' +
+        '<div><strong>2.</strong> "What products do you buy most frequently that we should stock for you?"</div>' +
+        '<div><strong>3.</strong> "What\'s been the biggest headache with your current suppliers?"</div>' +
+      '</div>' +
+    '</div>' +
+
+    acadTipCards([
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Add new accounts to Solid Core for their first 90 days — even small ones. Extra attention during onboarding is how small accounts become big ones.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Write a rep note after every onboarding call. Future reps will benefit from this foundation if the account ever transfers.' },
+      { color: 'var(--green)', label: 'Industry Stat', text: 'New accounts with structured 90-day onboarding have 3x the 2-year retention of accounts that receive no follow-up after the first order.' },
+    ]) +
+
+    acadKeyTakeaway(
+      'The rep who calls after the first delivery, follows up in month 2, and does a 90-day review builds a relationship that lasts years — not just one order.',
+      'Add new accounts to Solid Core in Attack Plan for their first 90 days →',
+      'attackPlan'
+    ) +
+    acadCompleteBtn('t8-5')
+  );
+},
+
   };
 
   // For lessons without explicit content, show a placeholder

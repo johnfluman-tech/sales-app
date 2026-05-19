@@ -6742,6 +6742,9 @@ function switchViewAs(rep) {
     if (removalsNav) removalsNav.style.display = showAdminNav ? 'block' : 'none';
     const accessNavEl = document.getElementById('nav-access');
     if (accessNavEl) accessNavEl.style.display = showAdminNav ? 'block' : 'none';
+    // Suggestions board: only show in own admin view — hidden in all view-as modes
+    const _suggNav = document.getElementById('nav-suggestions-board');
+    if (_suggNav) _suggNav.style.display = !state.viewAsRep ? 'block' : 'none';
   } else if (isManager()) {
     const _mc = getManagerConfig(); const _tn = _mc ? _mc.teamName.toUpperCase() : 'TEAM';
     label.textContent = (rep === '__TEAM_ALL__' || rep === 'MX_TEAM') ? 'MANAGER — ' + _tn : rep ? 'VIEWING: ' + rep : 'MANAGER — MY ACCOUNTS';
@@ -11238,6 +11241,7 @@ async function loadSuggestionsBoardBadge() {
 }
 
 async function renderSuggestionsBoard() {
+  if (!isAdmin()) { switchView('accounts'); return; }
   const el = document.getElementById('main-content');
   el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font-family:var(--mono);color:var(--text-3)">Loading...</div></div>';
   let rows = [];

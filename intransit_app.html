@@ -13971,7 +13971,13 @@ function crmSearchInput() {
       '<div style="color:var(--text-3);font-size:11px;text-align:center;padding:30px">Type at least 3 characters...</div>';
     return;
   }
-  const dir = state.customerDirectory || [];
+  // Use _CUSTOMER_DIRECTORY if available; fall back to state.accounts already in memory
+  let dir = state.customerDirectory || [];
+  if (!dir.length && state.accounts && state.accounts.length) {
+    dir = state.accounts.map(function(a) {
+      return { id: a.customerId || '', name: a.name, rep: a.rep || '', city: '', state: '', lastActivity: a.lastSale || '' };
+    });
+  }
   const results = dir.filter(function(c){ return (c.name||'').toLowerCase().includes(q); }).slice(0, 20);
   if (!results.length) {
     resultsEl.innerHTML =

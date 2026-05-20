@@ -695,6 +695,8 @@ body::before {
 .iq-btn.gold{border-color:rgba(245,158,11,0.4);color:var(--gold)}
 .iq-btn.blue{border-color:rgba(59,130,246,0.4);color:var(--blue-bright)}
 .iq-btn.red{border-color:rgba(239,68,68,0.4);color:var(--red)}
+.crm-ai-btn{display:block;width:100%;text-align:left;padding:6px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text-2);font-size:11px;cursor:pointer;border-radius:var(--r);transition:all 0.12s}
+.crm-ai-btn:hover{border-color:var(--blue-b);color:var(--blue-bright);background:rgba(59,130,246,0.06)}
 .iq-ai-row{padding:10px 12px;border-bottom:1px solid var(--border);transition:background 0.1s;cursor:pointer}
 .iq-ai-row:hover{background:var(--s2)}
 .iq-ai-score{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 6px;border-radius:10px;flex-shrink:0}
@@ -1315,17 +1317,49 @@ body::before {
 
 <!-- CRM SEARCH MODAL -->
 <div id="crm-search-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9998;align-items:center;justify-content:center" onclick="if(event.target===this)closeCRMSearch()">
-  <div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid var(--blue-b);border-radius:var(--r2);width:600px;max-width:96vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.7)">
-    <div style="padding:20px 24px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)">
-      <div style="font-size:16px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;flex:1">🔍 FIND ACCOUNT IN CRM</div>
+  <div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid var(--blue-b);border-radius:var(--r2);width:780px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.7)">
+    <div style="padding:16px 20px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)">
+      <div style="font-size:15px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;flex:1">🔍 FIND ACCOUNT IN CRM</div>
       <button onclick="closeCRMSearch()" style="background:none;border:none;color:var(--text-3);font-size:18px;cursor:pointer;line-height:1">×</button>
     </div>
-    <div style="padding:16px 24px">
-      <input id="crm-search-input" type="text" placeholder="Search CRM by company name..." oninput="crmSearchInput()"
-        style="width:100%;padding:10px 14px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px;box-sizing:border-box;outline:none">
-    </div>
-    <div id="crm-search-results" style="flex:1;overflow-y:auto;padding:0 24px 16px;min-height:120px;max-height:420px">
-      <div style="color:var(--text-3);font-size:11px;text-align:center;padding:30px">Type at least 3 characters to search...</div>
+    <!-- Two-column layout: search left, AI assistant right -->
+    <div style="display:flex;flex:1;min-height:0;overflow:hidden">
+      <!-- Left: search -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--border)">
+        <div style="padding:14px 16px 8px">
+          <input id="crm-search-input" type="text" placeholder="Search CRM by company name..." oninput="crmSearchInput()"
+            style="width:100%;padding:9px 13px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px;box-sizing:border-box;outline:none">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-top:6px;letter-spacing:0.06em">
+            Shows accounts NOT assigned to a current rep — cold prospects only
+          </div>
+        </div>
+        <div id="crm-search-results" style="flex:1;overflow-y:auto;padding:0 16px 14px;min-height:100px">
+          <div style="color:var(--text-3);font-size:11px;text-align:center;padding:30px">Type at least 3 characters to search...</div>
+        </div>
+      </div>
+      <!-- Right: AI prospecting assistant -->
+      <div style="width:280px;flex-shrink:0;display:flex;flex-direction:column;background:var(--s0)">
+        <div style="padding:12px 14px 8px;border-bottom:1px solid var(--border)">
+          <div style="font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--blue-bright)">✦ PROSPECTING ASSISTANT</div>
+          <div style="font-size:10px;color:var(--text-3);margin-top:2px">Ask AI to suggest targets or strategies</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;padding:10px 12px;border-bottom:1px solid var(--border)">
+          <button onclick="crmAiPrompt('suggest cold targets in aerospace manufacturing')" class="crm-ai-btn">🎯 Aerospace targets</button>
+          <button onclick="crmAiPrompt('suggest cold targets in defense and military')" class="crm-ai-btn">🎯 Defense targets</button>
+          <button onclick="crmAiPrompt('what should I look for in a good prospect account')" class="crm-ai-btn">✦ What makes a good prospect?</button>
+          <button onclick="crmAiPrompt('best cold call opening lines for parts distributors')" class="crm-ai-btn">📞 Cold call opener tips</button>
+          <button onclick="crmAiPrompt('how to qualify a new aerospace account quickly')" class="crm-ai-btn">✓ Qualifying a new account</button>
+          <button onclick="crmAiPrompt('what questions to ask on a first call with a new buyer')" class="crm-ai-btn">❓ First call questions</button>
+        </div>
+        <div style="padding:8px 12px;display:flex;gap:6px">
+          <input id="crm-ai-input" type="text" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')crmAiPrompt(document.getElementById('crm-ai-input').value)"
+            style="flex:1;padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:11px;outline:none;min-width:0">
+          <button onclick="crmAiPrompt(document.getElementById('crm-ai-input').value)" style="padding:7px 12px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">Ask</button>
+        </div>
+        <div id="crm-ai-response" style="flex:1;overflow-y:auto;padding:8px 12px;font-size:11px;line-height:1.6;color:var(--text-2)">
+          <div style="color:var(--text-3);font-size:10px;text-align:center;padding:16px">Click a prompt or type a question above</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -2802,6 +2836,8 @@ let state = {
   _prospectsLoaded: false,
   _selectedProspect: null,
   _prospectTab: 'notes',    // active tab in prospect detail panel
+  tokenRequestInProgress: false, // guard: prevents duplicate OAuth token requests
+  tokenClient: null,             // stored GIS token client instance
 };
 
 // ══════════════════════════════════════════════════════════
@@ -2858,40 +2894,59 @@ function refreshTokenSilent() {
 }
 
 function requestSheetsToken() {
-  // Safety timeout: if OAuth popup is blocked or callback never fires, reset the guard
-  const _oauthTimeout = setTimeout(() => {
+  // Fix 1 — guard against duplicate token requests (prevents OAuth popup loop)
+  if (state.tokenRequestInProgress) {
+    console.log('[TOKEN] Request already in progress — skipping duplicate call');
+    return;
+  }
+  state.tokenRequestInProgress = true;
+  console.log('[TOKEN] requestSheetsToken called for:', state.user?.email);
+  // Safety timeout: if OAuth popup is blocked or callback never fires, reset both guards
+  const _oauthTimeout = setTimeout(function() {
     console.warn('[AUTH] OAuth callback timeout — popup may have been blocked. Allow popups and try again.');
+    state.tokenRequestInProgress = false;
     state.loginInProgress = false;
   }, 30000);
   try {
-    const tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CONFIG.CLIENT_ID,
-      scope: CONFIG.SCOPES,
-      hint: state.user?.email || '',
-      callback: (tokenResponse) => {
-        clearTimeout(_oauthTimeout);
-        if (tokenResponse.error) {
-          state.loginInProgress = false;
-          showToast('Sign-in error: ' + tokenResponse.error, 'error');
-          return;
-        }
-        state.accessToken = tokenResponse.access_token;
-        localStorage.setItem('it_token', state.accessToken);
-        localStorage.setItem('it_token_time', Date.now().toString());
-        completeLogin();
-      },
-    });
-    tokenClient.requestAccessToken({ prompt: '' });
+    // Fix 3 — reuse existing tokenClient if already initialized
+    if (!state.tokenClient) {
+      state.tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CONFIG.CLIENT_ID,
+        scope: CONFIG.SCOPES,
+        hint: state.user?.email || '',
+        callback: function(tokenResponse) {
+          clearTimeout(_oauthTimeout);
+          // Fix 2 — reset guard on token received
+          state.tokenRequestInProgress = false;
+          console.log('[TOKEN] Token received, guard reset');
+          if (tokenResponse.error) {
+            state.loginInProgress = false;
+            showToast('Sign-in error: ' + tokenResponse.error, 'error');
+            return;
+          }
+          state.accessToken = tokenResponse.access_token;
+          localStorage.setItem('it_token', state.accessToken);
+          localStorage.setItem('it_token_time', Date.now().toString());
+          completeLogin();
+        },
+      });
+    }
+    state.tokenClient.requestAccessToken({ prompt: '' });
   } catch(e) {
     clearTimeout(_oauthTimeout);
+    state.tokenRequestInProgress = false;
     state.loginInProgress = false;
     showToast('Sign-in error: ' + (e.error || e.message || JSON.stringify(e)), 'error');
   }
 }
 function completeLogin() {
-  console.log('[AUTH] Login started for:', state.user ? state.user.email : 'unknown', state.repId);
+  // Fix 5 — guard: if already in progress, skip duplicate call
+  console.log('[AUTH] completeLogin called for:', state.user ? state.user.email : 'unknown', '| repId:', state.repId);
   console.log('[NDA] sessionStorage it_nda_accepted:', sessionStorage.getItem('it_nda_accepted'));
-  if (state._loginComplete) return; // prevent double-init
+  if (state._loginComplete) {
+    console.log('[AUTH] Login already complete — skipping duplicate');
+    return;
+  }
   // NDA must be accepted before ANY app content is shown
   if (!sessionStorage.getItem('it_nda_accepted')) {
     showNDA();
@@ -3015,7 +3070,10 @@ function generateSessionId() {
 }
 
 function handleSignout() {
+  // Fix 6 — reset all auth guards on signout
   state.loginInProgress = false;
+  state.tokenRequestInProgress = false;
+  state.tokenClient = null;
   state.user = null;
   state.accessToken = null;
   state._loginComplete = false;
@@ -3364,12 +3422,26 @@ async function loadAllAccounts() {
   setLoading(true, 'LOADING ACCOUNTS...', 20);
   state.accounts = [];
 
-  const tabs = state.isAdmin
-    ? CONFIG.REPS
-    : (state.repId ? [state.repId] : []);
+  // Fix 7 — manager-only users (CMancilla, MPerezfreye) have no personal rep tab;
+  // load their entire team's tabs so they see accounts
+  let tabs;
+  if (state.isAdmin) {
+    tabs = CONFIG.REPS;
+  } else if (state.managerRole) {
+    const _mgrCfg = MANAGER_CONFIG[state.managerRole] || {};
+    const _mgrTeam = _mgrCfg.teamReps || [];
+    // If this manager also has a personal rep tab (CKaren), include it
+    tabs = state.repId && CONFIG.REPS.includes(state.repId)
+      ? [...new Set([state.repId, ..._mgrTeam])]
+      : _mgrTeam;
+    console.log('[MANAGER] Loading tabs for', state.managerRole, ':', tabs);
+  } else {
+    tabs = state.repId ? [state.repId] : [];
+  }
 
   if (tabs.length === 0) {
     setLoading(false);
+    console.warn('[AUTH] No tabs to load — repId:', state.repId, 'managerRole:', state.managerRole);
     return;
   }
 
@@ -3549,7 +3621,9 @@ function switchView(view) {
   toggleMobileNav(true); // always close nav on mobile when switching views
   state.selectedAccount = null;
   const _findBtn = document.getElementById('btn-find-account');
-  if (_findBtn) _findBtn.style.display = (view === 'accounts') ? 'inline-flex' : 'none';
+  // Hide Find Account for manager team views (they see team accounts, not cold prospecting)
+  const _isTeamView = state.viewAsRep === '__TEAM_ALL__' || state.viewAsRep === 'MX_TEAM';
+  if (_findBtn) _findBtn.style.display = (view === 'accounts' && !_isTeamView) ? 'inline-flex' : 'none';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelector(`[data-view="${view}"]`)?.classList.add('active');
 
@@ -13973,12 +14047,22 @@ function crmSearchInput() {
   }
   // Use _CUSTOMER_DIRECTORY if available; fall back to state.accounts already in memory
   let dir = state.customerDirectory || [];
+  const _appReps = new Set(CONFIG.REPS || []);
   if (!dir.length && state.accounts && state.accounts.length) {
+    // Fallback: search existing accounts (all reps' since admin loads all)
     dir = state.accounts.map(function(a) {
       return { id: a.customerId || '', name: a.name, rep: a.rep || '', city: '', state: '', lastActivity: a.lastSale || '' };
     });
   }
-  const results = dir.filter(function(c){ return (c.name||'').toLowerCase().includes(q); }).slice(0, 20);
+  // Filter out accounts assigned to any rep already in the app — show only cold/unassigned
+  // Exception: if directory is the fallback (no _CUSTOMER_DIRECTORY), allow showing all since
+  // they're the user's own accounts anyway
+  const useRawFallback = state.customerDirectory.length === 0;
+  const filtered = dir.filter(function(c) {
+    if (!useRawFallback && _appReps.has(c.rep)) return false; // hide accounts owned by app reps
+    return (c.name||'').toLowerCase().includes(q);
+  });
+  const results = filtered.slice(0, 20);
   if (!results.length) {
     resultsEl.innerHTML =
       '<div style="color:var(--text-3);font-size:11px;text-align:center;padding:30px">No results for "' + escHtml(q) + '"</div>';
@@ -14003,6 +14087,43 @@ function crmSearchInput() {
       '<div style="flex-shrink:0">' + btnHtml + '</div>' +
     '</div>';
   }).join('');
+}
+
+async function crmAiPrompt(prompt) {
+  if (!prompt || !prompt.trim()) return;
+  const inp = document.getElementById('crm-ai-input');
+  if (inp) inp.value = '';
+  const respEl = document.getElementById('crm-ai-response');
+  if (!respEl) return;
+  respEl.innerHTML = '<div style="color:var(--blue-bright);font-family:var(--mono);font-size:10px">✦ Thinking...</div>';
+
+  // Build context from rep's existing accounts
+  const repAccs = (state.accounts||[]).filter(function(a){ return a.rep === state.repId; });
+  const topIndustries = [];
+  const topParts = [];
+  repAccs.slice(0,10).forEach(function(a) {
+    const invs = ((state.historyCache||{})[a.name]||{}).invoices||[];
+    invs.slice(0,3).forEach(function(inv){ if(inv.part && !topParts.includes(inv.part)) topParts.push(inv.part); });
+  });
+
+  const systemPrompt = 'You are a B2B sales prospecting expert for Intransit Technologies, an aerospace and industrial parts distributor. ' +
+    'Give concise, actionable advice (under 200 words). Use bullet points. ' +
+    'The rep\'s top part numbers: ' + (topParts.slice(0,6).join(', ')||'aerospace and industrial parts') + '. ' +
+    'Current account count: ' + repAccs.length + '. ' +
+    'Industry focus: aerospace, defense, MRO, industrial manufacturing.';
+
+  try {
+    const resp = await callAI({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 350,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const text = resp.content?.[0]?.text || 'No response';
+    respEl.innerHTML = '<div style="white-space:pre-wrap;font-size:11px;line-height:1.6;color:var(--text)">' + escHtml(text) + '</div>';
+  } catch(e) {
+    respEl.innerHTML = '<div style="color:var(--red);font-size:11px">Error: ' + escHtml(e.message) + '</div>';
+  }
 }
 
 async function addToProspects(cid, cname) {

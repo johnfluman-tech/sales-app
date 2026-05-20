@@ -1204,6 +1204,12 @@ body::before {
           <span class="nav-icon">&#127970;</span> Team
         </div>
       </div>
+      <div class="nav-item" id="nav-manager-hub" data-view="managerHub" onclick="switchView('managerHub')"
+           style="display:none;border-left:2px solid var(--gold)">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#128200;</span> Manager Hub
+        </div>
+      </div>
       <div class="nav-item" id="nav-academy" data-view="academy" onclick="switchView('academy')" style="border-left:2px solid var(--gold)">
         <div class="nav-item-inner">
           <span class="nav-icon">🎓</span> Academy
@@ -3032,6 +3038,7 @@ function completeLogin() {
     document.getElementById('view-as-section').style.display = 'block';
     document.getElementById('nav-team-notes').style.display = 'block';
     document.getElementById('nav-team-profile').style.display = 'block';
+    document.getElementById('nav-manager-hub').style.display = 'block';
     const sel = document.getElementById('view-as-select');
     if (sel) {
       const mgrCfg = getManagerConfig();
@@ -3699,6 +3706,7 @@ function switchView(view) {
     notesFeed:   () => renderNotesFeed(),
     teamNotes:   () => renderTeamNotes(),
     teamProfile: () => renderTeamProfile(),
+    managerHub:  () => renderManagerHub(),
     followup:    () => {
       if (state.cacheLoaded && state.accounts && state.accounts.length > 0) {
         // Data already ready — render immediately
@@ -9747,9 +9755,8 @@ async function saveContactNoteFromView(accountName, contactName, safeId) {
     try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT','CONTACT','TYPE','NOTE','DATE','REP']], CONFIG.HISTORY_SPREADSHEET_ID); } catch(_e2) {}
     await sheetsAppend("'_CONTACT_NOTES'!A2", [[accountName, contactName, type, note, dateStr, rep]], CONFIG.HISTORY_SPREADSHEET_ID);
     showToast('Note saved ✓', 'success');
-    if (!state.contactNotesCache) state.contactNotesCache = {};
-    if (!state.contactNotesCache[accountName]) state.contactNotesCache[accountName] = [];
-    state.contactNotesCache[accountName].push({ contact: contactName, type, note, date: dateStr, rep });
+    if (!Array.isArray(state.contactNotesCache)) state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
+    state.contactNotesCache.push([accountName, contactName, type, note, dateStr, rep]);
     // Find the list item and re-select to refresh the panel
     const card = document.querySelector(`.contact-card[data-ctname="${CSS.escape(contactName)}"]`);
     selectContactCard(card || document.querySelector('.contact-card[style*="navy-mid"]'), accountName, contactName);
@@ -10371,6 +10378,8 @@ function apkRender(repAccs, otherAccs, rep) {
           <input id="apk-pool-search" type="text" placeholder="Filter pool..." oninput="apkFilterPool(this.value)" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;padding:4px 8px;outline:none;border-radius:var(--r);width:130px;flex-shrink:0">
           <span style="font-size:11px;color:var(--text-3)">Click zone buttons on a card to assign it · ↑ star to add, ↓ to return to pool</span>
           <div style="margin-left:auto;display:flex;gap:7px;align-items:center">
+            <button onclick="showCRMDiscovery()" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-b);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">&#128269; DISCOVER FROM CRM</button>
+            <button onclick="apkAIPicker()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">&#9732; AI PICK FOR ME</button>
             <button onclick="apkShowMyHidden()" id="apk-hidden-btn" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">MY HIDDEN</button>
             ${(state.isAdmin && !state.viewAsRep) ? `<button onclick="apkShowGlobalRemoved()" style="background:transparent;border:1px solid rgba(220,38,38,0.5);color:var(--red);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">ALL REMOVED</button>` : ''}
             <button onclick="apkConfirmReset()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">RESET</button>
@@ -10381,6 +10390,9 @@ function apkRender(repAccs, otherAccs, rep) {
           <!-- pool cards injected by apkRenderPool -->
         </div>
       </div>
+
+      <!-- CRM Discovery Panel (hidden by default) -->
+      <div id="apk-crm-panel" style="display:none;border-top:2px solid var(--blue-b);background:var(--s1);flex-shrink:0;max-height:340px;flex-direction:column"></div>
 
       <!-- AI Advisor Panel (hidden by default) -->
       <div id="apk-ai-panel" style="display:none;border-top:2px solid var(--gold);background:var(--s1);flex-shrink:0">
@@ -10412,6 +10424,444 @@ function apkRender(repAccs, otherAccs, rep) {
   if (_canTransfer) {
     var _tp = document.getElementById('apk-transfer');
     if (_tp) apkRenderTransferPanel(_tp, otherAccs, rep);
+  }
+}
+
+// ── CRM DISCOVERY & AI PICKER ──────────────────────────────────────────────────
+
+function showCRMDiscovery() {
+  var panel = document.getElementById('apk-crm-panel');
+  if (!panel) return;
+  if (panel.style.display === 'flex') { panel.style.display = 'none'; return; }
+  var rep = window.apkRep || state.repId;
+  if (!rep) { showToast('Select a rep first', 'error'); return; }
+  if (!state.customerDirectory || !state.customerDirectory.length) {
+    panel.style.display = 'flex';
+    panel.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' +
+      'CRM directory not loaded yet.<br><span style="font-size:10px">The directory is populated by sales_report.py on INTRANSIT-RDS02.</span><br>' +
+      '<button onclick="document.getElementById(\'apk-crm-panel\').style.display=\'none\'" style="margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r)">CLOSE</button>' +
+      '</div>';
+    return;
+  }
+  var appNames = new Set(state.accounts.map(function(a){ return (a.name||'').toLowerCase().trim(); }));
+  var crmAccs = (state.customerDirectory || []).filter(function(c) {
+    return (c.USERNAME||'').toLowerCase() === rep.toLowerCase() &&
+      !appNames.has((c.NAME||'').toLowerCase().trim());
+  });
+  panel.style.display = 'flex';
+  if (!crmAccs.length) {
+    panel.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' +
+      'No additional CRM accounts found for ' + escHtml(rep) + '<br><span style="font-size:10px">All CRM accounts are already in the app.</span><br>' +
+      '<button onclick="document.getElementById(\'apk-crm-panel\').style.display=\'none\'" style="margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r)">CLOSE</button>' +
+      '</div>';
+    return;
+  }
+  var rows = crmAccs.slice(0, 100).map(function(c) {
+    var safeName = (c.NAME||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    var custId = c.CUSTOMER_ID || '';
+    return '<tr>' +
+      '<td style="font-size:11px;max-width:200px">' + escHtml(c.NAME||'') + '</td>' +
+      '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml((c.CITY||'') + (c.STATE ? ', '+c.STATE : '')) + '</td>' +
+      '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml(c.LAST_ACTIVITY||'—') + '</td>' +
+      '<td><button onclick="apkAddCRMToPool(\'' + escHtml(custId) + '\',\'' + safeName + '\',\'' + escHtml(rep) + '\',this)" ' +
+      'style="font-size:9px;font-family:var(--mono);padding:2px 8px;background:rgba(59,130,246,0.15);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r)">ADD</button></td>' +
+      '</tr>';
+  }).join('');
+  panel.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+    '<span style="font-family:var(--mono);font-size:9px;font-weight:700;color:var(--blue-b);letter-spacing:0.12em">&#128269; CRM DISCOVERY — ' + crmAccs.length + ' accounts not yet in your plan</span>' +
+    '<button onclick="apkAIRankCRM()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);font-family:var(--mono);font-size:9px;padding:3px 10px;cursor:pointer;border-radius:var(--r)">&#9732; AI RANK</button>' +
+    '<button onclick="document.getElementById(\'apk-crm-panel\').style.display=\'none\'" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:2px 8px;cursor:pointer;border-radius:var(--r)">CLOSE</button>' +
+    '</div>' +
+    '<div style="overflow-y:auto;flex:1">' +
+    '<table class="data-table" style="width:100%"><thead><tr><th>ACCOUNT</th><th>CITY/STATE</th><th>LAST ACTIVITY</th><th></th></tr></thead>' +
+    '<tbody id="apk-crm-rows">' + rows + '</tbody></table></div>';
+}
+
+async function apkAddCRMToPool(customerId, accountName, repId, btnEl) {
+  btnEl.textContent = '...'; btnEl.disabled = true;
+  try {
+    if (!window.apkState) window.apkState = {};
+    window.apkState[accountName] = 'pool';
+    var dateStr = new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+    await sheetsAppend("'_ATTACK_POOL'!A1", [[repId, customerId, accountName, 'CRM', 'Normal', dateStr, '', '', 'Active']], CONFIG.HISTORY_SPREADSHEET_ID);
+    apkRenderPool(state.accounts.filter(function(a){ return a.rep === repId; }));
+    btnEl.textContent = '✓ ADDED'; btnEl.style.borderColor = 'var(--green)'; btnEl.style.color = 'var(--green)';
+    showToast(accountName + ' added to pool ✓', 'success');
+  } catch(e) {
+    btnEl.textContent = 'RETRY'; btnEl.disabled = false;
+    showToast('Could not add account', 'error');
+  }
+}
+
+async function apkAIRankCRM() {
+  var rep = window.apkRep || state.repId;
+  var appNames = new Set(state.accounts.map(function(a){ return (a.name||'').toLowerCase().trim(); }));
+  var crmAccs = (state.customerDirectory||[]).filter(function(c){
+    return (c.USERNAME||'').toLowerCase() === rep.toLowerCase() && !appNames.has((c.NAME||'').toLowerCase().trim());
+  }).slice(0, 50);
+  if (!crmAccs.length) { showToast('No CRM accounts to rank', 'error'); return; }
+  var panel = document.getElementById('apk-crm-panel');
+  var rankBtn = panel ? panel.querySelector('button') : null;
+  if (rankBtn) { rankBtn.textContent = 'Ranking...'; rankBtn.disabled = true; }
+  var accountList = crmAccs.map(function(c){
+    return '- ' + (c.NAME||'') + ' | ' + (c.CITY||'') + ', ' + (c.STATE||'') + ' | Last: ' + (c.LAST_ACTIVITY||'unknown') + ' | Type: ' + (c.CUST_TYPE||'?');
+  }).join('\n');
+  try {
+    var result = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:800,
+      messages:[{role:'user',content:'Rank these CRM accounts by re-engagement opportunity for a B2B sales rep. Return ONLY a JSON array like [{"name":"...","rank":1,"reason":"under 8 words"}] with top 20, best first.\n\n' + accountList}] });
+    var text = result && result.content && result.content[0] ? result.content[0].text : '';
+    var match = text.match(/\[[\s\S]*\]/);
+    if (match) {
+      var ranked = JSON.parse(match[0]);
+      var rankMap = {};
+      ranked.forEach(function(r){ rankMap[(r.name||'').toLowerCase().trim()] = r; });
+      var tbody = document.getElementById('apk-crm-rows');
+      if (tbody) {
+        var sortedAccs = crmAccs.slice().sort(function(a,b){
+          var ra = rankMap[(a.NAME||'').toLowerCase().trim()];
+          var rb = rankMap[(b.NAME||'').toLowerCase().trim()];
+          if (ra && rb) return (ra.rank||99) - (rb.rank||99);
+          if (ra) return -1; if (rb) return 1; return 0;
+        });
+        tbody.innerHTML = sortedAccs.slice(0,20).map(function(c){
+          var safeName = (c.NAME||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+          var info = rankMap[(c.NAME||'').toLowerCase().trim()];
+          return '<tr>' +
+            '<td style="font-size:11px">' + (info ? '<span style="font-family:var(--mono);font-size:9px;color:var(--gold);margin-right:5px">#' + info.rank + '</span>' : '') +
+            escHtml(c.NAME||'') + (info && info.reason ? '<br><span style="font-size:10px;color:var(--text-3)">' + escHtml(info.reason) + '</span>' : '') + '</td>' +
+            '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml((c.CITY||'') + (c.STATE ? ', '+c.STATE : '')) + '</td>' +
+            '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml(c.LAST_ACTIVITY||'—') + '</td>' +
+            '<td><button onclick="apkAddCRMToPool(\'' + escHtml(c.CUSTOMER_ID||'') + '\',\'' + safeName + '\',\'' + escHtml(rep) + '\',this)" ' +
+            'style="font-size:9px;font-family:var(--mono);padding:2px 8px;background:rgba(59,130,246,0.15);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r)">ADD</button></td>' +
+            '</tr>';
+        }).join('');
+      }
+      showToast('AI ranked top accounts ✓', 'success');
+    }
+    if (rankBtn) { rankBtn.textContent = '&#9732; AI RANK'; rankBtn.disabled = false; }
+  } catch(e) {
+    if (rankBtn) { rankBtn.textContent = '&#9732; AI RANK'; rankBtn.disabled = false; }
+    showToast('AI ranking failed', 'error');
+  }
+}
+
+async function apkAIPicker() {
+  var rep = window.apkRep || state.repId;
+  if (!rep) { showToast('Select a rep first', 'error'); return; }
+  var panel = document.getElementById('apk-crm-panel');
+  if (!panel) return;
+  panel.style.display = 'flex';
+  if (!state.customerDirectory || !state.customerDirectory.length) {
+    panel.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">CRM directory not loaded.<br><button onclick="document.getElementById(\'apk-crm-panel\').style.display=\'none\'" style="margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r)">CLOSE</button></div>';
+    return;
+  }
+  var appNames = new Set(state.accounts.map(function(a){ return (a.name||'').toLowerCase().trim(); }));
+  var crmAccs = (state.customerDirectory||[]).filter(function(c){
+    return (c.USERNAME||'').toLowerCase() === rep.toLowerCase() && !appNames.has((c.NAME||'').toLowerCase().trim());
+  }).slice(0, 60);
+  panel.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--gold)">&#9732; AI analyzing ' + crmAccs.length + ' CRM accounts...<br><span style="font-size:10px;color:var(--text-3)">Selecting the best re-engagement targets</span></div>';
+  var accountList = crmAccs.map(function(c){
+    return '- ' + (c.NAME||'') + ' | ' + (c.CITY||'') + ', ' + (c.STATE||'') + ' | Last: ' + (c.LAST_ACTIVITY||'unknown') + ' | Type: ' + (c.CUST_TYPE||'?');
+  }).join('\n');
+  try {
+    var result = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:800,
+      messages:[{role:'user',content:'Pick the top 10 best re-engagement opportunities from these CRM accounts for a B2B supply/tech sales rep. Return ONLY JSON: [{"name":"...","reason":"under 10 words","priority":"Hot/Warm/Cold"}]. Best picks first.\n\n' + accountList}] });
+    var text = result && result.content && result.content[0] ? result.content[0].text : '';
+    var match = text.match(/\[[\s\S]*\]/);
+    if (!match) throw new Error('No JSON returned');
+    var picks = JSON.parse(match[0]);
+    window._apkAIPicks = picks.map(function(p){
+      var acc = crmAccs.find(function(c){ return (c.NAME||'').toLowerCase().trim() === (p.name||'').toLowerCase().trim(); });
+      return Object.assign({}, p, {crmAcc: acc});
+    }).filter(function(p){ return !!p.crmAcc; });
+    var pickRows = window._apkAIPicks.map(function(p, i){
+      var pColor = p.priority === 'Hot' ? 'var(--red)' : p.priority === 'Warm' ? 'var(--gold)' : 'var(--green)';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border)">' +
+        '<input type="checkbox" id="ai-pick-' + i + '" checked style="width:14px;height:14px;cursor:pointer">' +
+        '<div style="flex:1"><div style="font-size:11px;font-weight:500">' + escHtml(p.name||'') + '</div>' +
+        '<div style="font-size:10px;color:var(--text-3)">' + escHtml(p.reason||'') + '</div></div>' +
+        '<span style="font-family:var(--mono);font-size:9px;color:' + pColor + ';font-weight:700">' + escHtml(p.priority||'') + '</span>' +
+        '</div>';
+    }).join('');
+    panel.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+      '<span style="font-family:var(--mono);font-size:9px;font-weight:700;color:var(--gold);letter-spacing:0.12em">&#9732; AI PICKS — ' + window._apkAIPicks.length + ' recommended</span>' +
+      '<span style="font-size:11px;color:var(--text-3)">Check to accept, uncheck to skip</span>' +
+      '<button onclick="apkAcceptAIPicks()" style="margin-left:auto;background:var(--gold);border:none;color:#000;font-family:var(--mono);font-size:9px;padding:5px 16px;cursor:pointer;border-radius:var(--r);font-weight:700">ADD SELECTED TO POOL</button>' +
+      '<button onclick="document.getElementById(\'apk-crm-panel\').style.display=\'none\'" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r)">CLOSE</button>' +
+      '</div>' +
+      '<div style="overflow-y:auto;flex:1">' + pickRows + '</div>';
+  } catch(e) {
+    panel.innerHTML = '<div style="padding:16px;text-align:center;color:var(--red);font-family:var(--mono);font-size:11px">AI picker failed. Check AI connection.<br>' +
+      '<button onclick="document.getElementById(\'apk-crm-panel\').style.display=\'none\'" style="margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r)">CLOSE</button></div>';
+  }
+}
+
+async function apkAcceptAIPicks() {
+  var picks = window._apkAIPicks || [];
+  var rep = window.apkRep || state.repId;
+  var added = 0;
+  for (var i = 0; i < picks.length; i++) {
+    var chk = document.getElementById('ai-pick-' + i);
+    if (!chk || !chk.checked) continue;
+    var p = picks[i];
+    if (!p.crmAcc) continue;
+    try {
+      if (!window.apkState) window.apkState = {};
+      window.apkState[p.name] = 'pool';
+      var dateStr = new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+      await sheetsAppend("'_ATTACK_POOL'!A1", [[rep, p.crmAcc.CUSTOMER_ID||'', p.name, 'AI', p.priority||'Warm', dateStr, '', '', 'Active']], CONFIG.HISTORY_SPREADSHEET_ID);
+      added++;
+    } catch(e) { console.warn('Failed to add', p.name, e.message); }
+  }
+  document.getElementById('apk-crm-panel').style.display = 'none';
+  apkRenderPool(state.accounts.filter(function(a){ return a.rep === rep; }));
+  showToast(added + ' account' + (added !== 1 ? 's' : '') + ' added to pool ✓', 'success');
+}
+
+// ── MANAGER HUB ────────────────────────────────────────────────────────────────
+
+function renderManagerHub() {
+  if (!isManager() && !isAdmin()) { switchView('accounts'); return; }
+  var mgrCfg = getManagerConfig();
+  var teamReps = mgrCfg ? mgrCfg.teamReps : [];
+  var teamName = mgrCfg ? mgrCfg.teamName : 'Team';
+  var tab = window._mgrHubTab || 'scoreboard';
+  var content = document.getElementById('main-content');
+
+  var tabBarHtml = [
+    {id:'scoreboard',    label:'&#128202; Scoreboard'},
+    {id:'accountability',label:'&#10003; Accountability'},
+    {id:'playbook',      label:'&#128203; Playbook'}
+  ].map(function(t){
+    var active = tab === t.id;
+    return '<button onclick="window._mgrHubTab=\'' + t.id + '\';renderManagerHub()" ' +
+      'style="padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r);' +
+      'background:' + (active ? 'var(--blue-b)' : 'transparent') + ';' +
+      'color:' + (active ? '#fff' : 'var(--text-3)') + ';' +
+      'border:1px solid ' + (active ? 'var(--blue-b)' : 'var(--border)') + '">' + t.label + '</button>';
+  }).join('');
+
+  var bodyHtml = '';
+  if (tab === 'scoreboard')     bodyHtml = _mgrScoreboardHtml(teamReps);
+  else if (tab === 'accountability') bodyHtml = _mgrAccountabilityHtml(teamReps);
+  else if (tab === 'playbook')  bodyHtml = _mgrPlaybookHtml(teamReps);
+
+  content.innerHTML =
+    '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden">' +
+    '<div style="padding:14px 20px 0;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0">' +
+    '<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">' +
+    '<div style="font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.08em">MANAGER HUB</div>' +
+    '<div style="font-size:11px;color:var(--text-3);font-family:var(--mono)">' + escHtml(teamName) + ' &nbsp;&#183;&nbsp; ' + teamReps.length + ' reps</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:6px;padding-bottom:0">' + tabBarHtml + '</div>' +
+    '</div>' +
+    '<div style="flex:1;overflow-y:auto;padding:20px">' + bodyHtml + '</div>' +
+    '</div>';
+}
+
+function _mgrScoreboardHtml(teamReps) {
+  var now = new Date();
+  var thirtyAgo = new Date(now - 30*24*60*60*1000);
+  var notesRows = Array.isArray(state.contactNotesCache) ? state.contactNotesCache.slice(1) : [];
+
+  var rows = teamReps.map(function(repId) {
+    var repAccs = state.accounts.filter(function(a){ return a.rep === repId; });
+    var total = repAccs.length;
+    var active = repAccs.filter(function(a){ return !isInactive(a); }).length;
+    var activePct = total ? Math.round(active / total * 100) : 0;
+    var revenue = repAccs.reduce(function(s,a){ return s + (a.total||0); }, 0);
+    var followUps = repAccs.filter(function(a){ return !!a.followUpDate; }).length;
+    var overdue = repAccs.filter(function(a){ return a.followUpDate && new Date(a.followUpDate) < now; }).length;
+    var repNotes = notesRows.filter(function(r){ return (r[5]||'').toLowerCase().indexOf(repId.toLowerCase()) !== -1; });
+    var recentNotes = repNotes.filter(function(r){ try{ return new Date(r[4]) >= thirtyAgo; }catch(e){ return false; } }).length;
+
+    var pctColor = activePct >= 60 ? 'var(--green)' : activePct >= 40 ? 'var(--gold)' : 'var(--red)';
+    var notesColor = recentNotes >= 10 ? 'var(--green)' : recentNotes >= 5 ? 'var(--gold)' : 'var(--red)';
+    var overdueColor = overdue > 5 ? 'var(--red)' : overdue > 0 ? 'var(--gold)' : 'var(--green)';
+
+    return '<tr style="cursor:pointer;transition:background 0.15s" ' +
+      'onclick="apkSelectRep(\'' + repId + '\');switchView(\'accounts\')" ' +
+      'onmouseover="this.style.background=\'var(--s2)\'" onmouseout="this.style.background=\'\'">' +
+      '<td class="mono" style="font-weight:700;color:var(--accent)">' + escHtml(repId) + '</td>' +
+      '<td class="mono right">' + total + '</td>' +
+      '<td class="mono right" style="color:' + pctColor + '">' + activePct + '%</td>' +
+      '<td class="mono right">$' + formatNum(revenue) + '</td>' +
+      '<td class="mono right">' + followUps + '</td>' +
+      '<td class="mono right" style="color:' + overdueColor + '">' + (overdue > 0 ? '&#9888; ' + overdue : '&#10003;') + '</td>' +
+      '<td class="mono right" style="color:' + notesColor + '">' + recentNotes + '</td>' +
+      '</tr>';
+  }).join('');
+
+  return '<div style="overflow-x:auto">' +
+    '<table class="data-table" style="width:100%">' +
+    '<thead><tr><th>REP</th><th class="right">ACCOUNTS</th><th class="right">ACTIVE %</th>' +
+    '<th class="right">30D REVENUE</th><th class="right">FOLLOW-UPS</th><th class="right">OVERDUE</th><th class="right">NOTES (30d)</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+    '</table></div>' +
+    '<div style="margin-top:8px;font-size:11px;color:var(--text-3);font-family:var(--mono)">Click a row to view that rep\'s accounts &nbsp;&#183;&nbsp; Active% = sold in last 90 days &nbsp;&#183;&nbsp; Notes = contact notes written</div>';
+}
+
+function _mgrAccountabilityHtml(teamReps) {
+  var now = new Date();
+  var weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - now.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+  var notesRows = Array.isArray(state.contactNotesCache) ? state.contactNotesCache.slice(1) : [];
+  var weeklyGoal = 5;
+
+  var cards = teamReps.map(function(repId) {
+    var repAccs = state.accounts.filter(function(a){ return a.rep === repId; });
+    var repNotes = notesRows.filter(function(r){ return (r[5]||'').toLowerCase().indexOf(repId.toLowerCase()) !== -1; });
+    var notesThisWeek = repNotes.filter(function(r){ try{ return new Date(r[4]) >= weekStart; }catch(e){ return false; } }).length;
+    var sortedNotes = repNotes.slice().sort(function(a,b){ return new Date(b[4]) - new Date(a[4]); });
+    var lastNoteDate = sortedNotes.length > 0 ? sortedNotes[0][4] : null;
+    var lastNoteDaysAgo = lastNoteDate ? Math.floor((now - new Date(lastNoteDate)) / (1000*60*60*24)) : 999;
+    var overdueAccs = repAccs.filter(function(a){ return a.followUpDate && new Date(a.followUpDate) < now; });
+    var notesPct = Math.min(100, Math.round(notesThisWeek / weeklyGoal * 100));
+    var notesColor = notesPct >= 100 ? 'var(--green)' : notesPct >= 60 ? 'var(--gold)' : 'var(--red)';
+    var lastNoteColor = lastNoteDaysAgo <= 2 ? 'var(--green)' : lastNoteDaysAgo <= 7 ? 'var(--gold)' : 'var(--red)';
+    var overdueColor = overdueAccs.length > 3 ? 'var(--red)' : overdueAccs.length > 0 ? 'var(--gold)' : 'var(--green)';
+
+    var alerts = [];
+    if (notesThisWeek === 0) alerts.push('No notes written this week');
+    if (lastNoteDaysAgo > 7) alerts.push('No notes in ' + lastNoteDaysAgo + ' days');
+    if (overdueAccs.length > 3) alerts.push(overdueAccs.length + ' overdue follow-ups');
+
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:16px;position:relative">' +
+      (alerts.length
+        ? '<div style="position:absolute;top:12px;right:12px;background:var(--red);color:#fff;font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:var(--r);font-weight:700">&#9888; ' + alerts.length + ' ALERT' + (alerts.length > 1 ? 'S' : '') + '</div>'
+        : '<div style="position:absolute;top:12px;right:12px;color:var(--green);font-size:11px;font-family:var(--mono)">&#10003; ON TRACK</div>') +
+      '<div style="font-family:var(--mono);font-weight:700;font-size:13px;color:var(--accent);margin-bottom:12px">' + escHtml(repId) + '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">' +
+      '<div style="background:var(--s2);border-radius:var(--r);padding:10px">' +
+      '<div style="font-size:10px;font-family:var(--mono);color:var(--text-3);margin-bottom:2px">NOTES THIS WEEK</div>' +
+      '<div style="font-size:22px;font-weight:700;color:' + notesColor + '">' + notesThisWeek + '</div>' +
+      '<div style="font-size:10px;color:var(--text-3)">Goal: ' + weeklyGoal + '</div>' +
+      '<div style="margin-top:4px;height:3px;background:var(--s0);border-radius:2px"><div style="height:3px;background:' + notesColor + ';border-radius:2px;width:' + notesPct + '%"></div></div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border-radius:var(--r);padding:10px">' +
+      '<div style="font-size:10px;font-family:var(--mono);color:var(--text-3);margin-bottom:2px">LAST NOTE</div>' +
+      '<div style="font-size:22px;font-weight:700;color:' + lastNoteColor + '">' + (lastNoteDate ? lastNoteDaysAgo + 'd' : '—') + '</div>' +
+      '<div style="font-size:10px;color:var(--text-3)">' + (lastNoteDate ? 'ago' : 'No notes found') + '</div>' +
+      '</div></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;font-family:var(--mono);margin-bottom:10px">' +
+      '<span style="color:' + overdueColor + '">' + (overdueAccs.length > 0 ? '&#9888; ' + overdueAccs.length + ' overdue follow-ups' : '&#10003; No overdue follow-ups') + '</span>' +
+      '</div>' +
+      (alerts.length ? '<div style="margin-bottom:10px;padding:8px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:var(--r);font-size:11px;color:var(--red);font-family:var(--mono)">' + alerts.map(function(a){ return '&#8226; ' + a; }).join('<br>') + '</div>' : '') +
+      '<div style="display:flex;gap:6px">' +
+      '<button onclick="apkSelectRep(\'' + repId + '\');switchView(\'accounts\')" style="flex:1;font-size:10px;font-family:var(--mono);padding:5px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r)">ACCOUNTS</button>' +
+      '<button onclick="apkSelectRep(\'' + repId + '\');switchView(\'attack\')" style="flex:1;font-size:10px;font-family:var(--mono);padding:5px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r)">ATTACK PLAN</button>' +
+      '<button onclick="apkSelectRep(\'' + repId + '\');switchView(\'notesFeed\')" style="flex:1;font-size:10px;font-family:var(--mono);padding:5px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r)">NOTES</button>' +
+      '</div>' +
+      '</div>';
+  }).join('');
+
+  return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">' + cards + '</div>' +
+    '<div style="margin-top:14px;font-size:11px;color:var(--text-3);font-family:var(--mono)">Notes goal: 5 per week &nbsp;&#183;&nbsp; Data refreshes with each page visit &nbsp;&#183;&nbsp; Click buttons to jump to rep view</div>';
+}
+
+function _mgrPlaybookHtml(teamReps) {
+  var sections = [
+    { title: '&#127919; Weekly Cadence', open: true, content:
+      'Every rep should complete these activities each week:' +
+      '<br><br>&#8226; <strong>5+ contact notes</strong> — log every customer conversation in the app' +
+      '<br>&#8226; <strong>Review follow-up dates</strong> — no date should pass without action or reschedule' +
+      '<br>&#8226; <strong>Update Attack Plan</strong> — move accounts between zones as relationships develop' +
+      '<br>&#8226; <strong>1 new prospect outreach</strong> — cold call or email from Prospects board' +
+      '<br>&#8226; <strong>Collections check</strong> — review past-due accounts and document follow-up' },
+    { title: '&#128200; Performance Standards', content:
+      'Minimum expectations for all reps:' +
+      '<br><br>&#8226; <strong>Active rate:</strong> At least 50% of accounts should have a sale in the last 90 days' +
+      '<br>&#8226; <strong>GP%:</strong> Target 20%+ gross profit margin across the full book of business' +
+      '<br>&#8226; <strong>Attack Plan:</strong> Solid Core (10) and Active Pursue (10) zones kept full at all times' +
+      '<br>&#8226; <strong>Follow-up timeliness:</strong> Zero overdue follow-ups — reschedule before the date passes' +
+      '<br>&#8226; <strong>Response time:</strong> Quote within 24 hours, follow up on open quotes within 48 hours' },
+    { title: '&#128172; Coaching Questions for 1-on-1s', content:
+      'Use these questions to drive accountability and growth:' +
+      '<br><br>&#8226; "Show me your 3 biggest accounts — what\'s the growth plan for each?"' +
+      '<br>&#8226; "Which accounts haven\'t ordered in 90+ days? What\'s the re-engagement strategy?"' +
+      '<br>&#8226; "Walk me through your Attack Plan — what moved this week and why?"' +
+      '<br>&#8226; "Who are your top 3 prospects right now? What\'s the next step for each?"' +
+      '<br>&#8226; "What\'s your biggest obstacle this week — what can I do to help remove it?"' },
+    { title: '&#128680; Warning Signs to Watch', content:
+      'Escalate or coach immediately when you see:' +
+      '<br><br>&#8226; <strong>No notes in 5+ days</strong> — rep may be disengaged or struggling to use the app' +
+      '<br>&#8226; <strong>Active rate drops below 40%</strong> — accounts are drifting away' +
+      '<br>&#8226; <strong>5+ overdue follow-ups</strong> — commitments are consistently being missed' +
+      '<br>&#8226; <strong>Attack Plan pool full, no zones</strong> — rep is not working strategically' +
+      '<br>&#8226; <strong>Collections balance growing</strong> — customers may be dissatisfied or in trouble' },
+    { title: '&#9889; Manager Quick Actions', content:
+      'What you can do in the app right now:' +
+      '<br><br>&#8226; Use <strong>Accountability tab</strong> (above) to quickly see who needs attention' +
+      '<br>&#8226; Use <strong>Team Notes</strong> to see all contact notes across the team in one feed' +
+      '<br>&#8226; Use <strong>Team Profile</strong> to review each rep\'s full account portfolio' +
+      '<br>&#8226; Use <strong>ASSIGN DIRECTLY</strong> in Attack Plan to help a rep pick up an inactive account' +
+      '<br>&#8226; Review <strong>Daily Mission</strong> for each rep — check that priorities match team goals' +
+      '<br>&#8226; Use the <strong>AI COACH REPORT</strong> below for personalized weekly coaching insights' }
+  ];
+
+  var accordionHtml = sections.map(function(s) {
+    return '<div style="border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;margin-bottom:8px">' +
+      '<div onclick="var b=this.nextElementSibling;b.style.display=b.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'.apk-acc-arrow\').textContent=b.style.display===\'none\'?\'+\':\'-\'" ' +
+      'style="padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:var(--s1)">' +
+      '<span style="font-family:var(--mono);font-size:12px;font-weight:700">' + s.title + '</span>' +
+      '<span class="apk-acc-arrow" style="color:var(--text-3);font-size:16px;line-height:1">' + (s.open ? '-' : '+') + '</span>' +
+      '</div>' +
+      '<div style="display:' + (s.open ? 'block' : 'none') + ';padding:14px 16px;font-size:13px;line-height:1.75;color:var(--text-2)">' +
+      s.content + '</div>' +
+      '</div>';
+  }).join('');
+
+  var aiSection =
+    '<div style="margin-top:20px;padding:16px;background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.2);border-radius:var(--r2)">' +
+    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--blue-b);margin-bottom:6px">&#9889; AI COACH REPORT</div>' +
+    '<div style="font-size:12px;color:var(--text-2);margin-bottom:12px">Generate a personalized coaching brief based on your team\'s current data — specific insights and action items for each rep.</div>' +
+    '<button id="mgr-coach-btn" onclick="mgrGenerateCoachReport()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;padding:8px 20px;cursor:pointer;border-radius:var(--r)">GENERATE REPORT</button>' +
+    '<div id="mgr-coach-output" style="margin-top:14px;display:none"></div>' +
+    '</div>';
+
+  return accordionHtml + aiSection;
+}
+
+async function mgrGenerateCoachReport() {
+  var btn = document.getElementById('mgr-coach-btn');
+  var out = document.getElementById('mgr-coach-output');
+  if (!btn || !out) return;
+  btn.textContent = 'Analyzing team...'; btn.disabled = true;
+  out.style.display = 'none';
+  var mgrCfg = getManagerConfig();
+  var teamReps = mgrCfg ? mgrCfg.teamReps : [];
+  var now = new Date();
+  var weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay()); weekStart.setHours(0,0,0,0);
+  var notesRows = Array.isArray(state.contactNotesCache) ? state.contactNotesCache.slice(1) : [];
+  var teamSummary = teamReps.map(function(repId) {
+    var repAccs = state.accounts.filter(function(a){ return a.rep === repId; });
+    var active = repAccs.filter(function(a){ return !isInactive(a); }).length;
+    var total = repAccs.length;
+    var revenue = repAccs.reduce(function(s,a){ return s+(a.total||0); }, 0);
+    var overdue = repAccs.filter(function(a){ return a.followUpDate && new Date(a.followUpDate) < now; }).length;
+    var repNotes = notesRows.filter(function(r){ return (r[5]||'').toLowerCase().indexOf(repId.toLowerCase()) !== -1; });
+    var notesWeek = repNotes.filter(function(r){ try{ return new Date(r[4]) >= weekStart; }catch(e){ return false; } }).length;
+    var activePct = total ? Math.round(active/total*100) : 0;
+    return repId + ': ' + total + ' accounts, ' + activePct + '% active, $' + formatNum(revenue) + ' revenue, ' + notesWeek + ' notes this week, ' + overdue + ' overdue follow-ups';
+  }).join('\n');
+  try {
+    var result = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:1200,
+      messages:[{role:'user',content:'You are a B2B sales manager coach. Based on this team data, write a brief weekly coaching report. For each rep: bold their name, then 2-3 specific action items based on their numbers. Be direct and practical. Under 500 words total.\n\nTeam data:\n' + teamSummary}] });
+    var text = result && result.content && result.content[0] ? result.content[0].text : 'Could not generate report.';
+    var html = text
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n\n/g, '</p><p>')
+      .replace(/\n/g, '<br>');
+    out.innerHTML = '<div style="font-size:12px;line-height:1.75;color:var(--text-2)"><p>' + html + '</p></div>';
+    out.style.display = 'block';
+    btn.textContent = 'REGENERATE'; btn.disabled = false;
+  } catch(e) {
+    out.innerHTML = '<div style="color:var(--red);font-size:11px;font-family:var(--mono)">Could not generate report. Check AI connection.</div>';
+    out.style.display = 'block';
+    btn.textContent = 'GENERATE REPORT'; btn.disabled = false;
   }
 }
 

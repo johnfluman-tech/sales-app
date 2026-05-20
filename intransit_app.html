@@ -8340,6 +8340,31 @@ function renderSettingsView() {
         + '<div id="active-users-section" style="font-size:11px;color:var(--text-muted)">Loading…</div>'
         + '</div>' : ''}
 
+      <!-- CRM Directory — admin/manager only -->
+      ${(isAdmin() || isManager()) && !state.viewAsRep ? (function(){
+        var _dirCount = (state.customerDirectory || []).length;
+        var _dirLoaded = state._directoryLoadedAt;
+        var _dirStatusHtml = _dirCount > 0
+          ? '<span style="color:#22c55e">&#10003; ' + _dirCount.toLocaleString() + ' accounts loaded</span>'
+            + (_dirLoaded ? ' <span style="color:var(--text-muted);font-size:10px">— loaded ' + new Date(_dirLoaded).toLocaleTimeString() + '</span>' : '')
+          : '<span style="color:#f59e0b">&#9888; Not loaded — run <code style="background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:3px">sales_report.py</code> on INTRANSIT-RDS02 to populate</span>';
+        return '<div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px">'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+          + '<div style="font-size:15px;font-weight:600">CRM Directory</div>'
+          + '<button id="crm-dir-reload-btn" onclick="reloadCRMDirectory()" style="background:var(--blue-b);border:none;color:#fff;padding:5px 12px;border-radius:4px;font-size:11px;cursor:pointer">&#8635; Reload</button>'
+          + '</div>'
+          + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Customer account lookup for CRM Discovery on Attack Plan. Populated by <code style="background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:3px">sales_report.py</code> on INTRANSIT-RDS02.</div>'
+          + '<div id="crm-dir-status" style="font-size:12px">' + _dirStatusHtml + '</div>'
+          + (_dirCount === 0 ? '<div style="margin-top:12px;padding:10px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:4px;font-size:11px;color:var(--text-muted);line-height:1.6">'
+            + '<strong style="color:#f59e0b;display:block;margin-bottom:4px">Setup instructions</strong>'
+            + '1. On INTRANSIT-RDS02, open <code style="background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:2px">C:\\scripts\\sales_report.py</code><br>'
+            + '2. Run: <code style="background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:2px">python sales_report.py</code><br>'
+            + '3. The script will export <code style="background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:2px">_CUSTOMER_DIRECTORY</code> to the History Sheet<br>'
+            + '4. Return here and click Reload to verify'
+            + '</div>' : '')
+          + '</div>';
+      })() : ''}
+
       <!-- App Info -->
       <div style="background:var(--navy-light);border:1px solid var(--border);padding:20px">
         <div style="font-size:15px;font-weight:600;margin-bottom:12px">About</div>
@@ -10437,32 +10462,40 @@ function showCRMDiscovery() {
   if (!rep) { showToast('Select a rep first', 'error'); return; }
   if (!state.customerDirectory || !state.customerDirectory.length) {
     panel.style.display = 'flex';
-    panel.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' +
-      'CRM directory not loaded yet.<br><span style="font-size:10px">The directory is populated by sales_report.py on INTRANSIT-RDS02.</span><br>' +
-      '<button onclick="document.getElementById(\'apk-crm-panel\').style.display=\'none\'" style="margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r)">CLOSE</button>' +
+    panel.innerHTML = '<div style="padding:20px;color:var(--text-3);font-family:var(--mono);font-size:11px;line-height:1.7">' +
+      '<div style="font-size:12px;color:var(--gold);font-weight:700;margin-bottom:8px">&#9888; CRM Directory Not Loaded</div>' +
+      'The customer directory is populated by <code style="background:rgba(255,255,255,0.07);padding:1px 5px;border-radius:3px">sales_report.py</code> running on INTRANSIT-RDS02.<br>' +
+      '<div style="margin-top:10px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:4px;font-size:10px">' +
+      '<strong style="color:#f59e0b">To set up:</strong><br>' +
+      '1. Log in to INTRANSIT-RDS02<br>' +
+      '2. Run: <code style="background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:2px">python C:\\scripts\\sales_report.py</code><br>' +
+      '3. Then go to Settings and click <strong>Reload</strong> in the CRM Directory card' +
+      '</div>' +
+      '<button onclick="document.getElementById(\'apk-crm-panel\').style.display=\'none\'" style="margin-top:12px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r)">CLOSE</button>' +
       '</div>';
     return;
   }
   var appNames = new Set(state.accounts.map(function(a){ return (a.name||'').toLowerCase().trim(); }));
   var crmAccs = (state.customerDirectory || []).filter(function(c) {
-    return (c.USERNAME||'').toLowerCase() === rep.toLowerCase() &&
-      !appNames.has((c.NAME||'').toLowerCase().trim());
+    return (c.rep||'').toLowerCase() === rep.toLowerCase() &&
+      !appNames.has((c.name||'').toLowerCase().trim());
   });
   panel.style.display = 'flex';
   if (!crmAccs.length) {
     panel.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' +
-      'No additional CRM accounts found for ' + escHtml(rep) + '<br><span style="font-size:10px">All CRM accounts are already in the app.</span><br>' +
+      '<div style="color:#22c55e;font-size:13px;margin-bottom:6px">&#10003;</div>' +
+      'All CRM accounts for ' + escHtml(rep) + ' are already in the app.<br><span style="font-size:10px">Nothing new to discover.</span><br>' +
       '<button onclick="document.getElementById(\'apk-crm-panel\').style.display=\'none\'" style="margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:var(--r)">CLOSE</button>' +
       '</div>';
     return;
   }
   var rows = crmAccs.slice(0, 100).map(function(c) {
-    var safeName = (c.NAME||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    var custId = c.CUSTOMER_ID || '';
+    var safeName = (c.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    var custId = c.id || '';
     return '<tr>' +
-      '<td style="font-size:11px;max-width:200px">' + escHtml(c.NAME||'') + '</td>' +
-      '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml((c.CITY||'') + (c.STATE ? ', '+c.STATE : '')) + '</td>' +
-      '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml(c.LAST_ACTIVITY||'—') + '</td>' +
+      '<td style="font-size:11px;max-width:200px">' + escHtml(c.name||'') + '</td>' +
+      '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml((c.city||'') + (c.state ? ', '+c.state : '')) + '</td>' +
+      '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml(c.lastActivity||'—') + '</td>' +
       '<td><button onclick="apkAddCRMToPool(\'' + escHtml(custId) + '\',\'' + safeName + '\',\'' + escHtml(rep) + '\',this)" ' +
       'style="font-size:9px;font-family:var(--mono);padding:2px 8px;background:rgba(59,130,246,0.15);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r)">ADD</button></td>' +
       '</tr>';
@@ -10498,14 +10531,14 @@ async function apkAIRankCRM() {
   var rep = window.apkRep || state.repId;
   var appNames = new Set(state.accounts.map(function(a){ return (a.name||'').toLowerCase().trim(); }));
   var crmAccs = (state.customerDirectory||[]).filter(function(c){
-    return (c.USERNAME||'').toLowerCase() === rep.toLowerCase() && !appNames.has((c.NAME||'').toLowerCase().trim());
+    return (c.rep||'').toLowerCase() === rep.toLowerCase() && !appNames.has((c.name||'').toLowerCase().trim());
   }).slice(0, 50);
   if (!crmAccs.length) { showToast('No CRM accounts to rank', 'error'); return; }
   var panel = document.getElementById('apk-crm-panel');
   var rankBtn = panel ? panel.querySelector('button') : null;
   if (rankBtn) { rankBtn.textContent = 'Ranking...'; rankBtn.disabled = true; }
   var accountList = crmAccs.map(function(c){
-    return '- ' + (c.NAME||'') + ' | ' + (c.CITY||'') + ', ' + (c.STATE||'') + ' | Last: ' + (c.LAST_ACTIVITY||'unknown') + ' | Type: ' + (c.CUST_TYPE||'?');
+    return '- ' + (c.name||'') + ' | ' + (c.city||'') + ', ' + (c.state||'') + ' | Last: ' + (c.lastActivity||'unknown');
   }).join('\n');
   try {
     var result = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:800,
@@ -10519,20 +10552,20 @@ async function apkAIRankCRM() {
       var tbody = document.getElementById('apk-crm-rows');
       if (tbody) {
         var sortedAccs = crmAccs.slice().sort(function(a,b){
-          var ra = rankMap[(a.NAME||'').toLowerCase().trim()];
-          var rb = rankMap[(b.NAME||'').toLowerCase().trim()];
+          var ra = rankMap[(a.name||'').toLowerCase().trim()];
+          var rb = rankMap[(b.name||'').toLowerCase().trim()];
           if (ra && rb) return (ra.rank||99) - (rb.rank||99);
           if (ra) return -1; if (rb) return 1; return 0;
         });
         tbody.innerHTML = sortedAccs.slice(0,20).map(function(c){
-          var safeName = (c.NAME||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-          var info = rankMap[(c.NAME||'').toLowerCase().trim()];
+          var safeName = (c.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+          var info = rankMap[(c.name||'').toLowerCase().trim()];
           return '<tr>' +
             '<td style="font-size:11px">' + (info ? '<span style="font-family:var(--mono);font-size:9px;color:var(--gold);margin-right:5px">#' + info.rank + '</span>' : '') +
-            escHtml(c.NAME||'') + (info && info.reason ? '<br><span style="font-size:10px;color:var(--text-3)">' + escHtml(info.reason) + '</span>' : '') + '</td>' +
-            '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml((c.CITY||'') + (c.STATE ? ', '+c.STATE : '')) + '</td>' +
-            '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml(c.LAST_ACTIVITY||'—') + '</td>' +
-            '<td><button onclick="apkAddCRMToPool(\'' + escHtml(c.CUSTOMER_ID||'') + '\',\'' + safeName + '\',\'' + escHtml(rep) + '\',this)" ' +
+            escHtml(c.name||'') + (info && info.reason ? '<br><span style="font-size:10px;color:var(--text-3)">' + escHtml(info.reason) + '</span>' : '') + '</td>' +
+            '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml((c.city||'') + (c.state ? ', '+c.state : '')) + '</td>' +
+            '<td style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml(c.lastActivity||'—') + '</td>' +
+            '<td><button onclick="apkAddCRMToPool(\'' + escHtml(c.id||'') + '\',\'' + safeName + '\',\'' + escHtml(rep) + '\',this)" ' +
             'style="font-size:9px;font-family:var(--mono);padding:2px 8px;background:rgba(59,130,246,0.15);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r)">ADD</button></td>' +
             '</tr>';
         }).join('');
@@ -10558,11 +10591,11 @@ async function apkAIPicker() {
   }
   var appNames = new Set(state.accounts.map(function(a){ return (a.name||'').toLowerCase().trim(); }));
   var crmAccs = (state.customerDirectory||[]).filter(function(c){
-    return (c.USERNAME||'').toLowerCase() === rep.toLowerCase() && !appNames.has((c.NAME||'').toLowerCase().trim());
+    return (c.rep||'').toLowerCase() === rep.toLowerCase() && !appNames.has((c.name||'').toLowerCase().trim());
   }).slice(0, 60);
   panel.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--gold)">&#9732; AI analyzing ' + crmAccs.length + ' CRM accounts...<br><span style="font-size:10px;color:var(--text-3)">Selecting the best re-engagement targets</span></div>';
   var accountList = crmAccs.map(function(c){
-    return '- ' + (c.NAME||'') + ' | ' + (c.CITY||'') + ', ' + (c.STATE||'') + ' | Last: ' + (c.LAST_ACTIVITY||'unknown') + ' | Type: ' + (c.CUST_TYPE||'?');
+    return '- ' + (c.name||'') + ' | ' + (c.city||'') + ', ' + (c.state||'') + ' | Last: ' + (c.lastActivity||'unknown');
   }).join('\n');
   try {
     var result = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:800,
@@ -10572,7 +10605,7 @@ async function apkAIPicker() {
     if (!match) throw new Error('No JSON returned');
     var picks = JSON.parse(match[0]);
     window._apkAIPicks = picks.map(function(p){
-      var acc = crmAccs.find(function(c){ return (c.NAME||'').toLowerCase().trim() === (p.name||'').toLowerCase().trim(); });
+      var acc = crmAccs.find(function(c){ return (c.name||'').toLowerCase().trim() === (p.name||'').toLowerCase().trim(); });
       return Object.assign({}, p, {crmAcc: acc});
     }).filter(function(p){ return !!p.crmAcc; });
     var pickRows = window._apkAIPicks.map(function(p, i){
@@ -10611,7 +10644,7 @@ async function apkAcceptAIPicks() {
       if (!window.apkState) window.apkState = {};
       window.apkState[p.name] = 'pool';
       var dateStr = new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
-      await sheetsAppend("'_ATTACK_POOL'!A1", [[rep, p.crmAcc.CUSTOMER_ID||'', p.name, 'AI', p.priority||'Warm', dateStr, '', '', 'Active']], CONFIG.HISTORY_SPREADSHEET_ID);
+      await sheetsAppend("'_ATTACK_POOL'!A1", [[rep, p.crmAcc.id||'', p.name, 'AI', p.priority||'Warm', dateStr, '', '', 'Active']], CONFIG.HISTORY_SPREADSHEET_ID);
       added++;
     } catch(e) { console.warn('Failed to add', p.name, e.message); }
   }
@@ -15043,11 +15076,11 @@ function _updateProspectsBadge() {
   badge.textContent = count > 0 ? count : '';
 }
 
-async function loadCustomerDirectory() {
-  if (state.customerDirectory && state.customerDirectory.length > 0) return;
+async function loadCustomerDirectory(force) {
+  if (!force && state.customerDirectory && state.customerDirectory.length > 0) return;
   try {
     const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CUSTOMER_DIRECTORY'!A1:F50000");
-    if (!rows || rows.length < 2) { state.customerDirectory = []; return; }
+    if (!rows || rows.length < 2) { state.customerDirectory = []; state._directoryLoadedAt = Date.now(); return; }
     const hdrs = rows[0].map(function(h){ return (h||'').trim(); });
     const iId = hdrs.indexOf('CUSTOMER_ID');
     const iName = hdrs.indexOf('NAME');
@@ -15065,11 +15098,29 @@ async function loadCustomerDirectory() {
         lastActivity: (r[iLast]||'').trim(),
       };
     }).filter(function(c){ return c.name; });
+    state._directoryLoadedAt = Date.now();
     console.log('Customer directory loaded:', state.customerDirectory.length, 'accounts');
   } catch(e) {
     state.customerDirectory = [];
     console.warn('Customer directory not available (run sales_report.py to populate):', e.message);
   }
+}
+
+async function reloadCRMDirectory() {
+  var btn = document.getElementById('crm-dir-reload-btn');
+  var statusEl = document.getElementById('crm-dir-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  await loadCustomerDirectory(true);
+  var count = (state.customerDirectory || []).length;
+  if (statusEl) {
+    if (count > 0) {
+      statusEl.innerHTML = '<span style="color:#22c55e">&#10003; ' + count.toLocaleString() + ' accounts loaded</span>'
+        + ' <span style="color:var(--text-muted);font-size:10px">— refreshed just now</span>';
+    } else {
+      statusEl.innerHTML = '<span style="color:#f59e0b">&#9888; 0 accounts — tab may be empty. Run sales_report.py on INTRANSIT-RDS02 to populate.</span>';
+    }
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '&#8635; Reload'; }
 }
 
 async function loadProspects() {

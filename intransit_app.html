@@ -11854,7 +11854,36 @@ const ACADEMY_TRACKS = [
     { id: 't8-4', title: 'Collections escalation', xp: 50 },
     { id: 't8-5', title: 'New account onboarding', xp: 50 },
   ]},
+  // ── Manager-only tracks ──────────────────────────────────────────────────────
+  { id: 'tm1', title: 'Manager Hub', icon: '📊', managerOnly: true, lessons: [
+    { id: 'tm1-1', title: 'Scoreboard — reading team metrics', xp: 50 },
+    { id: 'tm1-2', title: 'Accountability Tracker', xp: 50 },
+    { id: 'tm1-3', title: 'Running effective 1-on-1s', xp: 50 },
+    { id: 'tm1-4', title: 'AI Coach Report', xp: 50 },
+  ]},
+  { id: 'tm2', title: 'App Management', icon: '⚙', managerOnly: true, lessons: [
+    { id: 'tm2-1', title: 'Viewing a rep\'s accounts', xp: 50 },
+    { id: 'tm2-2', title: 'Reading the Attack Plan', xp: 50 },
+    { id: 'tm2-3', title: 'Transfer candidates', xp: 50 },
+    { id: 'tm2-4', title: 'Team Notes and Notes Feed', xp: 50 },
+  ]},
+  { id: 'tm3', title: 'Performance Leadership', icon: '🏆', managerOnly: true, lessons: [
+    { id: 'tm3-1', title: 'Warning signs to watch', xp: 50 },
+    { id: 'tm3-2', title: 'Managing account activity rates', xp: 50 },
+    { id: 'tm3-3', title: 'Setting team expectations', xp: 50 },
+    { id: 'tm3-4', title: 'CRM Discovery for growth', xp: 50 },
+  ]},
 ];
+
+// Returns only the tracks appropriate for the current role context.
+// Managers in own view see all tracks. Managers viewing-as a rep, and regular
+// reps, see only the rep tracks (managerOnly tracks are hidden).
+function getActiveTracks() {
+  var inOwnManagerView = (isManager() || isAdmin()) &&
+    (!state.viewAsRep || state.viewAsRep === '__TEAM_ALL__');
+  if (inOwnManagerView) return ACADEMY_TRACKS;
+  return ACADEMY_TRACKS.filter(function(t) { return !t.managerOnly; });
+}
 
 function academyGetProgress() {
   try {
@@ -11869,8 +11898,11 @@ function academySaveProgress(p) {
 
 function academyUpdateBadge() {
   const p = academyGetProgress();
-  const total = ACADEMY_TRACKS.reduce((s,t) => s + t.lessons.length, 0);
-  const done = (p.completedLessons || []).length;
+  const _activeTracks = (typeof getActiveTracks === 'function') ? getActiveTracks() : ACADEMY_TRACKS;
+  const total = _activeTracks.reduce((s,t) => s + t.lessons.length, 0);
+  const done = (p.completedLessons || []).filter(function(lid) {
+    return _activeTracks.some(function(t){ return t.lessons.some(function(l){ return l.id === lid; }); });
+  }).length;
   const pct = total > 0 ? Math.round(done / total * 100) : 0;
   const badge = document.getElementById('badge-academy');
   if (badge) badge.textContent = pct + '%';
@@ -11914,27 +11946,52 @@ function renderAcademyView() {
   const xpToNext = nextLevel ? nextLevel.min : xp;
   const xpPct = nextLevel ? Math.round((xp - level.min) / (nextLevel.min - level.min) * 100) : 100;
 
-  // Get selected lesson (default first uncompleted)
+  // Determine visible tracks for this user's current role context
+  const _visibleTracks = getActiveTracks();
+  const _inManagerMode = _visibleTracks.some(function(t){ return t.managerOnly; });
+  const _viewingAsRep = state.viewAsRep && state.viewAsRep !== '__TEAM_ALL__';
+
+  // Get selected lesson (default first uncompleted in visible tracks)
   let selectedLessonId = window.acad_selectedLesson;
+  // Reset if selected lesson is not in visible tracks
+  if (selectedLessonId) {
+    const _inVisible = _visibleTracks.some(function(t){ return t.lessons.some(function(l){ return l.id === selectedLessonId; }); });
+    if (!_inVisible) selectedLessonId = null;
+  }
   if (!selectedLessonId) {
-    for (const track of ACADEMY_TRACKS) {
+    // For managers, default to first manager track lesson; for reps, first rep lesson
+    const _defaultTracks = _inManagerMode
+      ? _visibleTracks.filter(function(t){ return t.managerOnly; })
+      : _visibleTracks.filter(function(t){ return !t.managerOnly; });
+    const _searchTracks = _defaultTracks.length ? _defaultTracks : _visibleTracks;
+    for (const track of _searchTracks) {
       for (const lesson of track.lessons) {
-        if (!completedLessons.includes(lesson.id)) {
-          selectedLessonId = lesson.id;
-          break;
-        }
+        if (!completedLessons.includes(lesson.id)) { selectedLessonId = lesson.id; break; }
       }
       if (selectedLessonId) break;
     }
-    if (!selectedLessonId) selectedLessonId = 't1-1';
+    if (!selectedLessonId) selectedLessonId = _visibleTracks[0] ? _visibleTracks[0].lessons[0].id : 't1-1';
   }
 
-  const total = ACADEMY_TRACKS.reduce((s,t) => s + t.lessons.length, 0);
-  const readinessPct = total > 0 ? Math.round(completedLessons.length / total * 100) : 0;
+  const total = _visibleTracks.reduce((s,t) => s + t.lessons.length, 0);
+  const _visibleDone = completedLessons.filter(function(lid){
+    return _visibleTracks.some(function(t){ return t.lessons.some(function(l){ return l.id === lid; }); });
+  }).length;
+  const readinessPct = total > 0 ? Math.round(_visibleDone / total * 100) : 0;
 
-  // Build left panel lesson tree
+  // Build left panel lesson tree — with section headers for mixed manager+rep view
   let treeHtml = '';
-  ACADEMY_TRACKS.forEach(track => {
+  const _hasManagerTracks = _visibleTracks.some(function(t){ return t.managerOnly; });
+  const _hasRepTracks = _visibleTracks.some(function(t){ return !t.managerOnly; });
+  let _lastWasManager = null;
+  _visibleTracks.forEach(track => {
+    if (_hasManagerTracks && _hasRepTracks) {
+      if (_lastWasManager !== !!track.managerOnly) {
+        _lastWasManager = !!track.managerOnly;
+        treeHtml += '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.1em;padding:10px 10px 4px;margin-top:4px;border-top:1px solid var(--border)">' +
+          (track.managerOnly ? 'MANAGER TRACKS' : 'REP TRACKS') + '</div>';
+      }
+    }
     const isUnlocked = academyIsTrackUnlocked(track, progress);
     const isDone = academyTrackDone(track.id, progress);
     const trackDone = track.lessons.filter(l => completedLessons.includes(l.id)).length;
@@ -11985,10 +12042,24 @@ function renderAcademyView() {
   // Get lesson content
   const lessonContent = academyGetLessonContent(selectedLessonId, progress);
 
+  // Role context banner
+  let _roleBannerHtml = '';
+  if (_inManagerMode && !_viewingAsRep) {
+    _roleBannerHtml = '<div style="background:rgba(212,175,55,0.08);border:1px solid rgba(212,175,55,0.3);border-radius:var(--r2);padding:8px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">' +
+      '<span style="font-family:var(--mono);font-size:9px;color:var(--gold);font-weight:700">MANAGER MODE</span>' +
+      '<span style="font-size:12px;color:var(--text-2)">Showing manager tracks + rep tracks. Rep tracks let you understand what your team is learning.</span>' +
+      '</div>';
+  } else if (_viewingAsRep) {
+    _roleBannerHtml = '<div style="background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:var(--r2);padding:8px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">' +
+      '<span style="font-family:var(--mono);font-size:9px;color:var(--blue-b);font-weight:700">REP VIEW — ' + escHtml(state.viewAsRep) + '</span>' +
+      '<span style="font-size:12px;color:var(--text-2)">Showing rep tracks — the same content your reps see. Your XP progress is your own.</span>' +
+      '</div>';
+  }
+
   // Welcome-back banner (shown when user has progress)
   let _wbHtml = '';
   if (completedLessons.length > 0) {
-    const _wbTrack = ACADEMY_TRACKS.find(function(t){ return t.lessons.some(function(l){ return l.id === selectedLessonId; }); });
+    const _wbTrack = _visibleTracks.find(function(t){ return t.lessons.some(function(l){ return l.id === selectedLessonId; }); });
     const _wbLesson = _wbTrack ? _wbTrack.lessons.find(function(l){ return l.id === selectedLessonId; }) : null;
     if (_wbTrack && _wbLesson) {
       const _wbPos = _wbTrack.lessons.indexOf(_wbLesson) + 1;
@@ -12026,13 +12097,13 @@ function renderAcademyView() {
 
     // Right panel — lesson content
     '<div style="flex:1;overflow-y:auto;padding:24px 32px;max-width:860px">' +
-      _wbHtml + lessonContent +
+      _roleBannerHtml + _wbHtml + lessonContent +
     '</div>' +
 
   '</div>';
 
   // Open active track
-  const activeTrack = ACADEMY_TRACKS.find(t => t.lessons.some(l => l.id === selectedLessonId));
+  const activeTrack = _visibleTracks.find(t => t.lessons.some(l => l.id === selectedLessonId));
   if (activeTrack) {
     const trackEl = document.getElementById('acad-track-' + activeTrack.id);
     if (trackEl) trackEl.style.display = 'block';
@@ -13567,6 +13638,188 @@ function academyGetLessonContent(lessonId, progress) {
   );
 },
 
+// ── MANAGER TRACKS ─────────────────────────────────────────────────────────────
+
+'tm1-1': function() {
+  return acadLessonWrap('Scoreboard — Reading Team Metrics', 'tm1-1', progress,
+    acadSection('What the Scoreboard shows', 'The Manager Hub Scoreboard gives you a side-by-side view of every rep on your team in one table. Open it from the sidebar: Manager Hub → Scoreboard tab.') +
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'ACCOUNTS', text: 'Total accounts assigned to the rep. Large drops signal accounts being removed or transferred.' },
+      { color: 'var(--gold)', label: 'ACTIVE %', text: 'Percentage that placed an order in the last 90 days. Green = 60%+. Red = below 40% — accounts are going cold.' },
+      { color: 'var(--green)', label: '30D REVENUE', text: 'Sum of all account revenue in the last 30 days. Your primary weekly health check.' },
+    ]) +
+    acadSection('Overdue and Notes columns', 'OVERDUE = follow-up dates the rep let pass. Even 1 overdue is a yellow flag. NOTES (30d) = contact notes written in the last 30 days — the floor is 10+. Under 5 means the rep is not documenting conversations.') +
+    acadSection('How to use it in your weekly check-in', 'Scan the table every Monday. Flag any rep with Red active%, Red overdue count, or fewer than 5 notes. Click their row to jump directly to their accounts before your 1-on-1.') +
+    acadKeyTakeaway('One weekly Scoreboard scan takes 2 minutes and shows you exactly who needs your attention before the week starts.') +
+    acadCompleteBtn('tm1-1')
+  );
+},
+
+'tm1-2': function() {
+  return acadLessonWrap('Accountability Tracker', 'tm1-2', progress,
+    acadSection('What the Accountability Tracker shows', 'The Accountability tab in Manager Hub gives each rep a card with two key metrics: Notes This Week (goal: 5) and Last Note (days ago). Cards with red numbers need your attention first.') +
+    acadSteps([
+      { step: '1', title: 'Notes This Week', desc: 'The progress bar fills toward the goal of 5 notes per week. 0 notes = no customer conversations logged. This is your earliest warning sign.' },
+      { step: '2', title: 'Last Note', desc: 'Days since the rep wrote any note. Green = 0-2 days. Gold = 3-7 days. Red = 8+ days. A red Last Note means the rep has not documented a customer conversation in over a week.' },
+      { step: '3', title: 'Overdue Follow-ups', desc: 'Follow-up dates the rep let expire without rescheduling. More than 3 overdue means the rep is making promises they are not keeping.' },
+      { step: '4', title: 'Alert badges', desc: 'A red ALERTS badge appears when multiple warning signs are present. Use the quick-jump buttons on each card — ACCOUNTS, ATTACK PLAN, NOTES — to investigate in seconds.' },
+    ]) +
+    acadKeyTakeaway('Check the Accountability tab on Mondays and Thursdays. Tuesday/Thursday coaching conversations hit before problems compound.', 'Open Accountability tab', 'managerHub') +
+    acadCompleteBtn('tm1-2')
+  );
+},
+
+'tm1-3': function() {
+  return acadLessonWrap('Running Effective 1-on-1s', 'tm1-3', progress,
+    acadSection('The 15-minute weekly format', 'Great 1-on-1s are structured and data-driven. Pull up the Scoreboard and the rep\'s account list before the call. The meeting should always start with numbers, not feelings.') +
+    acadSection('The 5 key questions', '') +
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Q1', text: '"Show me your 3 biggest accounts — what\'s the growth plan for each one?"' },
+      { color: 'var(--blue-b)', label: 'Q2', text: '"Which accounts haven\'t ordered in 90+ days? What\'s your re-engagement plan?"' },
+      { color: 'var(--gold)', label: 'Q3', text: '"Walk me through your Attack Plan — what moved this week and why?"' },
+      { color: 'var(--gold)', label: 'Q4', text: '"Who are your top 3 prospects right now? What\'s the very next action for each?"' },
+    ]) +
+    acadSection('Following up on commitments', 'End every 1-on-1 by confirming what the rep will do before the next call. Check their Notes Feed the next day — if they said they\'d call 5 accounts, there should be 5 contact notes. Accountability without follow-through is just conversation.') +
+    acadKeyTakeaway('Reps perform at the level they are held to. A consistent weekly check-in with data is more powerful than any motivational speech.') +
+    acadCompleteBtn('tm1-3')
+  );
+},
+
+'tm1-4': function() {
+  return acadLessonWrap('AI Coach Report', 'tm1-4', progress,
+    acadSection('What the AI Coach Report does', 'The AI Coach Report in Manager Hub → Playbook generates a personalized coaching brief for your team using real data: account counts, active percentages, notes written, and overdue follow-ups for each rep.') +
+    acadSteps([
+      { step: '1', title: 'Open Manager Hub → Playbook tab', desc: 'Scroll to the bottom of the Playbook tab and click GENERATE REPORT.' },
+      { step: '2', title: 'AI analyzes the data', desc: 'The AI reads the current week\'s metrics for each rep on your team and writes 2-3 specific action items for each person.' },
+      { step: '3', title: 'Read and prepare', desc: 'Use the report as your 1-on-1 prep. Copy the relevant section into your notes before each rep\'s call.' },
+      { step: '4', title: 'Regenerate weekly', desc: 'Click REGENERATE before each Monday check-in. The AI always uses the most current data.' },
+    ]) +
+    acadSection('Limitations', 'The AI only sees what is in the app — it does not know about phone calls that were not logged, external emails, or conversations outside the system. That is why note discipline matters: reps who do not log their activity appear worse to the AI than they may actually be.') +
+    acadKeyTakeaway('Generate the AI Coach Report every Monday morning as part of your weekly prep. It takes 30 seconds and replaces an hour of data digging.', 'Generate report', 'managerHub') +
+    acadCompleteBtn('tm1-4')
+  );
+},
+
+'tm2-1': function() {
+  return acadLessonWrap("Viewing a Rep's Accounts", 'tm2-1', progress,
+    acadSection('The View As Rep dropdown', 'Use the View As Rep dropdown in the left sidebar to switch into any rep\'s perspective. You will see their My Accounts list, status badges, revenue totals, and notes — exactly as they see it.') +
+    acadSteps([
+      { step: '1', title: 'Click the dropdown', desc: 'The View As Rep selector is always visible in your sidebar. It lists all reps on your team plus a Team (All) option.' },
+      { step: '2', title: 'Select a rep', desc: 'The app switches to that rep\'s account view. The sidebar label changes to "VIEWING: RepName". All data shown belongs to that rep.' },
+      { step: '3', title: 'Navigate as normal', desc: 'You can browse their accounts, open account detail panels, read their notes, and view their attack plan — all from their viewpoint.' },
+      { step: '4', title: 'Return to your view', desc: 'Select Team (All) from the dropdown to return to the combined team view, or select another rep to switch.' },
+    ]) +
+    acadSection('What you can and cannot do', 'You can read all data for any rep. You can write manager notes that appear in their Notes Feed. You cannot submit requests on behalf of a rep (e.g., account removal) — those must come from the rep.') +
+    acadKeyTakeaway('Before any 1-on-1, spend 3 minutes in the rep\'s account view. You will spot patterns and preparation gaps before the call starts.', "View rep accounts", 'accounts') +
+    acadCompleteBtn('tm2-1')
+  );
+},
+
+'tm2-2': function() {
+  return acadLessonWrap('Reading the Attack Plan', 'tm2-2', progress,
+    acadSection('What a healthy Attack Plan looks like', 'A well-maintained Attack Plan has accounts filling all three active zones: Solid Core (10), Active Pursue (10), and Outer Ring (30). The pool should be churning — accounts moving in and out as priorities shift.') +
+    acadTipCards([
+      { color: 'var(--gold)', label: '★ Solid Core', text: 'Top 10 accounts — highest revenue, strongest relationship. If slots are empty, the rep is not protecting their best customers.' },
+      { color: 'var(--blue-b)', label: '◈ Active Pursue', text: 'Next 10 — actively working to grow. If empty, the rep has no growth focus. Ask: who are you trying to win this month?' },
+      { color: 'var(--green)', label: '○ Outer Ring', text: 'Up to 30 — keep warm with periodic contact. Pool full + empty ring = rep is overwhelmed or not strategic.' },
+    ]) +
+    acadSection('How to view a rep\'s plan', 'Use View As Rep to select the rep, then click Attack Plan in the sidebar. You will see their full board. Look for: empty zones, accounts that have been in a zone 30+ days without movement (shown with a badge), and a pool that never changes.') +
+    acadSection('Questions to ask in your 1-on-1', '"Your Solid Core slot 3 has been inactive for 120 days — what\'s your plan?" / "Why is your Active Pursue zone empty?" / "What are your top 3 pool accounts to promote this week?"') +
+    acadCompleteBtn('tm2-2')
+  );
+},
+
+'tm2-3': function() {
+  return acadLessonWrap('Transfer Candidates', 'tm2-3', progress,
+    acadSection('What transfer candidates are', 'Transfer Candidates are inactive accounts from other reps that appear in the right panel of the Attack Plan. They represent re-engagement opportunities — accounts that went cold with one rep but might respond better with fresh attention from another.') +
+    acadSection('The ASSIGN DIRECTLY button', 'As a manager, you have the ASSIGN DIRECTLY button in the Transfer action modal. This lets you immediately reassign an account to the rep whose Attack Plan you are viewing. The account moves to their pool and the transfer is logged to the system.') +
+    acadSteps([
+      { step: '1', title: 'View a rep\'s Attack Plan', desc: 'Use View As Rep to select a rep, then open their Attack Plan.' },
+      { step: '2', title: 'Review Transfer Candidates panel', desc: 'The right panel shows inactive accounts from other reps. Sort by revenue to find the highest-value opportunities first.' },
+      { step: '3', title: 'Click an account', desc: 'The action modal opens with options: REQUEST TRANSFER (logs a request) or ASSIGN DIRECTLY (immediate, manager/admin only).' },
+      { step: '4', title: 'ASSIGN DIRECTLY', desc: 'Click ASSIGN DIRECTLY to move the account to this rep\'s pool immediately. Use this when you know the match is right and do not want the delay of a formal request.' },
+    ]) +
+    acadKeyTakeaway('ASSIGN DIRECTLY is a manager-only tool. Use it intentionally — it bypasses the request queue. Best used when you have a clear strategic reason for the reassignment.') +
+    acadCompleteBtn('tm2-3')
+  );
+},
+
+'tm2-4': function() {
+  return acadLessonWrap('Team Notes and Notes Feed', 'tm2-4', progress,
+    acadSection('Two views, different scope', 'You have two note feeds: Notes Feed (your personal notes + team context) and Team Notes (all team notes in one combined stream). Use Team Notes to stay connected to what your reps are documenting every day.') +
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'RepNote', text: 'Notes reps write in their account panel. Blue. The most common type — logs conversations and account status.' },
+      { color: 'var(--teal)', label: 'ContactNote', text: 'Notes tied to specific contacts (people, not companies). Teal. Written via the Contacts view.' },
+      { color: 'var(--gold)', label: 'ManagerNote', text: 'Notes you write as manager. Gold. Visible to the rep and other managers. Use for coaching feedback or context.' },
+    ]) +
+    acadSection('Writing manager notes', 'When you are viewing a rep\'s account, you can write a note that appears in their Notes Feed tagged as a Manager Note. Open the account detail, click the Notes tab, and type your note. The rep sees it in their feed in gold.') +
+    acadSection('Using Team Notes as a daily monitor', 'Team Notes auto-refreshes. Scan it each morning: look for reps with no new notes (they may not be working accounts), look for distress signals in note content, and look for follow-up dates being set (good discipline).') +
+    acadKeyTakeaway('Team Notes is your passive monitoring tool. It takes 2 minutes to scan and gives you a real-time pulse on team activity without interrupting anyone.', 'Open Team Notes', 'teamNotes') +
+    acadCompleteBtn('tm2-4')
+  );
+},
+
+'tm3-1': function() {
+  return acadLessonWrap('Warning Signs to Watch', 'tm3-1', progress,
+    acadSection('Recognize problems early', 'Most performance problems do not appear suddenly — they build for weeks before becoming visible in revenue. The Accountability Tracker surfaces them early. Know what to look for.') +
+    acadTipCards([
+      { color: 'var(--red)', label: 'No notes in 5+ days', text: 'The rep is not documenting customer activity. Either they are not calling accounts, or they are not using the app. Both are problems — investigate before assuming.' },
+      { color: 'var(--red)', label: 'Active rate below 40%', text: 'Less than 40% of their accounts ordered in the last 90 days. Accounts are drifting away. This takes months to reverse — act now.' },
+      { color: 'var(--orange)', label: '5+ overdue follow-ups', text: 'The rep is making commitments and not keeping them. This erodes customer trust. Pull up their accounts and sort by follow-up date in your next 1-on-1.' },
+      { color: 'var(--orange)', label: 'Attack Plan pool full, no zones', text: 'Rep has all accounts in the pool and no zones filled. They are not working strategically — everything is equal priority, meaning nothing is a real priority.' },
+    ]) +
+    acadSection('Escalation threshold', 'If you see two or more red flags for the same rep in the same week, schedule a same-day check-in — do not wait for the next 1-on-1. Early intervention prevents a performance conversation from becoming a disciplinary one.') +
+    acadCompleteBtn('tm3-1')
+  );
+},
+
+'tm3-2': function() {
+  return acadLessonWrap('Managing Account Activity Rates', 'tm3-2', progress,
+    acadSection('What active rate measures', 'Active % in the Scoreboard is the percentage of a rep\'s accounts that placed at least one order in the last 90 days. It is the most honest measure of whether a rep is maintaining relationships or letting the book decay.') +
+    acadSection('Why rates decline', '') +
+    acadTipCards([
+      { color: 'var(--orange)', label: 'Seasonal', text: 'Some industries have Q1/Q4 slow periods. Check if the decline matches historical patterns before coaching for performance.' },
+      { color: 'var(--red)', label: 'Neglect', text: 'Rep is focused on a few large accounts and ignoring the rest. The pool of non-buyers keeps growing.' },
+      { color: 'var(--gold)', label: 'Lost to competitor', text: 'Accounts are buying from someone else. These need re-engagement outreach — AI can rank the best opportunities.' },
+    ]) +
+    acadSection('How to improve active rate', '1) Use Discover from CRM in the Attack Plan to find dormant accounts in CRM not yet engaged. 2) Have the rep use the AI Advisor in their Attack Plan to identify which pool accounts are most worth re-engaging. 3) Set a weekly goal: promote 2 pool accounts to Active Pursue zone and call them 3 times each.') +
+    acadKeyTakeaway('A 10-point drop in active rate is a 3-month problem. A 20-point drop is a crisis. Catch it at 10 and coach it before revenue is affected.') +
+    acadCompleteBtn('tm3-2')
+  );
+},
+
+'tm3-3': function() {
+  return acadLessonWrap('Setting Team Expectations', 'tm3-3', progress,
+    acadSection('Why written standards matter', 'Expectations that are not documented are not expectations — they are preferences. Your team needs to know the exact minimum standards so they can self-evaluate and you can coach consistently.') +
+    acadSection('The 5 non-negotiables', '') +
+    acadSteps([
+      { step: '1', title: '5 contact notes per week', desc: 'Every conversation with a customer must be logged. No exceptions. If it\'s not in the app, it didn\'t happen from a data perspective.' },
+      { step: '2', title: 'Zero overdue follow-ups', desc: 'If a follow-up date passes, it must be rescheduled the same day. Letting dates expire erodes customer trust and your credibility data.' },
+      { step: '3', title: 'Attack Plan maintained', desc: 'Solid Core and Active Pursue should always have accounts in them. Empty zones means the rep is not working strategically.' },
+      { step: '4', title: '50% active rate minimum', desc: 'At least half of all accounts should have placed an order in the last 90 days. Below 40% triggers a coaching conversation.' },
+      { step: '5', title: 'Collections follow-up', desc: 'Any account with a past-due balance must have a contact note documenting the follow-up attempt — minimum once per week.' },
+    ]) +
+    acadKeyTakeaway('Hold the standards consistently. The same standard for every rep, every week — no exceptions for top performers and no excuses for new reps.') +
+    acadCompleteBtn('tm3-3')
+  );
+},
+
+'tm3-4': function() {
+  return acadLessonWrap('CRM Discovery for Growth', 'tm3-4', progress,
+    acadSection('What CRM Discovery is', 'The Discover from CRM button in Attack Plan → Pool shows every CRM account assigned to a rep that is NOT yet actively tracked in the app. These are dormant relationships — accounts the company has history with but that have not been active in the app.') +
+    acadSection('Two ways to use it', '') +
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'Manual Discovery', text: 'DISCOVER FROM CRM opens a panel with all untracked CRM accounts. Rep can browse, filter, and add individual accounts to their pool. Good for targeted outreach.' },
+      { color: 'var(--gold)', label: 'AI Pick for Me', text: 'AI PICK FOR ME automatically analyzes all CRM accounts and recommends the top 10 by re-engagement potential. Rep reviews and accepts picks in bulk. Good for a quick pool refresh.' },
+    ]) +
+    acadSection('AI RANK within CRM Discovery', 'Once the CRM Discovery panel is open, clicking AI RANK re-sorts the list by AI-assessed re-engagement opportunity. The top 20 accounts are shown with a reason for each ranking — one line like "High prior revenue, recent lapse" that explains the priority score.') +
+    acadSection('Where added accounts go', 'CRM-sourced and AI-picked accounts save to the _ATTACK_POOL tab in the History sheet. They appear in the rep\'s pool and are marked with a CRM or AI badge so you can distinguish them from existing app accounts.') +
+    acadSection('Manager role', 'As a manager, use View As Rep to open a rep\'s Attack Plan and run Discover from CRM on their behalf. This is a powerful coaching tool: "I found 15 accounts in your CRM that haven\'t ordered in 18 months — let\'s build a re-engagement plan for the top 5."') +
+    acadKeyTakeaway('CRM Discovery turns historical relationships into active opportunities. Run it for each rep quarterly or whenever their active rate drops below 50%.', 'Open Attack Plan', 'attack') +
+    acadCompleteBtn('tm3-4')
+  );
+},
+
   };
 
   // For lessons without explicit content, show a placeholder
@@ -13597,7 +13850,8 @@ function acadLessonWrap(title, lessonId, progress, bodyHtml) {
   const tColor = (typeof TRACK_COLORS !== 'undefined' && track) ? TRACK_COLORS[track.id] || '#666' : '#666';
   const breadcrumb = track ? 'Track ' + (trackIdx + 1) + ' — ' + track.title + ' › ' + posInTrack + '. ' + title : '';
   const allLessons = [];
-  ACADEMY_TRACKS.forEach(function(t){ t.lessons.forEach(function(l){ allLessons.push(l); }); });
+  var _navTracks = (typeof getActiveTracks === 'function') ? getActiveTracks() : ACADEMY_TRACKS;
+  _navTracks.forEach(function(t){ t.lessons.forEach(function(l){ allLessons.push(l); }); });
   const flatIdx = allLessons.findIndex(function(l){ return l.id === lessonId; });
   const prev = flatIdx > 0 ? allLessons[flatIdx - 1] : null;
   const next = flatIdx < allLessons.length - 1 ? allLessons[flatIdx + 1] : null;

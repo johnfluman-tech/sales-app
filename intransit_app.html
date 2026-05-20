@@ -3120,7 +3120,6 @@ function handleSignout() {
   sessionStorage.removeItem('it_nda_accepted');
   sessionStorage.removeItem('it_session_id');
   sessionStorage.removeItem('it_login_time');
-  try { google.accounts.oauth2.revoke(state.accessToken, () => {}); } catch(e){}
   try { google.accounts.id.disableAutoSelect(); } catch(e){}
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app').classList.remove('visible');
@@ -3370,23 +3369,20 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
     const res = await fetch(url, { headers: { 'X-Google-Token': state.accessToken } });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
-        // If already signed out, don't trigger another signout cascade
-        if (_signedOut) { throw new Error('Session ended — please sign in again'); }
-        // During NDA/location phase: throw silently — do NOT call handleSignout()
-        // (handleSignout clears it_nda_accepted and causes the NDA loop)
+        // Never kick the user out for Sheets API errors — a 403 is a permissions
+        // issue on a specific call, not a reason to end the session.
+        // A 401 means the token expired; show a toast but let the user stay in the
+        // app and sign out manually (or refresh the page).
+        if (_signedOut) { throw new Error('Session ended'); }
         if (!state._loginComplete) {
+          // During NDA/location phase: throw silently so non-critical writes
+          // (NDA log, access log) don't disrupt the login flow.
           throw new Error('Auth error during login setup — non-blocking');
         }
-        // Post-login 401: sign out immediately — no popup refresh attempt.
-        // requestAccessToken() always opens a popup window on some PCs even with
-        // prompt:'none', which can cause an infinite background-popup loop.
-        if (!state._refreshingToken) {
-          _signedOut = true;
-          handleSignout();
-          showToast('Session expired — please sign in again', 'error');
-          throw new Error('Session expired — please sign in again');
+        if (res.status === 401 && !state._refreshingToken) {
+          showToast('Session may have expired — please sign out and sign in again', 'error');
         }
-        throw new Error('Session ended — please sign in again');
+        throw new Error('Sheets API ' + res.status);
       }
       if (res.status === 429) {
         // Rate limited — back off and retry up to 3 times

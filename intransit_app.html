@@ -2721,6 +2721,7 @@ let state = {
   user: null,
   repId: null,
   isAdmin: false,
+  loginInProgress: false, // guard: prevents duplicate OAuth flows
   loginTime: null,     // set at completeLogin for force-logout check
   userIP: null,        // pre-fetched at NDA accept
   userCity: null,
@@ -2763,8 +2764,14 @@ let state = {
 //  GOOGLE AUTH
 // ══════════════════════════════════════════════════════════
 function handleGoogleCredential(response) {
+  if (state.loginInProgress) {
+    console.log('[AUTH] Login already in progress — ignoring duplicate credential callback');
+    return;
+  }
+  state.loginInProgress = true;
   const payload = JSON.parse(atob(response.credential.split('.')[1]));
   if (!payload.email.endsWith('@intransittech.com')) {
+    state.loginInProgress = false;
     alert('Access restricted to @intransittech.com accounts only.');
     return;
   }
@@ -2807,13 +2814,20 @@ function refreshTokenSilent() {
 }
 
 function requestSheetsToken() {
+  // Safety timeout: if OAuth popup is blocked or callback never fires, reset the guard
+  const _oauthTimeout = setTimeout(() => {
+    console.warn('[AUTH] OAuth callback timeout — popup may have been blocked. Allow popups and try again.');
+    state.loginInProgress = false;
+  }, 30000);
   try {
     const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CONFIG.CLIENT_ID,
       scope: CONFIG.SCOPES,
       hint: state.user?.email || '',
       callback: (tokenResponse) => {
+        clearTimeout(_oauthTimeout);
         if (tokenResponse.error) {
+          state.loginInProgress = false;
           showToast('Sign-in error: ' + tokenResponse.error, 'error');
           return;
         }
@@ -2825,6 +2839,8 @@ function requestSheetsToken() {
     });
     tokenClient.requestAccessToken({ prompt: '' });
   } catch(e) {
+    clearTimeout(_oauthTimeout);
+    state.loginInProgress = false;
     showToast('Sign-in error: ' + (e.error || e.message || JSON.stringify(e)), 'error');
   }
 }
@@ -2955,6 +2971,7 @@ function generateSessionId() {
 }
 
 function handleSignout() {
+  state.loginInProgress = false;
   state.user = null;
   state.accessToken = null;
   state._loginComplete = false;
@@ -13832,6 +13849,7 @@ async function init() {
   }
 
   // Saved session — show app directly
+  state.loginInProgress = true;
   completeLogin();
 }
 

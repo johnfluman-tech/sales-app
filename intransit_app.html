@@ -2878,8 +2878,9 @@ async function initGapiClient() {
   // Not used — kept for compatibility
 }
 
-// Silent token refresh — reuses existing state.tokenClient (no new popup context)
-// Resolves via state._pendingRefresh, which requestSheetsToken callback checks first
+// Silent token refresh — reuses existing state.tokenClient with prompt:'none'
+// prompt:'none' means GIS will NOT show any popup; fails immediately if interaction needed.
+// This prevents the popup-loop issue on machines where requestAccessToken always shows UI.
 function refreshTokenSilent() {
   return new Promise(function(resolve, reject) {
     if (!state.tokenClient) {
@@ -2893,10 +2894,10 @@ function refreshTokenSilent() {
     var _rTid = setTimeout(function() {
       state._pendingRefresh = null;
       reject(new Error('Token refresh timeout'));
-    }, 12000);
+    }, 8000);
     state._pendingRefresh = { resolve: resolve, reject: reject, tid: _rTid };
     try {
-      state.tokenClient.requestAccessToken({ prompt: '' });
+      state.tokenClient.requestAccessToken({ prompt: 'none' });
     } catch(e) {
       clearTimeout(_rTid);
       state._pendingRefresh = null;
@@ -3372,6 +3373,12 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
       if (res.status === 401 || res.status === 403) {
         // If already signed out, don't trigger another signout cascade
         if (_signedOut) { throw new Error('Session ended — please sign in again'); }
+        // Don't attempt popup refresh during NDA/location phase — sign out cleanly instead
+        if (!state._loginComplete) {
+          _signedOut = true;
+          handleSignout();
+          throw new Error('Auth error during login — please sign in again');
+        }
         if (!state._refreshingToken) {
           state._refreshingToken = true;
           showToast('Session expired — refreshing...', '');

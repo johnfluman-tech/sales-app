@@ -353,3 +353,59 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 3. `checkAuth()` expired token path ✓ (new)
 4. `checkAuth()` no token path ✓ (new)
 5. `init()` `!authed` branch ✓ (new)
+
+### 2026-05-20 (session 11 — TASK17 login loop fix + TASK18 Prospects)
+
+**TASK17 — OAuth loop fix:**
+- Root cause: `sheetsGetFrom()` concurrent-401 path was calling `handleSignout()` immediately, kicking Karen/Mauricio back to login while another request was already refreshing the token. Fixed by throwing instead of signing out in the concurrent-401 branch.
+- Secondary: `checkIPAndProceed()` and `confirmLocation()` both called `loadAllAccounts()` as fire-and-forget — creating 2 concurrent loads that both hit 401 simultaneously. Removed both redundant calls.
+- TASK17 OAuth popup loop: added `state.loginInProgress` guard in `handleGoogleCredential()`, 30s timeout in `requestSheetsToken()`, reset in `handleSignout()`, and pre-set in `init()` for cached sessions.
+
+**TASK18 — Prospecting + Cold Account Features (all 5 features):**
+
+**Feature 1 — Live CRM Account Search:**
+- Added "🔍 FIND ACCOUNT" button in My Accounts topbar (shown only when on accounts view via `switchView`)
+- CRM search modal (`#crm-search-modal`) with 3-char min input — searches `state.customerDirectory` client-side
+- `loadCustomerDirectory()` — loads `_CUSTOMER_DIRECTORY` tab from History Sheet into `state.customerDirectory` on startup (non-blocking after `schedLoadFromSheets()`)
+- `_CUSTOMER_DIRECTORY` tab must be populated by `sales_report.py` on INTRANSIT-RDS02: columns `CUSTOMER_ID, NAME, USERNAME, CITY, STATE, LAST_ACTIVITY`
+- Results show company name, rep, city/state, last activity + "Add to My Prospects" button
+
+**Feature 2 — Prospects Tab:**
+- Sidebar nav item "🎯 Prospects" between Contacts and Attack Plan
+- Two-panel layout: left = prospect list with filter bar (priority: All/Hot/Warm/Cold; source: All/Manual/CRM; sort: Name/Priority/Last Contacted/Date Added); right = detail panel
+- Prospect cards show priority emoji badge, company, source, days since last contact
+- Detail panel tabs: Notes, Contacts, Outreach, Research, Convert
+- Notes tab: view existing notes + add timestamped note (updates `LAST_CONTACTED`)
+- Contacts tab: add/remove contact name/title/email/phone (stored as JSON in `CONTACTS_JSON` column)
+- Convert tab: detects if prospect company matches an existing account (invoice data), shows convert banner
+- Add Prospect modal: manual form (name, priority, industry, website, city/state, notes)
+- CRM search flow: clicking "Add to My Prospects" pre-fills the add form with company name + CRM ID
+- Saves to `_PROSPECTS` tab in History Sheet (must be created manually or auto-created on first write)
+
+**Feature 3 — AI Prospecting Assistant:**
+- Outreach tab: AI cold intro + follow-up email generator using `claude-haiku-4-5-20251001`
+- Research tab: AI company research profile using `claude-haiku-4-5-20251001`
+- System prompt includes rep ID and top part numbers from invoice history
+
+**Feature 4 — Daily Mission Integration:**
+- Hot prospects (PRIORITY=Hot, STATUS=Active) prepended to `aiPicks` array in `renderFollowUpCommandCenter()`
+- Rendered with gold `🎯 PROSPECT` badge, shows priority + days since last contact
+- Click takes rep to Prospects view
+
+**Feature 5 — Admin Bulk Import:**
+- "📥 Bulk Import" button in Prospects list header (admin only via `isAdmin()`)
+- Full-page CSV import panel with rep selector and paste area
+- CSV format: `COMPANY_NAME,WEBSITE,INDUSTRY,CITY,STATE,PRIORITY,NOTES`
+- Skips duplicates; appends all new rows to `_PROSPECTS` in one `sheetsAppend` call
+
+**New state fields:** `state.prospectCache`, `state.customerDirectory`, `state._prospectsLoaded`, `state._selectedProspect`, `state._prospectTab`
+**New localStorage keys:** `window._prospectFilter` (priority/source/sort filter state)
+**New HTML:** `#crm-search-modal`, `#add-prospect-modal`
+
+**New functions:** `showCRMSearch`, `closeCRMSearch`, `crmSearchInput`, `addToProspects`, `showAddProspectModal`, `_openAddProspectForm`, `closeAddProspectModal`, `submitAddProspect`, `saveProspect`, `_updateProspectInSheet`, `_updateProspectsBadge`, `loadCustomerDirectory`, `loadProspects`, `renderProspectsView`, `selectProspect`, `_prospectSwitchTab`, `_renderProspectDetailHtml`, `_getProspectTabHtml`, `_prospectNotesHtml`, `_prospectContactsHtml`, `_prospectOutreachHtml`, `_prospectResearchHtml`, `_prospectConvertHtml`, `_attachProspectDetailEvents`, `_attachProspectTabEvents`, `saveProspectNote`, `saveProspectContact`, `deleteProspectContact`, `deleteProspect`, `convertProspect`, `prospectSetPriority`, `prospectsGenerateEmail`, `prospectsResearch`, `showBulkImportProspects`, `processBulkImport`
+
+**Pending (manual setup required on INTRANSIT-RDS02):**
+- Add `_CUSTOMER_DIRECTORY` export to `sales_report.py` — write all dbo.CUSTOMER rows (columns: CUSTOMER_ID, NAME, USERNAME, CITY, STATE, LAST_ACTIVITY) to a `_CUSTOMER_DIRECTORY` tab in History Sheet after the main run
+- The `_PROSPECTS` tab in History Sheet will be auto-created on first prospect save (sheetsAppend creates it if it doesn't exist, as long as the tab exists — may need to create the tab manually first in Google Sheets)
+
+**Commit:** `15ffae6`

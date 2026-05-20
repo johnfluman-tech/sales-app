@@ -1490,12 +1490,12 @@ const MANAGER_CONFIG = {
   },
   'CMancilla': {
     teamName: 'CM Team',
-    teamReps: ['PIan','RMauricio','LMancera','bcastor'],
+    teamReps: ['CKaren','PIan','RMauricio','LMancera','bcastor'],
     sharedWith: ['carlos.mancilla@intransittech.com']
   },
   'MPerezfreye': {
     teamName: 'MP Team',
-    teamReps: ['PIan','RMauricio','LMancera','bcastor'],
+    teamReps: ['CKaren','PIan','RMauricio','LMancera','bcastor'],
     sharedWith: ['manuel.perezfreyre@intransittech.com']
   }
 };
@@ -9294,7 +9294,18 @@ function openCollectionsEmailClient(email) {
 // ══════════════════════════════════════════════════════════
 function renderContactsView() {
   const content = document.getElementById('main-content');
-  const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
+  // Manager-only users (no personal repId) with no specific rep selected: prompt to pick one
+  if (isManager() && !state.repId && (!state.viewAsRep || state.viewAsRep === '__TEAM_ALL__')) {
+    content.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center">' +
+      '<div style="text-align:center;color:var(--text-3);font-family:var(--mono);font-size:12px;line-height:1.8">' +
+      '<div style="font-size:28px;margin-bottom:12px">&#9901;</div>' +
+      '<div>Select a rep from the <strong>View As Rep</strong> dropdown<br>to view their contacts.</div>' +
+      '</div></div>';
+    return;
+  }
+  const repFilter = state.isAdmin ? (state.viewAsRep || null) :
+    isManager() ? (state.viewAsRep && state.viewAsRep !== '__TEAM_ALL__' ? state.viewAsRep : state.repId || null) :
+    state.repId;
 
   let allContacts = [];
   const seenContactKeys = new Set();
@@ -10179,26 +10190,40 @@ function canSeeTransferCandidates() {
   return _result;
 }
 
+function apkSelectRep(r) {
+  state.viewAsRep = r;
+  var _sel = document.getElementById('view-as-select');
+  if (_sel) _sel.value = r;
+  var _lbl = document.getElementById('sidebar-user-role');
+  if (_lbl) { _lbl.textContent = 'VIEWING: ' + r; _lbl.style.color = 'var(--accent)'; }
+  renderAttackPlan();
+}
+
 async function renderAttackPlan() {
   const el = document.getElementById('main-content');
 
-  // When admin hasn't picked a rep, show a picker
-  const repFilter = state.isAdmin ? state.viewAsRep : state.repId;
+  // When no rep is selected, show a picker
+  // Managers use viewAsRep when viewing a specific rep; fall back to repId (CKaren has one)
+  const repFilter = state.isAdmin ? state.viewAsRep :
+    isManager() ? (state.viewAsRep && state.viewAsRep !== '__TEAM_ALL__' ? state.viewAsRep : state.repId || null) :
+    state.repId;
   if (!repFilter) {
-    el.innerHTML = `<div style="flex:1;display:flex;align-items:center;justify-content:center">
-      <div style="text-align:center;padding:40px">
-        <div style="font-size:32px;margin-bottom:16px">⚔</div>
-        <div style="font-size:18px;font-weight:700;margin-bottom:8px">Sales Attack Plan</div>
-        <div style="font-size:13px;color:var(--text-3);margin-bottom:24px">Select a rep to view or edit their plan</div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:400px">
-          ${CONFIG.REPS.map(r => `<button onclick="document.getElementById('view-as-select').value='${r}';switchViewAs('${r}')"
-            style="padding:10px 20px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r);transition:all 0.15s"
-            onmouseover="this.style.borderColor='var(--blue-b)';this.style.color='var(--blue-b)'"
-            onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">${r}</button>`).join('')}
-        </div>
-        <div style="margin-top:20px;font-size:11px;color:var(--text-3)">Or use the <strong>VIEW AS REP</strong> dropdown in the sidebar</div>
-      </div>
-    </div>`;
+    const _mgrCfg = isManager() ? getManagerConfig() : null;
+    const _pickerReps = _mgrCfg ? _mgrCfg.teamReps : CONFIG.REPS;
+    const _repBtns = _pickerReps.map(function(r) {
+      return '<button onclick="apkSelectRep(\'' + r + '\')"' +
+        ' style="padding:10px 20px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r);transition:all 0.15s"' +
+        ' onmouseover="this.style.borderColor=\'var(--blue-b)\';this.style.color=\'var(--blue-b)\'"' +
+        ' onmouseout="this.style.borderColor=\'var(--border)\';this.style.color=\'var(--text)\'">' + r + '</button>';
+    }).join('');
+    el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center">' +
+      '<div style="text-align:center;padding:40px">' +
+      '<div style="font-size:32px;margin-bottom:16px">&#9876;</div>' +
+      '<div style="font-size:18px;font-weight:700;margin-bottom:8px">Sales Attack Plan</div>' +
+      '<div style="font-size:13px;color:var(--text-3);margin-bottom:24px">Select a rep to view or edit their plan</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:400px">' + _repBtns + '</div>' +
+      '<div style="margin-top:20px;font-size:11px;color:var(--text-3)">Or use the <strong>VIEW AS REP</strong> dropdown in the sidebar</div>' +
+      '</div></div>';
     return;
   }
 
@@ -11428,8 +11453,8 @@ function renderAcademyView() {
   const xp = progress.xp || 0;
   const completedLessons = progress.completedLessons || [];
 
-  // First visit check
-  if (completedLessons.length === 0 && !progress._welcomeShown) {
+  // First visit check — managers and admin skip the welcome and go straight to tracks
+  if (completedLessons.length === 0 && !progress._welcomeShown && !isManager() && !isAdmin()) {
     content.innerHTML = academyWelcomeHTML();
     return;
   }

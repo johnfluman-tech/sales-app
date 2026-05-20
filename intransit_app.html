@@ -2838,12 +2838,20 @@ let state = {
   _prospectTab: 'notes',    // active tab in prospect detail panel
   tokenRequestInProgress: false, // guard: prevents duplicate OAuth token requests
   tokenClient: null,             // stored GIS token client instance
+  _pendingRefresh: null,         // {resolve,reject,tid} for refreshTokenSilent()
 };
+// Prevents cascade of handleSignout() calls from concurrent background API failures
+let _signedOut = false;
 
 // ══════════════════════════════════════════════════════════
 //  GOOGLE AUTH
 // ══════════════════════════════════════════════════════════
 function handleGoogleCredential(response) {
+  // Loop guard: GIS sometimes re-fires immediately after signout on some browsers
+  if (window._lastSignoutTime && Date.now() - window._lastSignoutTime < 8000) {
+    console.log('[AUTH] GIS callback suppressed — too soon after signout (loop guard)');
+    return;
+  }
   if (state.loginInProgress) {
     console.log('[AUTH] Login already in progress — ignoring duplicate credential callback');
     return;
@@ -2870,26 +2878,30 @@ async function initGapiClient() {
   // Not used — kept for compatibility
 }
 
-// Silent token refresh — wraps the GIS tokenClient in a Promise
+// Silent token refresh — reuses existing state.tokenClient (no new popup context)
+// Resolves via state._pendingRefresh, which requestSheetsToken callback checks first
 function refreshTokenSilent() {
-  return new Promise((resolve, reject) => {
-    const tid = setTimeout(() => reject(new Error('Token refresh timeout')), 12000);
+  return new Promise(function(resolve, reject) {
+    if (!state.tokenClient) {
+      reject(new Error('No tokenClient available for silent refresh'));
+      return;
+    }
+    if (state._pendingRefresh) {
+      reject(new Error('Refresh already in progress'));
+      return;
+    }
+    var _rTid = setTimeout(function() {
+      state._pendingRefresh = null;
+      reject(new Error('Token refresh timeout'));
+    }, 12000);
+    state._pendingRefresh = { resolve: resolve, reject: reject, tid: _rTid };
     try {
-      const tc = google.accounts.oauth2.initTokenClient({
-        client_id: CONFIG.CLIENT_ID,
-        scope: CONFIG.SCOPES,
-        hint: state.user?.email || '',
-        callback: (tr) => {
-          clearTimeout(tid);
-          if (tr.error) { reject(new Error(tr.error)); return; }
-          state.accessToken = tr.access_token;
-          localStorage.setItem('it_token', state.accessToken);
-          localStorage.setItem('it_token_time', Date.now().toString());
-          resolve();
-        },
-      });
-      tc.requestAccessToken({ prompt: '' });
-    } catch(e) { clearTimeout(tid); reject(e); }
+      state.tokenClient.requestAccessToken({ prompt: '' });
+    } catch(e) {
+      clearTimeout(_rTid);
+      state._pendingRefresh = null;
+      reject(e);
+    }
   });
 }
 
@@ -2920,6 +2932,13 @@ function requestSheetsToken() {
           state.tokenRequestInProgress = false;
           console.log('[TOKEN] Token received, guard reset');
           if (tokenResponse.error) {
+            if (state._pendingRefresh) {
+              var _prErr = state._pendingRefresh;
+              state._pendingRefresh = null;
+              clearTimeout(_prErr.tid);
+              _prErr.reject(new Error(tokenResponse.error));
+              return;
+            }
             state.loginInProgress = false;
             showToast('Sign-in error: ' + tokenResponse.error, 'error');
             return;
@@ -2927,6 +2946,15 @@ function requestSheetsToken() {
           state.accessToken = tokenResponse.access_token;
           localStorage.setItem('it_token', state.accessToken);
           localStorage.setItem('it_token_time', Date.now().toString());
+          // If triggered by a silent refresh (not initial login), resolve and return
+          if (state._pendingRefresh) {
+            var _pr = state._pendingRefresh;
+            state._pendingRefresh = null;
+            clearTimeout(_pr.tid);
+            console.log('[TOKEN] Silent refresh complete — token updated');
+            _pr.resolve();
+            return;
+          }
           completeLogin();
         },
       });
@@ -2956,6 +2984,7 @@ function completeLogin() {
     sessionStorage.setItem('it_session_id', generateSessionId());
   }
   state._loginComplete = true;
+  _signedOut = false; // clear cascade-prevention flag for this new session
   // Log login event to _LOG for every user (non-blocking, 3-attempt retry)
   logLoginEvent({ email: state.user ? state.user.email : 'unknown', repId: state.repId || 'unknown' }).catch(function(){});
   state.loginTime = Date.now();
@@ -3070,6 +3099,14 @@ function generateSessionId() {
 }
 
 function handleSignout() {
+  // Block all further API calls from triggering more signouts (cascade prevention)
+  _signedOut = true;
+  window._lastSignoutTime = Date.now();
+  if (state._pendingRefresh) {
+    clearTimeout(state._pendingRefresh.tid);
+    state._pendingRefresh.reject(new Error('Signed out'));
+    state._pendingRefresh = null;
+  }
   // Fix 6 — reset all auth guards on signout
   state.loginInProgress = false;
   state.tokenRequestInProgress = false;
@@ -3333,6 +3370,8 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
     const res = await fetch(url, { headers: { 'X-Google-Token': state.accessToken } });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
+        // If already signed out, don't trigger another signout cascade
+        if (_signedOut) { throw new Error('Session ended — please sign in again'); }
         if (!state._refreshingToken) {
           state._refreshingToken = true;
           showToast('Session expired — refreshing...', '');

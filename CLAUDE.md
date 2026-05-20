@@ -409,3 +409,18 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - The `_PROSPECTS` tab in History Sheet will be auto-created on first prospect save (sheetsAppend creates it if it doesn't exist, as long as the tab exists — may need to create the tab manually first in Google Sheets)
 
 **Commit:** `15ffae6`
+
+### 2026-05-20 (session 12 — Carlos OAuth infinite loop fix)
+
+**Root cause identified:** Multiple concurrent Sheets API calls fired after login (from `loadAllAccounts()` + `ensureCacheLoaded()`). When any returned 401, `refreshTokenSilent()` was called — which created a **new** `initTokenClient` (popup). On Carlos's PC the popup went to background, timed out after 12s, called `handleSignout()`, which reset `_refreshingToken`. The still-running background async calls then hit 401 again, each creating another popup — infinite cascade.
+
+**Three-part fix (commit `9364cd2`):**
+
+- **`_signedOut` module-level flag:** Set to `true` in `handleSignout()`, cleared to `false` in `completeLogin()` when `_loginComplete` is set. In `sheetsGetFrom()` 401 handler, if `_signedOut` is true, just throw immediately — no popup, no `handleSignout()` cascade.
+
+- **`refreshTokenSilent()` rewired to reuse `state.tokenClient`:** Instead of creating a new `initTokenClient` (separate popup context), the function sets `state._pendingRefresh = { resolve, reject, tid }` and calls `state.tokenClient.requestAccessToken({ prompt: '' })`. The `requestSheetsToken()` callback checks `state._pendingRefresh` after the token arrives — if set, it resolves/rejects and returns WITHOUT calling `completeLogin()` (the token is just updated silently). The 55-min proactive refresh now uses the same mechanism with no new popup.
+
+- **`handleGoogleCredential()` loop guard:** Added `window._lastSignoutTime` guard — if GIS fires within 8 seconds of a signout, the callback is suppressed. `handleSignout()` sets `window._lastSignoutTime = Date.now()`.
+
+**New state field:** `state._pendingRefresh` — `null` normally; `{ resolve, reject, tid }` while a silent refresh is in progress.
+**New module-level var:** `let _signedOut = false` — declared after the state object.

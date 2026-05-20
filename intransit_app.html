@@ -3072,11 +3072,10 @@ function completeLogin() {
     if (_nfInner && !isAdmin() && !isManager()) _nfInner.innerHTML = '<span class="nav-icon">&#128203;</span> My Notes';
   }
   academyUpdateBadge();
-  // Schedule proactive token refresh at 55 min (Google tokens last 60 min)
+  // Proactive refresh disabled — requestAccessToken() opens a popup window on some
+  // browsers/PCs even when silent, causing an infinite background-popup loop.
+  // Sessions expire after 60 min; the 401 handler will sign the user out cleanly.
   clearTimeout(state._tokenRefreshTimer);
-  state._tokenRefreshTimer = setTimeout(() => {
-    refreshTokenSilent().catch(() => {}); // silent — if it fails, 401 handler will catch it
-  }, 55 * 60 * 1000);
   // Start loading supplemental data (incl. GP) immediately in background
   // Don't wait for loadAllAccounts — they run in parallel for speed
   ensureCacheLoaded().catch(() => {});
@@ -3373,27 +3372,21 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
       if (res.status === 401 || res.status === 403) {
         // If already signed out, don't trigger another signout cascade
         if (_signedOut) { throw new Error('Session ended — please sign in again'); }
-        // Don't attempt popup refresh during NDA/location phase — sign out cleanly instead
+        // During NDA/location phase: throw silently — do NOT call handleSignout()
+        // (handleSignout clears it_nda_accepted and causes the NDA loop)
         if (!state._loginComplete) {
+          throw new Error('Auth error during login setup — non-blocking');
+        }
+        // Post-login 401: sign out immediately — no popup refresh attempt.
+        // requestAccessToken() always opens a popup window on some PCs even with
+        // prompt:'none', which can cause an infinite background-popup loop.
+        if (!state._refreshingToken) {
           _signedOut = true;
           handleSignout();
-          throw new Error('Auth error during login — please sign in again');
+          showToast('Session expired — please sign in again', 'error');
+          throw new Error('Session expired — please sign in again');
         }
-        if (!state._refreshingToken) {
-          state._refreshingToken = true;
-          showToast('Session expired — refreshing...', '');
-          try {
-            await refreshTokenSilent();
-            state._refreshingToken = false;
-            return sheetsGetFrom(spreadsheetId, range); // retry with new token
-          } catch(refreshErr) {
-            state._refreshingToken = false;
-            handleSignout();
-            throw new Error('Session expired — please sign in again');
-          }
-        }
-        // Another refresh already in progress — don't sign out, let that refresh finish
-        throw new Error('Token refresh in progress, retry shortly');
+        throw new Error('Session ended — please sign in again');
       }
       if (res.status === 429) {
         // Rate limited — back off and retry up to 3 times

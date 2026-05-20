@@ -1149,6 +1149,12 @@ body::before {
           <span class="nav-badge blue" id="badge-contacts">—</span>
         </div>
       </div>
+      <div class="nav-item" id="nav-prospects" data-view="prospects" onclick="switchView('prospects')">
+        <div class="nav-item-inner">
+          <span class="nav-icon">🎯</span> Prospects
+          <span class="nav-badge" id="badge-prospects" style="background:var(--gold);color:#000"></span>
+        </div>
+      </div>
       <div class="nav-item" id="nav-attack" data-view="attack" id="nav-attack" onclick="switchView('attack')">
         <div class="nav-item-inner">
           <span class="nav-icon">⊹</span> Attack Plan
@@ -1240,6 +1246,7 @@ body::before {
       <button id="mobile-menu-btn" onclick="toggleMobileNav()" aria-label="Menu">☰</button>
       <div class="topbar-title" id="topbar-title">My Accounts</div>
       <input class="topbar-search" type="text" placeholder="Search accounts..." id="search-input" oninput="filterAccounts()">
+      <button id="btn-find-account" onclick="showCRMSearch()" style="display:none;padding:6px 12px;background:var(--s2);border:1px solid var(--border);color:var(--blue-bright);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;cursor:pointer;border-radius:var(--r);white-space:nowrap">🔍 FIND ACCOUNT</button>
       <button class="filter-btn" id="filter-all" onclick="setFilter('all')" style="display:none">ALL</button>
       <button class="filter-btn active" id="filter-active" onclick="setFilter('active')">ACTIVE</button>
       <button class="filter-btn" id="filter-inactive-btn" onclick="setFilter('inactive')">INACTIVE</button>
@@ -1303,6 +1310,34 @@ body::before {
       <button onclick="document.getElementById('force-logout-result-modal').style.display='none'"
         style="padding:9px 24px;background:var(--navy-mid);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r)">OK</button>
     </div>
+  </div>
+</div>
+
+<!-- CRM SEARCH MODAL -->
+<div id="crm-search-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9998;align-items:center;justify-content:center" onclick="if(event.target===this)closeCRMSearch()">
+  <div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid var(--blue-b);border-radius:var(--r2);width:600px;max-width:96vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.7)">
+    <div style="padding:20px 24px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)">
+      <div style="font-size:16px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;flex:1">🔍 FIND ACCOUNT IN CRM</div>
+      <button onclick="closeCRMSearch()" style="background:none;border:none;color:var(--text-3);font-size:18px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div style="padding:16px 24px">
+      <input id="crm-search-input" type="text" placeholder="Search CRM by company name..." oninput="crmSearchInput()"
+        style="width:100%;padding:10px 14px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px;box-sizing:border-box;outline:none">
+    </div>
+    <div id="crm-search-results" style="flex:1;overflow-y:auto;padding:0 24px 16px;min-height:120px;max-height:420px">
+      <div style="color:var(--text-3);font-size:11px;text-align:center;padding:30px">Type at least 3 characters to search...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD PROSPECT MODAL -->
+<div id="add-prospect-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9998;align-items:center;justify-content:center" onclick="if(event.target===this)closeAddProspectModal()">
+  <div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid var(--gold);border-radius:var(--r2);width:520px;max-width:96vw;max-height:90vh;overflow-y:auto;padding:28px 32px;box-shadow:0 24px 64px rgba(0,0,0,0.7)">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
+      <div style="font-size:15px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;flex:1">🎯 ADD PROSPECT</div>
+      <button onclick="closeAddProspectModal()" style="background:none;border:none;color:var(--text-3);font-size:18px;cursor:pointer">×</button>
+    </div>
+    <div id="add-prospect-form-body"></div>
   </div>
 </div>
 
@@ -1688,6 +1723,10 @@ async function loadSupplementalData() {
 
     // Load schedule
     try { await schedLoadFromSheets(); } catch(e) {}
+
+    // Load customer directory and prospects (non-blocking)
+    loadCustomerDirectory().catch(e => console.warn('Customer directory load failed:', e));
+    loadProspects().catch(e => console.warn('Prospects load failed:', e));
 
     // Auto-render Daily Mission now that all core data is ready
     if (state.activeView === 'followup') {
@@ -2758,6 +2797,11 @@ let state = {
   hasUnsavedNote: false,
   accessToken: null,
   _cacheLoadingPromise: null,
+  prospectCache: [],        // rep's prospects from _PROSPECTS tab
+  customerDirectory: [],    // customer list from _CUSTOMER_DIRECTORY tab
+  _prospectsLoaded: false,
+  _selectedProspect: null,
+  _prospectTab: 'notes',    // active tab in prospect detail panel
 };
 
 // ══════════════════════════════════════════════════════════
@@ -3504,22 +3548,24 @@ function switchView(view) {
   state.activeView = view;
   toggleMobileNav(true); // always close nav on mobile when switching views
   state.selectedAccount = null;
+  const _findBtn = document.getElementById('btn-find-account');
+  if (_findBtn) _findBtn.style.display = (view === 'accounts') ? 'inline-flex' : 'none';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelector(`[data-view="${view}"]`)?.classList.add('active');
 
   const titles = {
     accounts:    'My Accounts',
     inactive:    'Inactive Accounts',
-    followup:    'Follow-ups Due',
+    followup:    '📅 Daily Mission & Calendar',
     dashboard:   'Dashboard',
     collections: 'Collections',
     contacts:    'Contacts',
+    prospects:   '🎯 Prospects',
     settings:    'Settings',
     attack:      'Sales Attack Plan',
     removals:    '🗑 Requests & Approvals',
     access:      '🛡 Access Activity Log',
     all:         'All Accounts — All Reps',
-    followup:    '📅 Daily Mission & Calendar',
   };
   document.getElementById('topbar-title').textContent = titles[view] || view;
 
@@ -3537,6 +3583,7 @@ function switchView(view) {
       ensureCacheLoaded().then(() => { if (state.activeView === 'collections') renderCollectionsView(); });
     },
     contacts:    () => renderContactsView(),
+    prospects:   () => renderProspectsView(),
     attack:      () => renderAttackPlan(),
     academy:     () => renderAcademyView(),
     suggestionsBoard: () => renderSuggestionsBoard(),
@@ -5991,6 +6038,30 @@ function renderFollowUpCommandCenter() {
     .sort((a,b) => b.score - a.score)
     .slice(0, 100);
 
+  // Merge in Hot prospects (Feature 4 — Daily Mission integration)
+  const _repKey2 = viewAsRep || state.repId || 'admin';
+  const _hotProspects = (state.prospectCache || []).filter(function(p) {
+    return p.PRIORITY === 'Hot' && p.STATUS === 'Active' &&
+      (p.REP_ID === state.repId || isAdmin) &&
+      !hiddenSet.has('PROSPECT:' + p.PROSPECT_ID);
+  });
+  _hotProspects.forEach(function(p) {
+    const addedDate = p.DATE_ADDED ? new Date(p.DATE_ADDED) : today;
+    const lastContacted = p.LAST_CONTACTED ? new Date(p.LAST_CONTACTED) : null;
+    const daysSinceContact = lastContacted ? Math.floor((today - lastContacted) / 86400000) : null;
+    aiPicks.unshift({
+      isProspect: true,
+      prospectId: p.PROSPECT_ID,
+      accName: 'PROSPECT:' + p.PROSPECT_ID,
+      companyName: p.COMPANY_NAME,
+      priority: p.PRIORITY,
+      daysSinceContact: daysSinceContact,
+      notes: p.NOTES || '',
+      source: p.SOURCE || 'Manual',
+      score: 999,
+    });
+  });
+
   // Hidden picks for the hidden tab
   const hiddenPicks = contactList
     .filter(c => hiddenSet.has(c.accName))
@@ -6433,6 +6504,50 @@ function renderFollowUpCommandCenter() {
 
   // Render a single AI row
   function renderAiRow(c, idx, isHidden) {
+    // Prospect pick card (Feature 4)
+    if (c.isProspect) {
+      const pRow = document.createElement('div');
+      pRow.className = 'iq-ai-row';
+      pRow.style.borderLeft = '3px solid var(--gold)';
+      const pTop = document.createElement('div');
+      pTop.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px';
+      const pBadge = document.createElement('span');
+      pBadge.style.cssText = 'background:var(--gold);color:#000;font-family:var(--mono);font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px';
+      pBadge.textContent = '🎯 PROSPECT';
+      const pPri = document.createElement('span');
+      pPri.style.cssText = 'font-family:var(--mono);font-size:9px;color:var(--gold)';
+      pPri.textContent = c.priority;
+      const pHideBtn = document.createElement('button');
+      pHideBtn.className = 'iq-btn';
+      pHideBtn.style.marginLeft = 'auto';
+      pHideBtn.textContent = '× Hide';
+      pHideBtn.onclick = () => iqToggleHide(c.accName, repKey);
+      pTop.appendChild(pBadge);
+      pTop.appendChild(pPri);
+      pTop.appendChild(pHideBtn);
+      pRow.appendChild(pTop);
+      const pName = document.createElement('div');
+      pName.style.cssText = 'font-size:13px;font-weight:600;cursor:pointer;color:var(--text)';
+      pName.textContent = c.companyName;
+      pName.onclick = () => switchView('prospects');
+      pRow.appendChild(pName);
+      const pMeta = document.createElement('div');
+      pMeta.style.cssText = 'font-family:var(--mono);font-size:10px;color:var(--text-3);margin-top:3px';
+      pMeta.textContent = c.daysSinceContact !== null ? 'Last contact: ' + c.daysSinceContact + ' days ago' : 'No contact yet';
+      pRow.appendChild(pMeta);
+      const pBtns = document.createElement('div');
+      pBtns.style.cssText = 'display:flex;gap:6px;margin-top:8px';
+      ['📞 Call','✉ Email','📋 Notes'].forEach(function(label) {
+        const b = document.createElement('button');
+        b.className = 'iq-btn';
+        b.textContent = label;
+        b.onclick = () => switchView('prospects');
+        pBtns.appendChild(b);
+      });
+      pRow.appendChild(pBtns);
+      return pRow;
+    }
+
     const aiRow = document.createElement('div');
     aiRow.className = 'iq-ai-row';
 
@@ -13825,6 +13940,784 @@ Answer the user's question clearly and concisely. If they ask how to do somethin
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') document.getElementById('help-modal').style.display = 'none';
 });
+
+// ══════════════════════════════════════════════════════════
+//  PROSPECTS — Feature 1: CRM Account Search
+// ══════════════════════════════════════════════════════════
+
+function showCRMSearch() {
+  const modal = document.getElementById('crm-search-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  const inp = document.getElementById('crm-search-input');
+  if (inp) { inp.value = ''; setTimeout(function(){ inp.focus(); }, 100); }
+  document.getElementById('crm-search-results').innerHTML =
+    '<div style="color:var(--text-3);font-size:11px;text-align:center;padding:30px">Type at least 3 characters to search...</div>';
+}
+
+function closeCRMSearch() {
+  const modal = document.getElementById('crm-search-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function crmSearchInput() {
+  const inp = document.getElementById('crm-search-input');
+  if (!inp) return;
+  const q = inp.value.trim().toLowerCase();
+  const resultsEl = document.getElementById('crm-search-results');
+  if (!resultsEl) return;
+  if (q.length < 3) {
+    resultsEl.innerHTML =
+      '<div style="color:var(--text-3);font-size:11px;text-align:center;padding:30px">Type at least 3 characters...</div>';
+    return;
+  }
+  const dir = state.customerDirectory || [];
+  const results = dir.filter(function(c){ return (c.name||'').toLowerCase().includes(q); }).slice(0, 20);
+  if (!results.length) {
+    resultsEl.innerHTML =
+      '<div style="color:var(--text-3);font-size:11px;text-align:center;padding:30px">No results for "' + escHtml(q) + '"</div>';
+    return;
+  }
+  const alreadyIds = {};
+  (state.prospectCache || []).forEach(function(p){ if(p.CUSTOMER_ID) alreadyIds[p.CUSTOMER_ID] = true; });
+  resultsEl.innerHTML = results.map(function(c) {
+    const already = alreadyIds[c.id || ''] || (state.prospectCache||[]).some(function(p){ return p.COMPANY_NAME === c.name; });
+    const btnHtml = already
+      ? '<span style="font-family:var(--mono);font-size:9px;color:var(--green);letter-spacing:0.08em">✓ IN PROSPECTS</span>'
+      : '<button onclick="addToProspects(\'' + escHtml(c.id||'') + '\',\'' + escHtml(c.name).replace(/'/g,'&#39;') + '\')" style="padding:4px 12px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;cursor:pointer;border-radius:var(--r);letter-spacing:0.06em">+ ADD TO PROSPECTS</button>';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:600;color:var(--text)">' + escHtml(c.name) + '</div>' +
+        '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-top:2px">' +
+          (c.rep ? 'Rep: ' + escHtml(c.rep) : '') +
+          (c.city ? ' &middot; ' + escHtml(c.city) + (c.state ? ', ' + escHtml(c.state) : '') : '') +
+          (c.lastActivity ? ' &middot; Last: ' + escHtml(c.lastActivity) : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="flex-shrink:0">' + btnHtml + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function addToProspects(cid, cname) {
+  if (!state.prospectCache) state.prospectCache = [];
+  const existing = state.prospectCache.find(function(p){ return p.COMPANY_NAME === cname || (cid && p.CUSTOMER_ID === cid); });
+  if (existing) {
+    showToast(cname + ' is already in your prospects', 'info');
+    closeCRMSearch();
+    state._selectedProspect = existing.PROSPECT_ID;
+    switchView('prospects');
+    return;
+  }
+  // Show add modal pre-filled with CRM data
+  closeCRMSearch();
+  _openAddProspectForm({ COMPANY_NAME: cname, CUSTOMER_ID: cid || '', SOURCE: 'CRM' });
+}
+
+function showAddProspectModal() {
+  _openAddProspectForm({ SOURCE: 'Manual' });
+}
+
+function _openAddProspectForm(prefill) {
+  prefill = prefill || {};
+  const modal = document.getElementById('add-prospect-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  const body = document.getElementById('add-prospect-form-body');
+  if (!body) return;
+  body.innerHTML =
+    '<div style="display:grid;gap:14px">' +
+      '<div>' +
+        '<label style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;display:block;margin-bottom:5px">COMPANY NAME *</label>' +
+        '<input id="pf-name" type="text" value="' + escHtml(prefill.COMPANY_NAME||'') + '" placeholder="Company name..." style="width:100%;padding:8px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px;box-sizing:border-box">' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+        '<div>' +
+          '<label style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;display:block;margin-bottom:5px">PRIORITY</label>' +
+          '<select id="pf-priority" style="width:100%;padding:8px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">' +
+            '<option value="Cold" selected>🟡 Cold</option>' +
+            '<option value="Warm">🟠 Warm</option>' +
+            '<option value="Hot">🔴 Hot</option>' +
+          '</select>' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;display:block;margin-bottom:5px">INDUSTRY</label>' +
+          '<input id="pf-industry" type="text" placeholder="e.g. Aerospace" style="width:100%;padding:8px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px;box-sizing:border-box">' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+        '<div>' +
+          '<label style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;display:block;margin-bottom:5px">WEBSITE</label>' +
+          '<input id="pf-website" type="text" placeholder="https://..." style="width:100%;padding:8px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px;box-sizing:border-box">' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;display:block;margin-bottom:5px">CITY, STATE</label>' +
+          '<input id="pf-city" type="text" placeholder="e.g. Miami, FL" style="width:100%;padding:8px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px;box-sizing:border-box">' +
+        '</div>' +
+      '</div>' +
+      '<div>' +
+        '<label style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;display:block;margin-bottom:5px">NOTES</label>' +
+        '<textarea id="pf-notes" rows="3" placeholder="Initial notes about this prospect..." style="width:100%;padding:8px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px;box-sizing:border-box;resize:vertical"></textarea>' +
+      '</div>' +
+      '<input type="hidden" id="pf-cid" value="' + escHtml(prefill.CUSTOMER_ID||'') + '">' +
+      '<input type="hidden" id="pf-source" value="' + escHtml(prefill.SOURCE||'Manual') + '">' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">' +
+        '<button onclick="closeAddProspectModal()" style="padding:9px 20px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r)">Cancel</button>' +
+        '<button onclick="submitAddProspect()" style="padding:9px 24px;background:var(--gold);border:none;color:#000;font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer;border-radius:var(--r)">ADD PROSPECT</button>' +
+      '</div>' +
+    '</div>';
+}
+
+function closeAddProspectModal() {
+  const modal = document.getElementById('add-prospect-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function submitAddProspect() {
+  const name = (document.getElementById('pf-name') || {}).value || '';
+  if (!name.trim()) { showToast('Company name is required', 'error'); return; }
+  const cityRaw = (document.getElementById('pf-city') || {}).value || '';
+  const cityParts = cityRaw.split(',');
+  const p = {
+    PROSPECT_ID: 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+    REP_ID: state.repId,
+    COMPANY_NAME: name.trim(),
+    CUSTOMER_ID: (document.getElementById('pf-cid') || {}).value || '',
+    WEBSITE: (document.getElementById('pf-website') || {}).value || '',
+    INDUSTRY: (document.getElementById('pf-industry') || {}).value || '',
+    CITY: cityParts[0] ? cityParts[0].trim() : '',
+    STATE: cityParts[1] ? cityParts[1].trim() : '',
+    PRIORITY: (document.getElementById('pf-priority') || {}).value || 'Cold',
+    SOURCE: (document.getElementById('pf-source') || {}).value || 'Manual',
+    DATE_ADDED: new Date().toISOString().slice(0,10),
+    LAST_CONTACTED: '',
+    STATUS: 'Active',
+    NOTES: (document.getElementById('pf-notes') || {}).value || '',
+    CONTACTS_JSON: '[]',
+  };
+  closeAddProspectModal();
+  await saveProspect(p);
+  state._selectedProspect = p.PROSPECT_ID;
+}
+
+async function saveProspect(p) {
+  if (!state.prospectCache) state.prospectCache = [];
+  const idx = state.prospectCache.findIndex(function(x){ return x.PROSPECT_ID === p.PROSPECT_ID; });
+  if (idx >= 0) {
+    state.prospectCache[idx] = p;
+  } else {
+    state.prospectCache.push(p);
+  }
+  _updateProspectsBadge();
+  const COLS = ['PROSPECT_ID','REP_ID','COMPANY_NAME','CUSTOMER_ID','WEBSITE','INDUSTRY','CITY','STATE','PRIORITY','SOURCE','DATE_ADDED','LAST_CONTACTED','STATUS','NOTES','CONTACTS_JSON'];
+  const row = COLS.map(function(c){ return p[c] || ''; });
+  try {
+    if (idx >= 0) {
+      await _updateProspectInSheet(p);
+    } else {
+      await sheetsAppend("'_PROSPECTS'!A1", [row], CONFIG.HISTORY_SPREADSHEET_ID);
+    }
+    showToast(p.COMPANY_NAME + ' saved', 'success');
+  } catch(e) {
+    showToast('Save error: ' + e.message, 'error');
+  }
+  if (state.activeView === 'prospects') renderProspectsView();
+}
+
+async function _updateProspectInSheet(p) {
+  try {
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_PROSPECTS'!A1:O5000");
+    if (!rows || rows.length < 2) return;
+    const hdrs = rows[0];
+    const iId = hdrs.indexOf('PROSPECT_ID');
+    for (let r = 1; r < rows.length; r++) {
+      if ((rows[r][iId] || '') === p.PROSPECT_ID) {
+        const COLS = ['PROSPECT_ID','REP_ID','COMPANY_NAME','CUSTOMER_ID','WEBSITE','INDUSTRY','CITY','STATE','PRIORITY','SOURCE','DATE_ADDED','LAST_CONTACTED','STATUS','NOTES','CONTACTS_JSON'];
+        const row = COLS.map(function(c){ return p[c] || ''; });
+        const range = "'_PROSPECTS'!A" + (r+1) + ":O" + (r+1);
+        await sheetsUpdate(range, [row], CONFIG.HISTORY_SPREADSHEET_ID);
+        return;
+      }
+    }
+    // Row not found — append instead
+    const COLS2 = ['PROSPECT_ID','REP_ID','COMPANY_NAME','CUSTOMER_ID','WEBSITE','INDUSTRY','CITY','STATE','PRIORITY','SOURCE','DATE_ADDED','LAST_CONTACTED','STATUS','NOTES','CONTACTS_JSON'];
+    await sheetsAppend("'_PROSPECTS'!A1", [COLS2.map(function(c){ return p[c]||''; })], CONFIG.HISTORY_SPREADSHEET_ID);
+  } catch(e) { console.warn('Could not update prospect row:', e); }
+}
+
+function _updateProspectsBadge() {
+  const badge = document.getElementById('badge-prospects');
+  if (!badge) return;
+  const count = (state.prospectCache || []).filter(function(p){ return p.STATUS === 'Active'; }).length;
+  badge.textContent = count > 0 ? count : '';
+}
+
+async function loadCustomerDirectory() {
+  if (state.customerDirectory && state.customerDirectory.length > 0) return;
+  try {
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CUSTOMER_DIRECTORY'!A1:F50000");
+    if (!rows || rows.length < 2) { state.customerDirectory = []; return; }
+    const hdrs = rows[0].map(function(h){ return (h||'').trim(); });
+    const iId = hdrs.indexOf('CUSTOMER_ID');
+    const iName = hdrs.indexOf('NAME');
+    const iRep = hdrs.indexOf('USERNAME');
+    const iCity = hdrs.indexOf('CITY');
+    const iState = hdrs.indexOf('STATE');
+    const iLast = hdrs.indexOf('LAST_ACTIVITY');
+    state.customerDirectory = rows.slice(1).map(function(r){
+      return {
+        id: (r[iId]||'').trim(),
+        name: (r[iName]||'').trim(),
+        rep: (r[iRep]||'').trim(),
+        city: (r[iCity]||'').trim(),
+        state: (r[iState]||'').trim(),
+        lastActivity: (r[iLast]||'').trim(),
+      };
+    }).filter(function(c){ return c.name; });
+    console.log('Customer directory loaded:', state.customerDirectory.length, 'accounts');
+  } catch(e) {
+    state.customerDirectory = [];
+    console.warn('Customer directory not available (run sales_report.py to populate):', e.message);
+  }
+}
+
+async function loadProspects() {
+  if (!state.prospectCache) state.prospectCache = [];
+  try {
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_PROSPECTS'!A1:O5000");
+    if (!rows || rows.length < 2) { state._prospectsLoaded = true; _updateProspectsBadge(); return; }
+    const hdrs = rows[0].map(function(h){ return (h||'').trim(); });
+    state.prospectCache = rows.slice(1).map(function(r){
+      const obj = {};
+      hdrs.forEach(function(h,i){ obj[h] = (r[i]||'').trim(); });
+      return obj;
+    }).filter(function(p){ return p.PROSPECT_ID && (p.REP_ID === state.repId || state.isAdmin); });
+    state._prospectsLoaded = true;
+    _updateProspectsBadge();
+    if (state.activeView === 'prospects') renderProspectsView();
+  } catch(e) {
+    state._prospectsLoaded = true;
+    console.warn('Could not load prospects:', e);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  PROSPECTS — Feature 2: Prospects View
+// ══════════════════════════════════════════════════════════
+
+function renderProspectsView() {
+  const el = document.getElementById('main-content');
+  if (!el) return;
+
+  if (!state._prospectsLoaded) {
+    el.innerHTML = '<div class="loading-spinner">LOADING PROSPECTS...</div>';
+    loadProspects().then(function(){ if (state.activeView === 'prospects') renderProspectsView(); });
+    return;
+  }
+
+  if (!state.prospectCache) state.prospectCache = [];
+
+  // Active filter state (persist on window for re-renders)
+  if (!window._prospectFilter) window._prospectFilter = { priority: 'All', source: 'All', sort: 'Date Added' };
+  const pf = window._prospectFilter;
+
+  let list = state.prospectCache.filter(function(p){ return p.STATUS === 'Active'; });
+  if (pf.priority !== 'All') list = list.filter(function(p){ return p.PRIORITY === pf.priority; });
+  if (pf.source !== 'All') list = list.filter(function(p){ return p.SOURCE === pf.source; });
+
+  if (pf.sort === 'Name') list.sort(function(a,b){ return (a.COMPANY_NAME||'').localeCompare(b.COMPANY_NAME||''); });
+  else if (pf.sort === 'Priority') {
+    const pri = { Hot: 0, Warm: 1, Cold: 2 };
+    list.sort(function(a,b){ return (pri[a.PRIORITY]||2) - (pri[b.PRIORITY]||2); });
+  }
+  else if (pf.sort === 'Last Contacted') list.sort(function(a,b){ return (b.LAST_CONTACTED||'').localeCompare(a.LAST_CONTACTED||''); });
+  else list.sort(function(a,b){ return (b.DATE_ADDED||'').localeCompare(a.DATE_ADDED||''); });
+
+  const selId = state._selectedProspect;
+  const selP = selId ? state.prospectCache.find(function(p){ return p.PROSPECT_ID === selId; }) : null;
+
+  const priIcon = { Hot: '🔴', Warm: '🟠', Cold: '🟡' };
+  const filterBtnStyle = function(active) {
+    return 'padding:4px 10px;font-family:var(--mono);font-size:9px;letter-spacing:0.06em;cursor:pointer;border-radius:var(--r);border:1px solid var(--border);' +
+      (active ? 'background:var(--blue-b);color:#fff;border-color:var(--blue-b)' : 'background:transparent;color:var(--text-3)');
+  };
+
+  const listHtml =
+    '<div class="account-list-panel" id="prospect-list-panel" style="display:flex;flex-direction:column">' +
+      '<div style="padding:8px 10px;border-bottom:1px solid var(--border);background:var(--s1);display:flex;flex-direction:column;gap:8px;flex-shrink:0">' +
+        '<div style="display:flex;gap:6px;align-items:center">' +
+          '<button onclick="showAddProspectModal()" style="padding:5px 12px;background:var(--gold);border:none;color:#000;font-family:var(--mono);font-size:9px;font-weight:700;cursor:pointer;border-radius:var(--r);letter-spacing:0.08em">+ ADD PROSPECT</button>' +
+          '<span style="flex:1"></span>' +
+          (isAdmin() ? '<button onclick="showBulkImportProspects()" style="padding:5px 10px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;cursor:pointer;border-radius:var(--r)">📥 Bulk Import</button>' : '') +
+        '</div>' +
+        '<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">' +
+          '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">PRIORITY:</span>' +
+          ['All','Hot','Warm','Cold'].map(function(v){
+            return '<button onclick="window._prospectFilter.priority=\'' + v + '\';renderProspectsView()" style="' + filterBtnStyle(pf.priority===v) + '">' + (priIcon[v]||'') + ' ' + v + '</button>';
+          }).join('') +
+          '<span style="margin-left:8px;font-family:var(--mono);font-size:9px;color:var(--text-3)">SOURCE:</span>' +
+          ['All','Manual','CRM'].map(function(v){
+            return '<button onclick="window._prospectFilter.source=\'' + v + '\';renderProspectsView()" style="' + filterBtnStyle(pf.source===v) + '">' + v + '</button>';
+          }).join('') +
+        '</div>' +
+        '<div style="display:flex;gap:5px;align-items:center">' +
+          '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">SORT:</span>' +
+          ['Name','Priority','Last Contacted','Date Added'].map(function(v){
+            return '<button onclick="window._prospectFilter.sort=\'' + v + '\';renderProspectsView()" style="' + filterBtnStyle(pf.sort===v) + '">' + v.toUpperCase() + '</button>';
+          }).join('') +
+        '</div>' +
+      '</div>' +
+      '<div class="table-wrap" style="flex:1;overflow-y:auto">' +
+        (!list.length
+          ? '<div style="text-align:center;padding:48px 20px;color:var(--text-3)"><div style="font-size:28px;margin-bottom:10px">🎯</div><div style="font-size:12px;margin-bottom:6px">No prospects yet</div><div style="font-size:11px">Click + ADD PROSPECT or use 🔍 Find Account in My Accounts</div></div>'
+          : list.map(function(p) {
+              const isSelected = p.PROSPECT_ID === selId;
+              const todayD = new Date(); todayD.setHours(0,0,0,0);
+              const lastC = p.LAST_CONTACTED ? new Date(p.LAST_CONTACTED) : null;
+              const daysSince = lastC ? Math.floor((todayD - lastC) / 86400000) : null;
+              return '<div class="account-row' + (isSelected ? ' selected' : '') + '" onclick="selectProspect(\'' + p.PROSPECT_ID + '\')">' +
+                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">' +
+                  '<span style="font-size:14px">' + (priIcon[p.PRIORITY]||'🟡') + '</span>' +
+                  '<span style="font-size:13px;font-weight:600;color:var(--text);flex:1;min-width:0">' + escHtml(p.COMPANY_NAME) + '</span>' +
+                  '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3);background:var(--s2);padding:2px 6px;border-radius:3px">' + escHtml(p.SOURCE) + '</span>' +
+                '</div>' +
+                '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-left:22px">' +
+                  escHtml(p.PRIORITY) + (daysSince !== null ? ' &middot; Last contact: ' + daysSince + 'd ago' : ' &middot; No contact yet') +
+                  (p.REP_ID && p.REP_ID !== state.repId ? ' &middot; ' + escHtml(p.REP_ID) : '') +
+                '</div>' +
+              '</div>';
+            }).join('')
+        ) +
+      '</div>' +
+    '</div>';
+
+  const detailHtml = selP
+    ? _renderProspectDetailHtml(selP)
+    : '<div class="detail-panel" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-3);flex-direction:column;gap:10px"><div style="font-size:28px">🎯</div><div style="font-size:12px">Select a prospect to view details</div></div>';
+
+  el.innerHTML = '<div class="split-view" style="display:flex;height:100%;min-height:0">' + listHtml + detailHtml + '</div>';
+
+  // Re-attach AI panel event if selection exists
+  if (selP) _attachProspectDetailEvents(selP);
+}
+
+function selectProspect(id) {
+  state._selectedProspect = id;
+  state._prospectTab = 'notes';
+  renderProspectsView();
+}
+
+function _prospectSwitchTab(id, tab) {
+  state._prospectTab = tab;
+  const selP = (state.prospectCache||[]).find(function(p){ return p.PROSPECT_ID === id; });
+  if (!selP) return;
+  const body = document.getElementById('prospect-detail-body');
+  if (!body) return;
+  // Update tab button styles
+  ['notes','contacts','outreach','research','convert'].forEach(function(t) {
+    const btn = document.getElementById('ptab-' + t);
+    if (btn) {
+      btn.style.background = t === tab ? 'var(--blue-b)' : 'transparent';
+      btn.style.color = t === tab ? '#fff' : 'var(--text-3)';
+      btn.style.borderColor = t === tab ? 'var(--blue-b)' : 'var(--border)';
+    }
+  });
+  body.innerHTML = _getProspectTabHtml(selP, tab);
+  _attachProspectTabEvents(selP, tab);
+}
+
+function _renderProspectDetailHtml(p) {
+  const tab = state._prospectTab || 'notes';
+  const tabs = ['notes','contacts','outreach','research','convert'];
+  const tabLabels = { notes:'Notes', contacts:'Contacts', outreach:'Outreach', research:'Research', convert:'Convert' };
+  const priIcon = { Hot: '🔴', Warm: '🟠', Cold: '🟡' };
+
+  const tabBtns = tabs.map(function(t) {
+    const active = t === tab;
+    return '<button id="ptab-' + t + '" onclick="_prospectSwitchTab(\'' + p.PROSPECT_ID + '\',\'' + t + '\')" ' +
+      'style="padding:5px 12px;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r);border:1px solid ' +
+      (active ? 'var(--blue-b);background:var(--blue-b);color:#fff' : 'var(--border);background:transparent;color:var(--text-3)') + '">' +
+      tabLabels[t] + '</button>';
+  }).join('');
+
+  return '<div class="detail-panel" id="prospect-detail-panel" style="display:flex;flex-direction:column;overflow:hidden">' +
+    '<div class="detail-header" style="flex-shrink:0;padding:14px 18px;border-bottom:1px solid var(--border);background:var(--s1)">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+        '<span style="font-size:20px">' + (priIcon[p.PRIORITY]||'🟡') + '</span>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:15px;font-weight:700;color:var(--text)">' + escHtml(p.COMPANY_NAME) + '</div>' +
+          '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-top:2px">' +
+            escHtml(p.PRIORITY) + ' &middot; ' + escHtml(p.SOURCE) + (p.CITY ? ' &middot; ' + escHtml(p.CITY) + (p.STATE ? ', ' + escHtml(p.STATE) : '') : '') +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px">' +
+          '<select onchange="prospectSetPriority(\'' + p.PROSPECT_ID + '\',this.value)" style="padding:4px 8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--mono);font-size:10px;cursor:pointer">' +
+            ['Hot','Warm','Cold'].map(function(v){ return '<option value="' + v + '"' + (p.PRIORITY===v?' selected':'') + '>' + (priIcon[v]||'') + ' ' + v + '</option>'; }).join('') +
+          '</select>' +
+          '<button onclick="deleteProspect(\'' + p.PROSPECT_ID + '\')" style="padding:4px 10px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;cursor:pointer;border-radius:var(--r)" title="Archive prospect">🗑</button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + tabBtns + '</div>' +
+    '</div>' +
+    '<div id="prospect-detail-body" class="detail-body" style="flex:1;overflow-y:auto;padding:16px 18px">' +
+      _getProspectTabHtml(p, tab) +
+    '</div>' +
+  '</div>';
+}
+
+function _getProspectTabHtml(p, tab) {
+  if (tab === 'notes') return _prospectNotesHtml(p);
+  if (tab === 'contacts') return _prospectContactsHtml(p);
+  if (tab === 'outreach') return _prospectOutreachHtml(p);
+  if (tab === 'research') return _prospectResearchHtml(p);
+  if (tab === 'convert') return _prospectConvertHtml(p);
+  return '';
+}
+
+function _prospectNotesHtml(p) {
+  const notes = p.NOTES || '';
+  const stamp = state.repId + ' &middot; ' + new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  return '<div style="display:flex;flex-direction:column;gap:12px">' +
+    '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px;min-height:80px;white-space:pre-wrap;font-size:12px;color:var(--text);line-height:1.6">' +
+      (notes ? escHtml(notes) : '<span style="color:var(--text-3)">No notes yet...</span>') +
+    '</div>' +
+    '<div>' +
+      '<label style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;display:block;margin-bottom:6px">ADD NOTE</label>' +
+      '<textarea id="prospect-note-input" rows="3" placeholder="Add a note..." style="width:100%;padding:10px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px;box-sizing:border-box;resize:vertical"></textarea>' +
+      '<div style="display:flex;justify-content:flex-end;margin-top:6px">' +
+        '<button onclick="saveProspectNote(\'' + p.PROSPECT_ID + '\')" style="padding:7px 18px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">SAVE NOTE</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function _prospectContactsHtml(p) {
+  let contacts = [];
+  try { contacts = JSON.parse(p.CONTACTS_JSON || '[]'); } catch(e) { contacts = []; }
+  const rows = contacts.map(function(c, i) {
+    return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;display:flex;align-items:center;gap:10px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:12px;font-weight:600">' + escHtml(c.name||'') + '</div>' +
+        '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-top:2px">' +
+          (c.title ? escHtml(c.title) + ' &middot; ' : '') + (c.email ? escHtml(c.email) : '') +
+          (c.phone ? ' &middot; ' + escHtml(c.phone) : '') +
+        '</div>' +
+      '</div>' +
+      '<button onclick="deleteProspectContact(\'' + p.PROSPECT_ID + '\',' + i + ')" style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:14px">×</button>' +
+    '</div>';
+  }).join('');
+
+  return '<div style="display:flex;flex-direction:column;gap:10px">' +
+    (rows || '<div style="color:var(--text-3);font-size:11px;text-align:center;padding:20px">No contacts added yet</div>') +
+    '<div style="border:1px solid var(--border);border-radius:var(--r2);padding:14px;margin-top:4px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;margin-bottom:10px">ADD CONTACT</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+        '<input id="pc-name" placeholder="Name" style="padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">' +
+        '<input id="pc-title" placeholder="Title" style="padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">' +
+        '<input id="pc-email" placeholder="Email" type="email" style="padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">' +
+        '<input id="pc-phone" placeholder="Phone" style="padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">' +
+      '</div>' +
+      '<div style="text-align:right;margin-top:8px">' +
+        '<button onclick="saveProspectContact(\'' + p.PROSPECT_ID + '\')" style="padding:6px 16px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">ADD</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function _prospectOutreachHtml(p) {
+  return '<div style="display:flex;flex-direction:column;gap:12px">' +
+    '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--blue-bright);letter-spacing:0.08em;margin-bottom:8px">✦ AI COLD INTRO EMAIL GENERATOR</div>' +
+      '<div style="font-size:12px;color:var(--text-2);line-height:1.6;margin-bottom:10px">Generate a personalized cold intro email for ' + escHtml(p.COMPANY_NAME) + ' based on company details and your notes.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button onclick="prospectsGenerateEmail(\'' + p.PROSPECT_ID + '\',\'intro\')" style="padding:7px 16px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">✦ DRAFT INTRO EMAIL</button>' +
+        '<button onclick="prospectsGenerateEmail(\'' + p.PROSPECT_ID + '\',\'followup\')" style="padding:7px 16px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">✦ FOLLOW-UP EMAIL</button>' +
+      '</div>' +
+    '</div>' +
+    '<div id="prospect-outreach-result" style="display:none;background:var(--s2);border:1px solid var(--blue-b);border-radius:var(--r2);padding:14px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;margin-bottom:8px">GENERATED EMAIL</div>' +
+      '<div id="prospect-outreach-text" style="white-space:pre-wrap;font-size:12px;line-height:1.6;color:var(--text)"></div>' +
+      '<div style="margin-top:10px;display:flex;gap:8px">' +
+        '<button onclick="navigator.clipboard.writeText(document.getElementById(\'prospect-outreach-text\').textContent).then(()=>showToast(\'Copied!\',\'success\'))" style="padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">Copy</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function _prospectResearchHtml(p) {
+  return '<div style="display:flex;flex-direction:column;gap:12px">' +
+    '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--blue-bright);letter-spacing:0.08em;margin-bottom:8px">✦ AI COMPANY RESEARCH</div>' +
+      '<div style="font-size:12px;color:var(--text-2);margin-bottom:10px">Get AI insights about ' + escHtml(p.COMPANY_NAME) + ' to prepare for your outreach.</div>' +
+      '<button onclick="prospectsResearch(\'' + p.PROSPECT_ID + '\')" style="padding:7px 16px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">✦ RESEARCH THIS COMPANY</button>' +
+    '</div>' +
+    '<div id="prospect-research-result" style="display:none;background:var(--s2);border:1px solid var(--blue-b);border-radius:var(--r2);padding:14px">' +
+      '<div id="prospect-research-text" style="white-space:pre-wrap;font-size:12px;line-height:1.6;color:var(--text)"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function _prospectConvertHtml(p) {
+  const matched = state.accounts ? state.accounts.find(function(a){
+    return a.name && p.COMPANY_NAME &&
+      a.name.trim().toLowerCase() === p.COMPANY_NAME.trim().toLowerCase();
+  }) : null;
+
+  return '<div style="display:flex;flex-direction:column;gap:16px">' +
+    (matched
+      ? '<div style="background:rgba(34,197,94,0.1);border:1px solid var(--green);border-radius:var(--r2);padding:16px">' +
+          '<div style="font-size:14px;font-weight:600;color:var(--green);margin-bottom:6px">🎉 This company is now an account!</div>' +
+          '<div style="font-size:12px;color:var(--text-2);margin-bottom:12px">' + escHtml(p.COMPANY_NAME) + ' appears in your invoice history. Convert this prospect to link it to the account.</div>' +
+          '<button onclick="convertProspect(\'' + p.PROSPECT_ID + '\')" style="padding:9px 20px;background:var(--green);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer;border-radius:var(--r)">✓ MARK AS CONVERTED</button>' +
+        '</div>'
+      : '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:16px">' +
+          '<div style="font-size:12px;color:var(--text-2);line-height:1.6;margin-bottom:12px">When ' + escHtml(p.COMPANY_NAME) + ' places their first order, mark them as converted to track your win.</div>' +
+          '<div style="display:flex;gap:8px">' +
+            '<button onclick="convertProspect(\'' + p.PROSPECT_ID + '\')" style="padding:8px 18px;background:var(--green);border:none;color:#fff;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">✓ MARK CONVERTED</button>' +
+            '<button onclick="deleteProspect(\'' + p.PROSPECT_ID + '\')" style="padding:8px 18px;background:transparent;border:1px solid var(--red);color:var(--red);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">✗ MARK DEAD</button>' +
+          '</div>' +
+        '</div>'
+    ) +
+    '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;margin-bottom:6px">PROSPECT INFO</div>' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);line-height:1.8">' +
+        'ID: ' + escHtml(p.PROSPECT_ID) + '<br>' +
+        'Added: ' + escHtml(p.DATE_ADDED||'—') + '<br>' +
+        'Source: ' + escHtml(p.SOURCE||'—') + '<br>' +
+        (p.CUSTOMER_ID ? 'CRM ID: ' + escHtml(p.CUSTOMER_ID) + '<br>' : '') +
+        'Status: ' + escHtml(p.STATUS||'Active') +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function _attachProspectDetailEvents(p) {}
+function _attachProspectTabEvents(p, tab) {}
+
+async function saveProspectNote(id) {
+  const inp = document.getElementById('prospect-note-input');
+  if (!inp) return;
+  const text = inp.value.trim();
+  if (!text) return;
+  if (!state.prospectCache) state.prospectCache = [];
+  const p = state.prospectCache.find(function(x){ return x.PROSPECT_ID === id; });
+  if (!p) return;
+  const stamp = state.repId + ' · ' + new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  p.NOTES = stamp + ': ' + text + (p.NOTES ? '\n\n' + p.NOTES : '');
+  p.LAST_CONTACTED = new Date().toISOString().slice(0,10);
+  await saveProspect(p);
+}
+
+async function saveProspectContact(id) {
+  if (!state.prospectCache) state.prospectCache = [];
+  const p = state.prospectCache.find(function(x){ return x.PROSPECT_ID === id; });
+  if (!p) return;
+  const name = (document.getElementById('pc-name')||{}).value || '';
+  if (!name.trim()) { showToast('Contact name required', 'error'); return; }
+  let contacts = [];
+  try { contacts = JSON.parse(p.CONTACTS_JSON || '[]'); } catch(e) { contacts = []; }
+  contacts.push({
+    name: name.trim(),
+    title: (document.getElementById('pc-title')||{}).value || '',
+    email: (document.getElementById('pc-email')||{}).value || '',
+    phone: (document.getElementById('pc-phone')||{}).value || '',
+  });
+  p.CONTACTS_JSON = JSON.stringify(contacts);
+  await saveProspect(p);
+}
+
+async function deleteProspectContact(id, idx) {
+  if (!state.prospectCache) state.prospectCache = [];
+  const p = state.prospectCache.find(function(x){ return x.PROSPECT_ID === id; });
+  if (!p) return;
+  let contacts = [];
+  try { contacts = JSON.parse(p.CONTACTS_JSON || '[]'); } catch(e) { contacts = []; }
+  contacts.splice(idx, 1);
+  p.CONTACTS_JSON = JSON.stringify(contacts);
+  await saveProspect(p);
+}
+
+async function deleteProspect(id) {
+  if (!confirm('Archive this prospect? It will be hidden from your list.')) return;
+  if (!state.prospectCache) state.prospectCache = [];
+  const p = state.prospectCache.find(function(x){ return x.PROSPECT_ID === id; });
+  if (!p) return;
+  p.STATUS = 'Dead';
+  state._selectedProspect = null;
+  await saveProspect(p);
+}
+
+async function convertProspect(id) {
+  if (!state.prospectCache) state.prospectCache = [];
+  const p = state.prospectCache.find(function(x){ return x.PROSPECT_ID === id; });
+  if (!p) return;
+  p.STATUS = 'Converted';
+  state._selectedProspect = null;
+  await saveProspect(p);
+  showToast(p.COMPANY_NAME + ' marked as converted!', 'success');
+}
+
+async function prospectSetPriority(id, priority) {
+  if (!state.prospectCache) state.prospectCache = [];
+  const p = state.prospectCache.find(function(x){ return x.PROSPECT_ID === id; });
+  if (!p) return;
+  p.PRIORITY = priority;
+  await saveProspect(p);
+}
+
+// ── Feature 3: AI Prospecting Assistant ──────────────────
+
+async function prospectsGenerateEmail(id, emailType) {
+  const p = (state.prospectCache||[]).find(function(x){ return x.PROSPECT_ID === id; });
+  if (!p) return;
+  const resultEl = document.getElementById('prospect-outreach-result');
+  const textEl = document.getElementById('prospect-outreach-text');
+  if (!resultEl || !textEl) return;
+  resultEl.style.display = 'block';
+  textEl.textContent = 'Generating...';
+
+  const repAccs = (state.accounts||[]).filter(function(a){ return a.rep === state.repId; });
+  const topParts = [];
+  repAccs.slice(0,5).forEach(function(a){
+    const invs = ((state.historyCache||{})[a.name]||{}).invoices||[];
+    invs.slice(0,3).forEach(function(inv){ if(inv.part && !topParts.includes(inv.part)) topParts.push(inv.part); });
+  });
+
+  const systemPrompt = 'You are a sales assistant for Intransit Technologies, an aerospace and industrial parts distributor. ' +
+    'Write professional, concise cold sales emails. Keep them under 200 words. ' +
+    'Rep: ' + state.repId + '. Top part numbers we carry: ' + (topParts.slice(0,5).join(', ')||'various aerospace parts') + '.';
+  const userPrompt = emailType === 'intro'
+    ? 'Write a cold intro email to ' + p.COMPANY_NAME + '. Notes: ' + (p.NOTES||'none') + '. Industry: ' + (p.INDUSTRY||'unknown') + '.'
+    : 'Write a follow-up email to ' + p.COMPANY_NAME + ' after our previous outreach. Notes: ' + (p.NOTES||'none') + '.';
+
+  try {
+    const resp = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:400, system:systemPrompt, messages:[{role:'user',content:userPrompt}] });
+    textEl.textContent = resp.content?.[0]?.text || 'No response';
+  } catch(e) {
+    textEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function prospectsResearch(id) {
+  const p = (state.prospectCache||[]).find(function(x){ return x.PROSPECT_ID === id; });
+  if (!p) return;
+  const resultEl = document.getElementById('prospect-research-result');
+  const textEl = document.getElementById('prospect-research-text');
+  if (!resultEl || !textEl) return;
+  resultEl.style.display = 'block';
+  textEl.textContent = 'Researching ' + p.COMPANY_NAME + '...';
+
+  const systemPrompt = 'You are a sales intelligence assistant. Provide a brief (under 250 words) company research profile for a B2B sales rep. Include: industry/sector, likely buyer profile, pain points, and talking points for a parts distributor.';
+  const userPrompt = 'Research ' + p.COMPANY_NAME + '. Industry: ' + (p.INDUSTRY||'unknown') + '. City: ' + (p.CITY||'unknown') + '. Website: ' + (p.WEBSITE||'not provided') + '. Notes: ' + (p.NOTES||'none') + '.';
+
+  try {
+    const resp = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:400, system:systemPrompt, messages:[{role:'user',content:userPrompt}] });
+    textEl.textContent = resp.content?.[0]?.text || 'No response';
+  } catch(e) {
+    textEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+// ── Feature 5: Admin Bulk Import ─────────────────────────
+
+function showBulkImportProspects() {
+  if (!isAdmin()) return;
+  const el = document.getElementById('main-content');
+  if (!el) return;
+
+  el.innerHTML =
+    '<div style="max-width:700px;margin:40px auto;padding:24px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r2)">' +
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">' +
+        '<button onclick="renderProspectsView()" style="padding:5px 12px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">← Back</button>' +
+        '<div style="font-size:15px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em">📥 BULK IMPORT PROSPECTS</div>' +
+      '</div>' +
+      '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:16px;margin-bottom:16px">' +
+        '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-bottom:8px">CSV FORMAT (first row = headers)</div>' +
+        '<code style="font-size:11px;color:var(--blue-bright)">COMPANY_NAME,WEBSITE,INDUSTRY,CITY,STATE,PRIORITY,NOTES</code>' +
+      '</div>' +
+      '<div style="margin-bottom:14px">' +
+        '<label style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;display:block;margin-bottom:6px">ASSIGN TO REP</label>' +
+        '<select id="bulk-assign-rep" style="width:100%;padding:8px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">' +
+          CONFIG.REPS.map(function(r){ return '<option value="' + r + '">' + r + '</option>'; }).join('') +
+        '</select>' +
+      '</div>' +
+      '<div style="margin-bottom:14px">' +
+        '<label style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;display:block;margin-bottom:6px">PASTE CSV DATA</label>' +
+        '<textarea id="bulk-csv-input" rows="10" placeholder="COMPANY_NAME,WEBSITE,INDUSTRY..." style="width:100%;padding:10px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px;box-sizing:border-box;resize:vertical;font-family:var(--mono)"></textarea>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+        '<button onclick="renderProspectsView()" style="padding:9px 20px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r)">Cancel</button>' +
+        '<button onclick="processBulkImport()" style="padding:9px 24px;background:var(--gold);border:none;color:#000;font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer;border-radius:var(--r)">IMPORT</button>' +
+      '</div>' +
+    '</div>';
+}
+
+async function processBulkImport() {
+  const csvEl = document.getElementById('bulk-csv-input');
+  const repEl = document.getElementById('bulk-assign-rep');
+  if (!csvEl || !repEl) return;
+  const csv = csvEl.value.trim();
+  const repId = repEl.value;
+  if (!csv) { showToast('Paste CSV data first', 'error'); return; }
+
+  const lines = csv.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+  if (lines.length < 2) { showToast('Need at least a header row and one data row', 'error'); return; }
+
+  const hdrs = lines[0].split(',').map(function(h){ return h.trim().toUpperCase(); });
+  const iName = hdrs.indexOf('COMPANY_NAME');
+  if (iName < 0) { showToast('CSV must have COMPANY_NAME column', 'error'); return; }
+
+  const iWeb = hdrs.indexOf('WEBSITE');
+  const iInd = hdrs.indexOf('INDUSTRY');
+  const iCity = hdrs.indexOf('CITY');
+  const iState = hdrs.indexOf('STATE');
+  const iPri = hdrs.indexOf('PRIORITY');
+  const iNotes = hdrs.indexOf('NOTES');
+
+  const today = new Date().toISOString().slice(0,10);
+  const rows = [];
+  const added = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i].split(',');
+    const name = (parts[iName]||'').trim();
+    if (!name) continue;
+    if (!state.prospectCache) state.prospectCache = [];
+    if (state.prospectCache.find(function(p){ return p.COMPANY_NAME === name && p.REP_ID === repId; })) continue;
+    const p = {
+      PROSPECT_ID: 'p_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,6),
+      REP_ID: repId,
+      COMPANY_NAME: name,
+      CUSTOMER_ID: '',
+      WEBSITE: iWeb >= 0 ? (parts[iWeb]||'').trim() : '',
+      INDUSTRY: iInd >= 0 ? (parts[iInd]||'').trim() : '',
+      CITY: iCity >= 0 ? (parts[iCity]||'').trim() : '',
+      STATE: iState >= 0 ? (parts[iState]||'').trim() : '',
+      PRIORITY: iPri >= 0 ? (parts[iPri]||'Cold').trim() : 'Cold',
+      SOURCE: 'Import',
+      DATE_ADDED: today,
+      LAST_CONTACTED: '',
+      STATUS: 'Active',
+      NOTES: iNotes >= 0 ? (parts[iNotes]||'').trim() : '',
+      CONTACTS_JSON: '[]',
+    };
+    state.prospectCache.push(p);
+    const COLS = ['PROSPECT_ID','REP_ID','COMPANY_NAME','CUSTOMER_ID','WEBSITE','INDUSTRY','CITY','STATE','PRIORITY','SOURCE','DATE_ADDED','LAST_CONTACTED','STATUS','NOTES','CONTACTS_JSON'];
+    rows.push(COLS.map(function(c){ return p[c]||''; }));
+    added.push(name);
+  }
+
+  if (!rows.length) { showToast('No new prospects to import (all may already exist)', 'info'); return; }
+
+  try {
+    await sheetsAppend("'_PROSPECTS'!A1", rows, CONFIG.HISTORY_SPREADSHEET_ID);
+    _updateProspectsBadge();
+    showToast('Imported ' + added.length + ' prospects for ' + repId, 'success');
+    renderProspectsView();
+  } catch(e) {
+    showToast('Import error: ' + e.message, 'error');
+  }
+}
 
 
 async function init() {

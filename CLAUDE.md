@@ -494,3 +494,24 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - The `.show` class added by JS had no corresponding CSS rule to override it either
 - Fix: added `style="display:none"` to the div; changed JS trigger from `classList.add('show')` to `style.display = 'block'` so it only appears when a non-admin views 200+ accounts in one session
 - **Commit:** `a9e7f6e`
+
+**Bug fixed — Data isolation for non-admin reps (Mauricio, Karen, all reps):**
+- Root cause: Collections, Contacts, and Attack Plan filters used `repFilter` (based on `state.repId`) to filter `acc.rep` field. If the `SALES_REP` column value in the sheet didn't exactly match the rep ID (or repFilter was null), ALL records showed instead of just that rep's.
+- Fix (`89e6821`): Non-admin filtering now uses `state.accounts` as the truth source:
+  - Collections: builds `_myAccNames` Set from `state.accounts`; filters by account name match instead of `acc.rep` comparison
+  - Contacts: same `_ctMyAccNames` Set approach — contacts from accounts not in the set are skipped
+  - Attack Plan: guard added — regular reps (not admin, not manager) see "sign out and back in" message instead of all-reps picker when `repFilter` is null
+- These filters are **more robust than repId**: even if email mapping fails or repFilter is null, a non-admin can never see another rep's data (they'd see nothing, not everything)
+
+**Diagnostics added (commit `4957c23`):**
+- `setRepFromEmail` now logs `[AUTH] setRepFromEmail: email@... → repId: X` and warns with `[AUTH] Email not in REP_EMAIL_MAP` if the email isn't mapped — makes it immediately clear in F12 if an email needs to be added to `CONFIG.REP_EMAIL_MAP`
+- `loadAllAccounts` tab error handler now shows a user-visible toast when the user's own tab fails: "Could not load your accounts (tab: X). Contact John if this persists."
+- `loadAllAccounts` shows a toast when `state.accounts` is empty after load for non-admins
+- `sheetsGetFrom` now includes the Google API response body in error messages for non-401/429 errors — makes 400 "Unable to parse range" errors identifiable without checking Network tab
+
+**How to diagnose Mauricio / Karen blank accounts:**
+1. Open F12 → Console before logging in
+2. After login, look for: `[AUTH] setRepFromEmail: mrangel@intransittech.com → repId: RMauricio`
+3. Then: `[TAB] Loaded RMauricio: N accounts` (N should be > 0)
+4. If instead: `[TAB] Error loading tab RMauricio: Sheets API error 400: Unable to parse range...` → the tab name in the sheet doesn't match 'RMauricio' exactly
+5. If: `[AUTH] Email not in REP_EMAIL_MAP` → add their email to `CONFIG.REP_EMAIL_MAP`

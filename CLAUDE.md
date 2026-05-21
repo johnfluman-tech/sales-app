@@ -488,3 +488,9 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - **Fix 2:** Added `|| {}` guards in `updateBadges()`: `Object.keys(state.collectionsCache || {})` and `Object.keys(state.contactsCache || {})` — belt-and-suspenders in case any future lazy initialization follows the same pattern.
 
 **Commit:** `2beca95`
+
+**Bug fixed — UNUSUAL ACTIVITY DETECTED banner showing for all users:**
+- `#activity-warning` div had no `display:none` in its initial HTML, so it was visible for every user on every page load
+- The `.show` class added by JS had no corresponding CSS rule to override it either
+- Fix: added `style="display:none"` to the div; changed JS trigger from `classList.add('show')` to `style.display = 'block'` so it only appears when a non-admin views 200+ accounts in one session
+- **Commit:** `a9e7f6e`

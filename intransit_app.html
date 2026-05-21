@@ -952,7 +952,7 @@ body::before {
 <div id="watermark" data-text=""></div>
 
 <!-- ACTIVITY WARNING -->
-<div id="activity-warning">
+<div id="activity-warning" style="display:none">
   ⚠ UNUSUAL ACTIVITY DETECTED — This session has been flagged and logged. Contact john.fluman@intransittech.com if this is an error.
 </div>
 
@@ -2768,7 +2768,7 @@ function trackAccountView(acc) {
 
   // Flag unusual bulk viewing — admin exempt
   if (!state.isAdmin && SECURITY.accountsViewed.size > SECURITY.MAX_ACCOUNTS_PER_SESSION) {
-    document.getElementById('activity-warning').classList.add('show');
+    document.getElementById('activity-warning').style.display = 'block';
     logSecurityEvent('HIGH_VOLUME_WARNING', `${SECURITY.accountsViewed.size} accounts viewed this session`);
   }
 }

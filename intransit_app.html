@@ -8345,6 +8345,36 @@ function renderSettingsView() {
       <!-- Dev Tools — admin only -->
       ${isAdmin() && !state.viewAsRep ? '<div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px"><div style="font-size:15px;font-weight:600;margin-bottom:4px">Developer Tools</div><div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Copy your current OAuth session token for use in pre-deploy testing.</div><button onclick="copySessionToken()" style="background:var(--navy-mid);border:1px solid var(--gold);color:var(--gold);font-family:var(--font-mono);font-size:11px;padding:8px 16px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em">📋 COPY SESSION TOKEN</button><span id="copy-token-msg" style="font-size:11px;color:var(--green);margin-left:12px;display:none">✓ Copied to clipboard</span><div style="font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.6">Paste into <strong style="color:var(--text)">intransit_test.html</strong> to validate a new build before deploying.<br>Token expires after ~50 min. If test fails auth, sign out and back in to get a fresh one.</div></div>' : ''}
 
+      <!-- Simulate Login — admin only -->
+      ${isAdmin() && !state.viewAsRep ? (function(){
+        var _users = [
+          { label:'CKaren (Manager+Rep)', repId:'CKaren', email:'kmancebo@intransittech.com', mgr:'CKaren' },
+          { label:'CMancilla (Manager only)', repId:'CMancilla', email:'carlos.mancilla@intransittech.com', mgr:'CMancilla' },
+          { label:'MPerezfreye (Manager only)', repId:'MPerezfreye', email:'manuel.perezfreyre@intransittech.com', mgr:'MPerezfreye' },
+          { label:'RMauricio', repId:'RMauricio', email:'mrangel@intransittech.com', mgr:'' },
+          { label:'PIan', repId:'PIan', email:'ian.pitman@intransittech.com', mgr:'' },
+          { label:'LMancera', repId:'LMancera', email:'lmancera@intransittech.com', mgr:'' },
+          { label:'bcastor', repId:'bcastor', email:'brandonar@intransittech.com', mgr:'' },
+          { label:'Anolan', repId:'Anolan', email:'anolan@intransittech.com', mgr:'' },
+          { label:'BillP', repId:'BillP', email:'bill.pratt@intransittech.com', mgr:'' },
+        ];
+        var _btns = _users.map(function(u){
+          return '<button onclick="debugSimulateLogin(\'' + u.repId + '\',\'' + u.email + '\',\'' + u.mgr + '\')" '
+            + 'style="padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r);transition:all 0.15s" '
+            + 'onmouseover="this.style.borderColor=\'var(--orange)\';this.style.color=\'var(--orange)\'" '
+            + 'onmouseout="this.style.borderColor=\'var(--border)\';this.style.color=\'var(--text)\'">'
+            + u.label + '</button>';
+        }).join('');
+        return '<div style="background:rgba(249,115,22,0.05);border:1px solid rgba(249,115,22,0.35);padding:20px;margin-bottom:20px">'
+          + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+          + '<div style="font-size:15px;font-weight:600">&#128100; Simulate Login As</div>'
+          + '<span style="font-family:var(--mono);font-size:9px;padding:2px 8px;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.4);color:var(--orange);border-radius:var(--r)">ADMIN DEBUG</span>'
+          + '</div>'
+          + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Temporarily swap to another user\'s view to see exactly what they see. All data is already loaded — this just changes the session role. Check F12 Console for diagnostic output.</div>'
+          + '<div style="display:flex;flex-wrap:wrap;gap:8px">' + _btns + '</div>'
+          + '</div>';
+      })() : ''}
+
       <!-- Active Users — admin only -->
       ${isAdmin() && !state.viewAsRep ? '<div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px">'
         + '<div style="font-size:15px;font-weight:600;margin-bottom:4px">Active Users</div>'
@@ -8391,6 +8421,67 @@ function renderSettingsView() {
       </div>
 
     </div>`;
+}
+
+function debugSimulateLogin(repId, email, managerRoleKey) {
+  // Save original state for restore
+  window._debugOrigState = {
+    repId:          state.repId,
+    isAdmin:        state.isAdmin,
+    viewAsRep:      state.viewAsRep,
+    managerRole:    state.managerRole,
+    viewingAsManager: state.viewingAsManager,
+    userRepId:      state.user && state.user.repId,
+    userEmail:      state.user && state.user.email
+  };
+  // Swap to simulated user
+  state.repId          = repId;
+  state.isAdmin        = false;
+  state.viewAsRep      = null;
+  state.viewingAsManager = false;
+  state.managerRole    = managerRoleKey || null;
+  if (state.user) { state.user.repId = repId; state.user.email = email; }
+
+  // Diagnostic output
+  var accs = state.accounts.filter(function(a){ return a.rep === repId; });
+  console.log('[SIM] ── Simulating login as:', repId, '(' + email + ')');
+  console.log('[SIM] isAdmin():', isAdmin(), '| isManager():', isManager(), '| managerRole:', state.managerRole);
+  console.log('[SIM] Accounts for rep "' + repId + '" in state.accounts:', accs.length);
+  var viewAccs = getViewAccounts();
+  console.log('[SIM] getViewAccounts() returned:', viewAccs.length, 'accounts');
+  if (viewAccs.length === 0 && accs.length > 0) {
+    console.warn('[SIM] BUG: state.accounts has', accs.length, 'accounts for this rep but getViewAccounts() returned 0 — check viewAsRep / isManager / isAdmin logic');
+  }
+
+  // Show sticky restore banner
+  var old = document.getElementById('debug-sim-banner');
+  if (old) old.remove();
+  var banner = document.createElement('div');
+  banner.id = 'debug-sim-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(249,115,22,0.95);color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;padding:6px 16px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 8px rgba(0,0,0,0.4)';
+  banner.innerHTML = '&#128100; SIMULATING: ' + repId + ' (' + email + ')  &nbsp;|&nbsp;  Accounts: ' + accs.length + ' in data, ' + viewAccs.length + ' visible'
+    + '&nbsp;&nbsp;<button onclick="debugRestoreAdmin()" style="background:#fff;color:#ea580c;border:none;font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 10px;cursor:pointer;border-radius:3px">RESTORE ADMIN</button>';
+  document.body.appendChild(banner);
+
+  renderAccountsView();
+  switchView('accounts');
+}
+
+function debugRestoreAdmin() {
+  var s = window._debugOrigState;
+  if (!s) return;
+  state.repId            = s.repId;
+  state.isAdmin          = s.isAdmin;
+  state.viewAsRep        = s.viewAsRep;
+  state.managerRole      = s.managerRole;
+  state.viewingAsManager = s.viewingAsManager;
+  if (state.user) { state.user.repId = s.userRepId; state.user.email = s.userEmail; }
+  window._debugOrigState = null;
+  var banner = document.getElementById('debug-sim-banner');
+  if (banner) banner.remove();
+  renderAccountsView();
+  showToast('Admin session restored ✓', 'success');
+  console.log('[SIM] Admin session restored');
 }
 
 function copySessionToken() {

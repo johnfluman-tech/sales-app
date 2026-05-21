@@ -3092,8 +3092,9 @@ function completeLogin() {
     console.log('[ACCOUNTS] Loaded', state.accounts.length, 'accounts | repId:', state.repId, '| viewAsRep:', state.viewAsRep, '| managerRole:', state.managerRole);
     const _viewAccs = getViewAccounts();
     console.log('[ACCOUNTS] After filter:', _viewAccs.length, 'visible accounts');
-    if (state.accounts.length === 0) {
-      console.warn('[ACCOUNTS] state.accounts is empty — check console errors above for tab load failures');
+    if (state.accounts.length === 0 && !state.isAdmin) {
+      console.warn('[ACCOUNTS] state.accounts is empty — repId:', state.repId, '| check tab load errors above');
+      showToast('No accounts loaded. If your data is missing, sign out and back in or contact John.', 'error');
     }
     renderAccountsView();
     updateBadges();
@@ -3340,6 +3341,11 @@ async function checkForceLogout() {
 function setRepFromEmail(email) {
   state.isAdmin = (email === CONFIG.ADMIN_EMAIL);
   state.repId   = CONFIG.REP_EMAIL_MAP[email] || null;
+  const _mapped = state.repId || (state.isAdmin ? 'ADMIN' : 'NOT IN MAP');
+  console.log('[AUTH] setRepFromEmail:', email, '→ repId:', _mapped);
+  if (!state.isAdmin && !state.repId) {
+    console.warn('[AUTH] Email not in REP_EMAIL_MAP — user will see empty data. Add this email to CONFIG.REP_EMAIL_MAP:', email);
+  }
 }
 function isAdmin() { return state.isAdmin || state.repId === 'FJohn'; }
 function isManager() { return !!(MANAGERS[state.repId]) || !!(state.managerRole); }
@@ -3412,7 +3418,8 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
         }
         throw new Error('API error 429 — too many requests, please wait a moment and try again');
       }
-      throw new Error('Sheets API error ' + res.status);
+      const _errBody = await res.text().catch(()=>'');
+      throw new Error('Sheets API error ' + res.status + (_errBody ? ': ' + _errBody.slice(0,150) : ''));
     }
     const data = await res.json();
     return data.values || [];
@@ -3579,6 +3586,9 @@ async function loadAllAccounts() {
       console.log('[TAB] Loaded', tab + ':', state.accounts.filter(a => a.tabName === tab).length, 'accounts');
     } catch(e) {
       console.error('[TAB] Error loading tab', tab + ':', e.message);
+      if (tab === state.repId) {
+        showToast('Could not load your accounts (tab: ' + tab + '). Contact John if this persists.', 'error');
+      }
     }
 
     progress += step;

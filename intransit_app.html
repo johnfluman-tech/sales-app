@@ -10297,6 +10297,19 @@ async function renderAttackPlan() {
     });
   }
   window.apkState = planState;
+  // Build CRM-only pool entries (in directory but not already in app accounts)
+  window.apkCRMAccs = [];
+  if (state.customerDirectory && state.customerDirectory.length) {
+    var _repAccNamesLC = new Set(repAccs.map(function(a){ return (a.name||'').toLowerCase().trim(); }));
+    window.apkCRMAccs = state.customerDirectory.filter(function(c) {
+      return (c.rep||'').toLowerCase() === repFilter.toLowerCase() &&
+        !_repAccNamesLC.has((c.name||'').toLowerCase().trim());
+    });
+    window.apkCRMAccs.forEach(function(c) {
+      if (!planState[c.name]) planState[c.name] = 'pool';
+    });
+  }
+  if (!window._apkPoolFilter) window._apkPoolFilter = 'all';
   apkLoadZoneDates(repFilter);
   apkLoadHiddenTransferAccounts();
   await apkLoadGloballyRemoved(); // must complete before building otherAccs
@@ -10319,12 +10332,20 @@ function apkGetCols() {
   const cols = { solid: [], center: [], ring: [], pool: [] };
   const globalRemoved = state.globallyRemovedFromPool || new Set();
   const repAccs = state.accounts.filter(a => a.rep === window.apkRep).sort((a, b) => (b.total || 0) - (a.total || 0));
+  const repAccNames = new Set(repAccs.map(a => a.name));
   repAccs.forEach(a => {
-    // Globally removed accounts should not appear in zone columns either
     if (globalRemoved.has(a.name)) return;
     const z = window.apkState[a.name] || 'pool';
     if (cols[z]) cols[z].push(a.name);
     else cols.pool.push(a.name);
+  });
+  // Add CRM-only accounts (exist in directory but have no sales history in app)
+  (window.apkCRMAccs || []).forEach(function(c) {
+    if (repAccNames.has(c.name)) return;
+    if (globalRemoved.has(c.name)) return;
+    const z = window.apkState[c.name] || 'pool';
+    if (cols[z]) cols[z].push(c.name);
+    else cols.pool.push(c.name);
   });
   return cols;
 }
@@ -10412,6 +10433,11 @@ function apkRender(repAccs, otherAccs, rep) {
       <div style="flex:1;border-top:2px solid var(--border);background:var(--s1);display:flex;flex-direction:column;overflow:hidden" id="apk-pool-wrap">
         <div style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid var(--border);gap:10px">
           <span style="font-family:var(--mono);font-size:9px;letter-spacing:0.15em;color:var(--text-3)" id="apk-pool-count">POOL</span>
+          <span style="display:flex;gap:3px;flex-shrink:0">
+            <button id="apk-pf-all" onclick="apkSetPoolFilter('all')" style="font-size:9px;font-family:var(--mono);padding:3px 8px;background:rgba(59,130,246,0.2);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r)">ALL</button>
+            <button id="apk-pf-sales" onclick="apkSetPoolFilter('sales')" style="font-size:9px;font-family:var(--mono);padding:3px 8px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r)">HAS SALES</button>
+            <button id="apk-pf-crm" onclick="apkSetPoolFilter('crm')" style="font-size:9px;font-family:var(--mono);padding:3px 8px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r)">NO SALES</button>
+          </span>
           <input id="apk-pool-search" type="text" placeholder="Filter pool..." oninput="apkFilterPool(this.value)" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;padding:4px 8px;outline:none;border-radius:var(--r);width:130px;flex-shrink:0">
           <span style="font-size:11px;color:var(--text-3)">Click zone buttons on a card to assign it · ↑ star to add, ↓ to return to pool</span>
           <div style="margin-left:auto;display:flex;gap:7px;align-items:center">
@@ -10969,21 +10995,28 @@ function apkCardHtml(name, zone) {
     const btnHtml = allZones.filter(z => z.key !== 'pool').map(z =>
       `<button onclick="apkMove('${safeName}','${z.key}')" class="apk-zone-btn" title="→ ${z.label}">${z.icon}</button>`
     ).join('');
-    const poolDotColor = rawStatus.includes('🔴') ? 'var(--red)' : rawStatus.includes('🟠') ? 'var(--orange)' : rawStatus.includes('🟡') ? 'var(--gold)' : rawStatus.includes('⚫') ? 'var(--text-3)' : 'var(--green)';
+    const _isCRMOnly = !acc;
+    const poolDotColor = _isCRMOnly ? 'var(--blue-b)' : (rawStatus.includes('🔴') ? 'var(--red)' : rawStatus.includes('🟠') ? 'var(--orange)' : rawStatus.includes('🟡') ? 'var(--gold)' : rawStatus.includes('⚫') ? 'var(--text-3)' : 'var(--green)');
     const hideBtn = '<button data-n="' + escHtml(name) + '" onclick="apkHideAccount(this.dataset.n)" title="Hide from pool" class="apk-zone-btn" style="color:var(--text-3);border-color:transparent">&#215;</button>';
-    const _revive = (acc && (acc.total||0) >= 20000 && daysIna >= 180 && daysIna < 730)
+    const _revive = (!_isCRMOnly && (acc.total||0) >= 20000 && daysIna >= 180 && daysIna < 730)
       ? '<div style="font-family:var(--mono);font-size:8px;color:#14b8a6;margin-bottom:2px;letter-spacing:0.03em">&#9670; REVIVE</div>'
       : '';
-    return `<div style="background:var(--s2);border:1px solid var(--border);border-left:3px solid ${poolDotColor};border-radius:var(--r);padding:4px 7px;width:150px;flex-shrink:0;min-height:0">
-      <div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;cursor:default" data-poolname="${escHtml(name).toLowerCase()}" title="${escHtml(name)}">
-        <span onclick="apkOpenAccount('${escHtml(name)}')" style="cursor:pointer" onmouseover="this.style.color='var(--blue-b)'" onmouseout="this.style.color=''">${escHtml(name)}</span>
-      </div>
-      ${_revive}<div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-family:var(--mono);font-size:9px;color:var(--gold)">$${formatNum(acc?.total||0)}</span>
-        <span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">${daysIna > 0 ? daysIna + 'd' : 'active'}</span>
-        <div style="display:flex;gap:2px">${btnHtml + hideBtn}</div>
-      </div>
-    </div>`;
+    const _crmBadge = _isCRMOnly ? '<div style="font-family:var(--mono);font-size:8px;color:var(--blue-b);margin-bottom:2px;letter-spacing:0.03em">&#128202; CRM</div>' : '';
+    const _crmCrm = (window.apkCRMAccs || []).find(function(c){ return c.name === name; });
+    const _crmMeta = _isCRMOnly && _crmCrm ? escHtml((_crmCrm.city||'') + (_crmCrm.state ? ', '+_crmCrm.state : '') + (_crmCrm.lastActivity ? ' · ' + _crmCrm.lastActivity : '')) : '';
+    return '<div style="background:var(--s2);border:1px solid var(--border);border-left:3px solid ' + poolDotColor + ';border-radius:var(--r);padding:4px 7px;width:150px;flex-shrink:0;min-height:0">' +
+      '<div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;cursor:default" data-poolname="' + escHtml(name).toLowerCase() + '" title="' + escHtml(name) + '">' +
+        '<span onclick="apkOpenAccount(\'' + escHtml(name) + '\')" style="cursor:pointer" onmouseover="this.style.color=\'var(--blue-b)\'" onmouseout="this.style.color=\'\'">' + escHtml(name) + '</span>' +
+      '</div>' +
+      _crmBadge + _revive +
+      '<div style="display:flex;justify-content:space-between;align-items:center">' +
+        (_isCRMOnly
+          ? '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px" title="' + _crmMeta + '">' + _crmMeta + '</span>'
+          : '<span style="font-family:var(--mono);font-size:9px;color:var(--gold)">$' + formatNum(acc.total||0) + '</span>') +
+        ((!_isCRMOnly && daysIna > 0) ? '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + daysIna + 'd</span>' : '') +
+        '<div style="display:flex;gap:2px">' + btnHtml + hideBtn + '</div>' +
+      '</div>' +
+    '</div>';
   }
 
   // Zone cards (solid/center/ring): compact single-row design
@@ -11031,8 +11064,19 @@ function apkRenderPool(repAccs) {
   // Filter pool: exclude personally hidden + globally removed
   const visiblePool = cols.pool.filter(n => !myHidden.has(n) && !globalRemoved.has(n));
   const hiddenCount = cols.pool.filter(n => myHidden.has(n)).length;
+  // Apply HAS SALES / NO SALES / ALL filter
+  const _crmNames = new Set((window.apkCRMAccs || []).map(function(c){ return c.name; }));
+  const _poolFilter = window._apkPoolFilter || 'all';
+  const filteredPool = visiblePool.filter(function(n) {
+    if (_poolFilter === 'sales') return !_crmNames.has(n);
+    if (_poolFilter === 'crm') return _crmNames.has(n);
+    return true;
+  });
   const countEl = document.getElementById('apk-pool-count');
-  if (countEl) countEl.textContent = 'POOL — ' + visiblePool.length + ' accounts' + (hiddenCount ? ' (' + hiddenCount + ' hidden)' : '');
+  var _countLabel = 'POOL — ' + filteredPool.length + ' accounts';
+  if (_poolFilter !== 'all') _countLabel += ' (' + (_poolFilter === 'crm' ? 'NO SALES filter' : 'HAS SALES filter') + ')';
+  if (hiddenCount) _countLabel += ' (' + hiddenCount + ' hidden)';
+  if (countEl) countEl.textContent = _countLabel;
   // Update MY HIDDEN button badge
   const hiddenBtn = document.getElementById('apk-hidden-btn');
   if (hiddenBtn) {
@@ -11040,8 +11084,8 @@ function apkRenderPool(repAccs) {
     hiddenBtn.style.borderColor = hiddenCount > 0 ? 'var(--orange)' : 'var(--border)';
     hiddenBtn.textContent = hiddenCount > 0 ? 'MY HIDDEN (' + hiddenCount + ')' : 'MY HIDDEN';
   }
-  poolEl.innerHTML = visiblePool.length
-    ? visiblePool.map(n => apkCardHtml(n, 'pool')).join('')
+  poolEl.innerHTML = filteredPool.length
+    ? filteredPool.map(n => apkCardHtml(n, 'pool')).join('')
     : '<div style="color:var(--text-3);font-size:11px;font-family:var(--mono);padding:12px">All accounts assigned to zones ✓</div>';
 }
 
@@ -11053,6 +11097,20 @@ function apkFilterPool(q) {
   poolEl.querySelectorAll('[data-poolname]').forEach(card => {
     const name = card.dataset.poolname || '';
     card.style.display = (!lower || name.includes(lower)) ? '' : 'none';
+  });
+}
+
+function apkSetPoolFilter(f) {
+  window._apkPoolFilter = f || 'all';
+  var repAccs = state.accounts.filter(function(a){ return a.rep === window.apkRep; }).sort(function(a,b){ return (b.total||0)-(a.total||0); });
+  apkRenderPool(repAccs);
+  ['all','sales','crm'].forEach(function(key) {
+    var btn = document.getElementById('apk-pf-' + key);
+    if (!btn) return;
+    var active = key === f;
+    btn.style.background = active ? 'rgba(59,130,246,0.2)' : 'transparent';
+    btn.style.borderColor = active ? 'var(--blue-b)' : 'var(--border)';
+    btn.style.color = active ? 'var(--blue-b)' : 'var(--text-3)';
   });
 }
 

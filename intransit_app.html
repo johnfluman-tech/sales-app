@@ -8714,13 +8714,24 @@ function renderCollectionsView() {
   const _collRepMatch = !repFilter ? function(){ return true; } :
     (_collTeamReps ? function(r){ return _collTeamReps.includes(r); } : function(r){ return r === repFilter; });
 
+  // For non-admin users, build a set of their own account names from state.accounts
+  // This is the safest filter — it doesn't rely on rep-name lookups in the cache
+  const _myAccNames = !state.isAdmin
+    ? new Set(state.accounts.map(a => a.name.trim().toLowerCase()))
+    : null;
+
   // Build collections list from cache, filtered by rep
   let collList = Object.entries(state.collectionsCache).map(([name, c]) => {
     const acc = state.accounts.find(a => a.name.trim() === name.trim());
     return { name, ...c, rep: acc?.rep || '', accObj: acc };
   }).filter(c => c.balance > 0);
 
-  if (repFilter) collList = collList.filter(c => _collRepMatch(c.rep));
+  if (!state.isAdmin) {
+    // Non-admin: restrict to their own accounts only (handles null repId safely)
+    collList = collList.filter(c => _myAccNames.has(c.name.trim().toLowerCase()));
+  } else if (repFilter) {
+    collList = collList.filter(c => _collRepMatch(c.rep));
+  }
   collList.sort((a, b) => b.balance - a.balance);
 
   const totalAR    = collList.reduce((s, c) => s + c.balance, 0);
@@ -9444,11 +9455,19 @@ function renderContactsView() {
     isManager() ? (state.viewAsRep && state.viewAsRep !== '__TEAM_ALL__' ? state.viewAsRep : state.repId || null) :
     state.repId;
 
+  // For non-admin: build set of their own account names — filters contacts safely
+  // even when repFilter is null (wrong/missing email mapping)
+  const _ctMyAccNames = !state.isAdmin
+    ? new Set(state.accounts.map(a => a.name.trim().toLowerCase()))
+    : null;
+
   let allContacts = [];
   const seenContactKeys = new Set();
   for (const [accName, contacts] of Object.entries(state.contactsCache)) {
     const acc = state.accounts.find(a => a.name.trim() === accName.trim());
-    if (repFilter && acc?.rep !== repFilter) continue;
+    if (!state.isAdmin) {
+      if (!_ctMyAccNames.has(accName.trim().toLowerCase())) continue;
+    } else if (repFilter && acc?.rep !== repFilter) continue;
     contacts.forEach(ct => {
       const dedupKey = (ct.name||'').trim().toLowerCase() + '|' + accName.trim().toLowerCase();
       if (seenContactKeys.has(dedupKey)) return;
@@ -10343,6 +10362,11 @@ async function renderAttackPlan() {
   const repFilter = state.isAdmin ? state.viewAsRep :
     isManager() ? (state.viewAsRep && state.viewAsRep !== '__TEAM_ALL__' ? state.viewAsRep : state.repId || null) :
     state.repId;
+  // Regular reps (not admin, not manager) should never see the all-reps picker
+  if (!repFilter && !state.isAdmin && !isManager()) {
+    el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="text-align:center;color:var(--text-3);font-family:var(--mono);font-size:12px"><div style="font-size:28px;margin-bottom:12px">&#9876;</div><div>Unable to load your Attack Plan.<br>Please sign out and sign back in.</div></div></div>';
+    return;
+  }
   if (!repFilter) {
     const _mgrCfg = isManager() ? getManagerConfig() : null;
     const _pickerReps = _mgrCfg ? _mgrCfg.teamReps : CONFIG.REPS;

@@ -476,5 +476,15 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **Commits:** `ce82815` (CRM pool), `9a9646a` (simulate login)
 
 **Pending:**
-- Karen/Mauricio still showing blank accounts page on direct login — use Simulate Login As in Settings + F12 console to get `[SIM]` output and identify root cause
 - `sales_report.py` copy from `C:\Users\fluma\sales_report.py` to `C:\scripts\sales_report.py` on INTRANSIT-RDS02 still needed to activate `_CUSTOMER_DIRECTORY` export
+
+### 2026-05-21 (session 14 — Karen/Mauricio accounts crash fix)
+
+**Bug fixed — "Cannot convert undefined or null to object" on login:**
+- **Root cause:** `state.collectionsCache` was never initialized in the state object. Only `collectionsNotes` and `collectionsInvoicesCache` were in the initial state. `collectionsCache` was created lazily inside `loadSupplementalData()` (line 1673: `if(!state.collectionsCache) state.collectionsCache={}`) only when collections data was processed.
+- **Race condition:** `loadAllAccounts()` and `ensureCacheLoaded()` run in parallel. When `loadAllAccounts()` finishes, the `.then()` chain calls `updateBadges()`, which called `Object.keys(state.collectionsCache)`. If `ensureCacheLoaded()` hadn't yet reached the collections-processing step, `state.collectionsCache` was `undefined` → crash.
+- **Why only Karen/Mauricio:** Admin John loads all 8 tabs (~10–15s), giving `ensureCacheLoaded()` time to set the cache. Karen loads 5 team tabs; Mauricio (and potentially other single-tab reps) loads 1 tab (~1–2s) — almost always finishes before the cache loader initializes `collectionsCache`.
+- **Fix 1:** Added `collectionsCache: {}` to the state object initialization (alongside `collectionsNotes` and `collectionsInvoicesCache`) so it is always a valid object from the start.
+- **Fix 2:** Added `|| {}` guards in `updateBadges()`: `Object.keys(state.collectionsCache || {})` and `Object.keys(state.contactsCache || {})` — belt-and-suspenders in case any future lazy initialization follows the same pattern.
+
+**Commit:** `2beca95`

@@ -2991,6 +2991,7 @@ function completeLogin() {
     sessionStorage.setItem('it_session_id', generateSessionId());
   }
   state._loginComplete = true;
+  state.viewAsRep = null; // always reset view-as on login — prevents stale rep filter
   _signedOut = false; // clear cascade-prevention flag for this new session
   // Log login event to _LOG for every user (non-blocking, 3-attempt retry)
   logLoginEvent({ email: state.user ? state.user.email : 'unknown', repId: state.repId || 'unknown' }).catch(function(){});
@@ -3087,12 +3088,22 @@ function completeLogin() {
   // Don't wait for loadAllAccounts — they run in parallel for speed
   ensureCacheLoaded().catch(() => {});
   loadAllAccounts().then(() => {
-    if (state.repId === 'bcastor') {
-      console.log('bcastor accounts loaded:', state.accounts.filter(a => a.rep === 'bcastor').length);
+    console.log('[ACCOUNTS] Loaded', state.accounts.length, 'accounts | repId:', state.repId, '| viewAsRep:', state.viewAsRep, '| managerRole:', state.managerRole);
+    const _viewAccs = getViewAccounts();
+    console.log('[ACCOUNTS] After filter:', _viewAccs.length, 'visible accounts');
+    if (state.accounts.length === 0) {
+      console.warn('[ACCOUNTS] state.accounts is empty — check console errors above for tab load failures');
     }
     renderAccountsView();
     updateBadges();
     initSecurity();
+  }).catch(function(e) {
+    console.error('[ACCOUNTS] loadAllAccounts failed:', e);
+    document.getElementById('main-content').innerHTML =
+      '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:12px;color:var(--red)">' +
+      '&#9888; Failed to load accounts — ' + (e.message || 'unknown error') + '<br>' +
+      '<span style="color:var(--text-muted);font-size:10px">Try signing out and signing back in. If this keeps happening, contact John.</span>' +
+      '</div>';
   });
 }
 
@@ -3564,8 +3575,9 @@ async function loadAllAccounts() {
       // Load note history for this tab
       await loadNoteHistory(tab);
 
+      console.log('[TAB] Loaded', tab + ':', state.accounts.filter(a => a.tabName === tab).length, 'accounts');
     } catch(e) {
-      console.error(`Error loading tab ${tab}:`, e);
+      console.error('[TAB] Error loading tab', tab + ':', e.message);
     }
 
     progress += step;

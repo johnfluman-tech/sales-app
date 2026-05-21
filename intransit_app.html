@@ -2826,6 +2826,7 @@ let state = {
   gpCache: [],            // GP records
   gpLoadError: null,
   reqsCache: [],          // flat reqs for dashboard counting
+  collectionsCache: {},          // keyed by customer name — balance/risk from _COLLECTIONS
   collectionsNotes: {},        // keyed by customer name — collections-specific notes
   collectionsInvoicesCache: {}, // keyed by customer name — open invoices
   signaturesCache: {},          // keyed by rep ID — email signatures
@@ -10021,8 +10022,8 @@ function updateBadges() {
     return d && d <= today;
   }).length;
 
-  const collectionsCount = Object.keys(state.collectionsCache).length;
-  const contactsCount    = Object.keys(state.contactsCache).length;
+  const collectionsCount = Object.keys(state.collectionsCache || {}).length;
+  const contactsCount    = Object.keys(state.contactsCache || {}).length;
 
   const setB = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
   setB('badge-accounts',    accs.length);

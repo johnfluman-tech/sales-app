@@ -424,3 +424,57 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 
 **New state field:** `state._pendingRefresh` — `null` normally; `{ resolve, reject, tid }` while a silent refresh is in progress.
 **New module-level var:** `let _signedOut = false` — declared after the state object.
+
+### 2026-05-20 (session 13 — CRM pool + debug simulate login)
+
+**TASK21 — Cloudflare Worker whitelist fix:**
+- Removed `ALLOWED_EMAILS` hardcoded list from worker `verifyGoogleToken()` — was blocking Carlos (carlos.mancilla) and Manuel (manuel.perezfreyre) with 403
+- Worker now accepts any `@intransittech.com` email without a list check
+- Deployed via `wrangler deploy`
+
+**CRM Discovery field name fixes:**
+- `loadCustomerDirectory()` maps columns to lowercase keys: `{id, name, rep, city, state, lastActivity}`
+- `showCRMDiscovery()`, `apkAIRankCRM()`, `apkAIPicker()`, `apkAcceptAIPicks()` were all using uppercase field names (`c.NAME`, `c.USERNAME`, `c.CUSTOMER_ID`) — fixed to lowercase throughout
+- `showCRMDiscovery()` now shows setup instructions when directory is empty (not just a blank panel)
+
+**Settings CRM Directory status card:**
+- New card shown for admin/manager (not in simulated view) showing loaded count, timestamp, Reload button
+- `loadCustomerDirectory(force)` now accepts `force` param; updates `state._directoryLoadedAt` on load
+- `reloadCRMDirectory()` — force-reload handler for Reload button
+
+**MANAGER_CONFIG — CKaren added to her own teamReps:**
+- `'CKaren': { teamReps: ['CKaren','PIan','RMauricio','LMancera','bcastor'] }` — was missing CKaren herself
+- Fixes MX Team dashboard view not counting her own accounts
+
+**`completeLogin()` — stale rep filter fix:**
+- Added `state.viewAsRep = null` immediately after `state._loginComplete = true`
+- Prevents a previous admin view-as session from bleeding into a fresh login
+
+**`sales_report.py` — `_CUSTOMER_DIRECTORY` export:**
+- Added `push_customer_directory_tab(service, conn, all_tabs)` function
+- Writes all `dbo.CUSTOMER` rows for active reps to `_CUSTOMER_DIRECTORY` tab in History Sheet
+- Called in `main()` after `push_customer_stats_tab`
+- Columns: `CUSTOMER_ID, NAME, USERNAME, CITY, STATE, LAST_ACTIVITY`
+- Scheduled on INTRANSIT-RDS02 at 15-min intervals (already running)
+
+**Attack Plan Pool — CRM accounts + filters (commit `ce82815`):**
+- `renderAttackPlan()` now builds `window.apkCRMAccs` — `state.customerDirectory` entries for the current rep that are NOT already in `state.accounts`; adds them to `planState` as 'pool'
+- `apkGetCols()` includes `window.apkCRMAccs` in pool/zone distribution (separate from `repAccNames`)
+- Pool header: three filter buttons — **ALL**, **HAS SALES**, **NO SALES** — toggle via `window._apkPoolFilter`
+- `apkRenderPool()` applies filter using `_crmNames` Set before rendering
+- `apkCardHtml()` pool cards: CRM-only accounts (`!acc`) get blue left border, `📊 CRM` badge, city/state/last-activity instead of dollar amount
+- `apkSetPoolFilter(f)` — new function: sets filter, re-renders pool, updates button active state
+
+**Admin debug: Simulate Login As (commit `9a9646a`):**
+- New section in Settings (admin only, orange border) — buttons for all 9 users
+- `debugSimulateLogin(repId, email, managerRoleKey)` — swaps `state.repId`, `state.isAdmin`, `state.managerRole`, `state.viewAsRep`, `state.user` to simulate that user; saves original state to `window._debugOrigState`; prints `[SIM]` diagnostics to console showing accounts-in-data vs accounts-visible; shows orange sticky banner at top of page
+- `debugRestoreAdmin()` — restores all original state, removes banner
+- Console output: `[SIM] Accounts for rep "X" in state.accounts: N` and `[SIM] getViewAccounts() returned: N accounts` — identifies filtering bugs without needing user to log in
+
+**New state fields:** `window.apkCRMAccs`, `window._apkPoolFilter`, `state._directoryLoadedAt`
+**New functions:** `apkSetPoolFilter`, `debugSimulateLogin`, `debugRestoreAdmin`, `reloadCRMDirectory`
+**Commits:** `ce82815` (CRM pool), `9a9646a` (simulate login)
+
+**Pending:**
+- Karen/Mauricio still showing blank accounts page on direct login — use Simulate Login As in Settings + F12 console to get `[SIM]` output and identify root cause
+- `sales_report.py` copy from `C:\Users\fluma\sales_report.py` to `C:\scripts\sales_report.py` on INTRANSIT-RDS02 still needed to activate `_CUSTOMER_DIRECTORY` export

@@ -157,6 +157,20 @@ My Accounts, Daily Mission (100 AI picks), Dashboard, Collections (138 accts / ~
 
 Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intransittech.com), `MPerezfreye` (manuel.perezfreyre@intransittech.com)
 
+### Confirmed Google Account Emails (REP_EMAIL_MAP)
+| repId | Google email |
+|-------|-------------|
+| FJohn (ADMIN) | john.fluman@intransittech.com |
+| CKaren | kmancebo@intransittech.com |
+| BillP | bill.pratt@intransittech.com |
+| PIan | ian.pitman@intransittech.com |
+| RMauricio | **mauricio.rangel@intransittech.com** (NOT mrangel@) |
+| LMancera | lmancera@intransittech.com |
+| bcastor | brandonar@intransittech.com |
+| Anolan | anolan@intransittech.com |
+| CMancilla | carlos.mancilla@intransittech.com |
+| MPerezfreye | manuel.perezfreyre@intransittech.com |
+
 ## Pending / Known Issues
 - Dashboard loads slowly (30s+) — Supabase migration not yet complete (app still reads Sheets)
 - `sales_report.py` needs to be scheduled on INTRANSIT-RDS02 via Windows Task Scheduler — target: every 30 minutes, silent background run, log to `C:\scripts\logs\sales_report.log`

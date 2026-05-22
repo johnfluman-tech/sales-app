@@ -8890,17 +8890,32 @@ function selectCollectionsAccount(name) {
     if (matchKey) rawContacts = state.contactsCache[matchKey] || [];
   }
   // Buyer-name fallback — every invoice has ORDERED_BY; match those names against _CONTACTS
-  // This catches accounts where _COLLECTIONS name ≠ _CONTACTS CUSTOMER_NAME
+  // Handles two name-mismatch problems: _COLLECTIONS≠_CONTACTS and _COLLECTIONS≠_GP
   if (rawContacts.length === 0 && state._buyerEmailMap) {
-    const _buyers = Object.keys(state.contactRevenueCache[name] || {});
-    const _found = [];
-    _buyers.forEach(function(b) {
-      const _matches = state._buyerEmailMap[b.trim().toLowerCase()] || [];
-      _matches.forEach(function(ct) {
-        if (!_found.some(function(f){ return f.email === ct.email; })) _found.push(ct);
+    // Step 1: try exact account name in contactRevenueCache (built from _GP CUSTOMER_NAME)
+    let _buyers = Object.keys(state.contactRevenueCache[name] || {});
+    // Step 2: if exact match fails, fuzzy-match on significant words (strips punctuation/accents)
+    if (_buyers.length === 0 && state.contactRevenueCache) {
+      const _norm = function(s){ return s.toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim(); };
+      const _nWords = _norm(name).split(' ').filter(function(w){ return w.length > 3; });
+      if (_nWords.length > 0) {
+        for (var _ck in state.contactRevenueCache) {
+          const _kWords = _norm(_ck).split(' ').filter(function(w){ return w.length > 3; });
+          const _overlap = _nWords.filter(function(w){ return _kWords.indexOf(w) >= 0; }).length;
+          if (_overlap >= 2) { _buyers = Object.keys(state.contactRevenueCache[_ck]); break; }
+        }
+      }
+    }
+    if (_buyers.length > 0) {
+      const _found = [];
+      _buyers.forEach(function(b) {
+        const _matches = state._buyerEmailMap[b.trim().toLowerCase()] || [];
+        _matches.forEach(function(ct) {
+          if (!_found.some(function(f){ return f.email === ct.email; })) _found.push(ct);
+        });
       });
-    });
-    if (_found.length > 0) rawContacts = _found;
+      if (_found.length > 0) rawContacts = _found;
+    }
   }
   // Final fallback — use primary contact from the rep tab if _CONTACTS has nothing
   if (rawContacts.length === 0 && acc && acc.contactEmail) {

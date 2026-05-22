@@ -177,6 +177,7 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - Each rep needs to allow the popup once before first use
 - `_CONTACT_NOTES` tab may need to be manually created in History sheet if notes aren't persisting (create tab, add header row: `ACCOUNT_NAME, CONTACT_NAME, TYPE, NOTE, DATE, REP`)
 - `saveContactNoteFromView` (line ~8508) does not update `state.contactNotesCache` after save — notes from Contacts view only appear in Notes Feed after next reload
+- **`_CUSTOMER_DIRECTORY` still not loading** — `C:\Users\fluma\sales_report.py` (local) has `push_customer_directory_tab` function but `C:\scripts\sales_report.py` on INTRANSIT-RDS02 is the OLD version without it. Must copy local file to server and re-run. Look for `→ Pushed X accounts to _CUSTOMER_DIRECTORY tab` in script output to confirm success.
 
 ## Session Log
 ### 2026-05-19

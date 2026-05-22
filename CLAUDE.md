@@ -563,3 +563,39 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - Always copy `C:\Users\fluma\sales_report.py` (or `C:\Users\fluma\sales-app\sales_report.py`) → `C:\scripts\sales_report.py` on INTRANSIT-RDS02 before running
 - The repo version (`sales-app\sales_report.py`) and the working copy (`C:\Users\fluma\sales_report.py`) are kept in sync
 - `loadCustomerDirectory()` runs automatically for all users at page load — no manual action needed after script runs
+
+### 2026-05-22 (session 16 — Manager Hub 5 tools + nav/scope fixes)
+
+**Feature: Manager Hub expanded to 5 tools (commit `b88e005`)**
+- Added 3 new tabs to existing Manager Hub (was: Scoreboard, Accountability, Playbook):
+  - **💰 Collections** (`_mgrCollectionsHtml`): total team AR summary cards, per-rep AR badges with high-risk flags, full sorted table of all open balances with days-past-due and hold status
+  - **📈 Pipeline** (`_mgrPipelineHtml`): YoY revenue/GP% comparison table per rep, Silent Churn list (accounts that bought last year but nothing yet this year — sorted by prior-year revenue), Declining+Open-AR risk table
+  - **🤖 AI Brief** (`_mgrAIBriefHtml` + `mgrAIBrief`): three AI report types — Weekly Team Summary, Monthly Forecast, and per-rep 1:1 Coaching Prep buttons; all use `claude-haiku-4-5-20251001`
+- **Scoreboard enhanced**: added `thisYear` GP filter from `gpCache`; new YTD Revenue + GP% columns (green ≥20%, gold ≥12%, red below); header updated
+- **Playbook**: removed inline AI Coach Report section (moved to dedicated AI Brief tab)
+- Tab renamed: "Accountability" → "Coaching"
+
+**Bug fixed — Manager Hub not visible to admin (commit `e3ebd27`)**
+- `nav-manager-hub` was only shown inside `if (isManager())` block at login — admin John never saw it
+- Fix: added separate `if (isManager() || isAdmin()) { nav-manager-hub.show }` block before the manager-only block
+- `renderManagerHub()`: when admin has no `managerRole`, `teamReps` defaults to `CONFIG.REPS` (all reps) and `teamName` = 'All Reps'
+- `debugRestoreAdmin()`: updated to keep `nav-manager-hub` visible after restoring admin session
+
+**Bug fixed — debugSimulateLogin not showing manager nav items (commit `6c0ef05`)**
+- Simulating CMancilla/MPerezfreye left `nav-manager-hub`, `nav-team-notes`, `nav-team-profile` hidden because only `completeLogin()` updated nav visibility
+- Fix: after state swap in `debugSimulateLogin`, iterates nav IDs and shows/hides based on `isManager()`
+- Fix: `debugRestoreAdmin()` also updates nav items to match restored role
+
+**Bug fixed — Collections showing all 816 accounts for managers (commit `f55e331`)**
+- When simulating a manager (or real manager login), `_myAccNames` was built from all of `state.accounts`, letting Anolan/FJohn/BillP invoices leak into the manager collections view
+- Fix in `renderCollectionsView()`: when `isManager() && getManagerConfig()`, filters `state.accounts` to only accounts whose `rep` is in `teamReps` before building `_myAccNames`
+- Applies to both simulation mode and real manager logins (belt-and-suspenders)
+
+**Manager Hub — how teamReps resolves:**
+- `CMancilla` / `MPerezfreye`: `MANAGER_CONFIG[state.managerRole].teamReps` = `['CKaren','PIan','RMauricio','LMancera','bcastor']`
+- `CKaren` in manager mode: same teamReps (including herself)
+- Admin John (no managerRole): defaults to `CONFIG.REPS` — sees all reps in Scoreboard/Pipeline/etc.
+- Admin simulating a manager: uses that manager's `teamReps`
+
+**New functions:** `_mgrCollectionsHtml`, `_mgrPipelineHtml`, `_mgrAIBriefHtml`, `mgrAIBrief`
+**Commits:** `b88e005` (5 tools), `6c0ef05` (sim nav fix), `f55e331` (collections scope), `e3ebd27` (admin nav + all-reps default)

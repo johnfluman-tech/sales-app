@@ -3048,11 +3048,13 @@ function completeLogin() {
     }
   }
   state.managerRole = getManagerRole(state.repId, state.user ? state.user.email || '' : '');
+  if (isManager() || isAdmin()) {
+    document.getElementById('nav-manager-hub').style.display = 'block';
+  }
   if (isManager()) {
     document.getElementById('view-as-section').style.display = 'block';
     document.getElementById('nav-team-notes').style.display = 'block';
     document.getElementById('nav-team-profile').style.display = 'block';
-    document.getElementById('nav-manager-hub').style.display = 'block';
     const sel = document.getElementById('view-as-select');
     if (sel) {
       const mgrCfg = getManagerConfig();
@@ -8506,9 +8508,11 @@ function debugRestoreAdmin() {
   state.viewingAsManager = s.viewingAsManager;
   if (state.user) { state.user.repId = s.userRepId; state.user.email = s.userEmail; }
   window._debugOrigState = null;
-  // Restore manager nav visibility to match admin's actual role
+  // Restore manager nav visibility — admin always sees Manager Hub
   var _restoredIsMgr = isManager();
-  ['nav-team-notes','nav-team-profile','nav-manager-hub'].forEach(function(id) {
+  var _mgrHubEl = document.getElementById('nav-manager-hub');
+  if (_mgrHubEl) _mgrHubEl.style.display = (_restoredIsMgr || isAdmin()) ? 'block' : 'none';
+  ['nav-team-notes','nav-team-profile'].forEach(function(id) {
     var el = document.getElementById(id); if (el) el.style.display = _restoredIsMgr ? 'block' : 'none';
   });
   var banner = document.getElementById('debug-sim-banner');
@@ -10885,8 +10889,9 @@ async function apkAcceptAIPicks() {
 function renderManagerHub() {
   if (!isManager() && !isAdmin()) { switchView('accounts'); return; }
   var mgrCfg = getManagerConfig();
-  var teamReps = mgrCfg ? mgrCfg.teamReps : [];
-  var teamName = mgrCfg ? mgrCfg.teamName : 'Team';
+  // Admin with no managerRole: show all active reps
+  var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan']);
+  var teamName = mgrCfg ? mgrCfg.teamName : 'All Reps';
   var tab = window._mgrHubTab || 'scoreboard';
   var content = document.getElementById('main-content');
 

@@ -773,7 +773,15 @@ def push_customer_directory_tab(service, conn, all_tabs):
     sid = HISTORY_SHEET_ID
     h_tabs = get_all_tabs(service, sid)
     print(f"  → _CUSTOMER_DIRECTORY: History sheet tabs found: {len(h_tabs)}")
+    # Open a fresh connection — the main conn may already be closed by this point
+    _conn = None
     try:
+        _conn = pyodbc.connect(
+            "DRIVER={ODBC Driver 17 for SQL Server};"
+            "SERVER=localhost;"
+            "DATABASE=CCCRM;"
+            "Trusted_Connection=yes;"
+        )
         ensure_tab_exists(service, '_CUSTOMER_DIRECTORY', h_tabs, sheet_id=sid)
         print(f"  → _CUSTOMER_DIRECTORY: Tab ensured.")
 
@@ -792,7 +800,7 @@ def push_customer_directory_tab(service, conn, all_tabs):
             ORDER BY c.USERNAME, c.NAME
         """
         print(f"  → _CUSTOMER_DIRECTORY: Running SQL query...")
-        dir_df = pd.read_sql(dir_sql, conn)
+        dir_df = pd.read_sql(dir_sql, _conn)
         print(f"  → Pulled {len(dir_df):,} customers for directory.")
 
         if len(dir_df) == 0:
@@ -830,6 +838,12 @@ def push_customer_directory_tab(service, conn, all_tabs):
     except Exception as e:
         print(f"  ERROR: Could not push _CUSTOMER_DIRECTORY tab — {e}")
         traceback.print_exc()
+    finally:
+        if _conn:
+            try:
+                _conn.close()
+            except Exception:
+                pass
 
 
 def _format_header_tab(service, tab_name, sid=None):

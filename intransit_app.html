@@ -10873,7 +10873,10 @@ function renderManagerHub() {
 
   var tabBarHtml = [
     {id:'scoreboard',    label:'&#128202; Scoreboard'},
-    {id:'accountability',label:'&#10003; Accountability'},
+    {id:'accountability',label:'&#9888; Coaching'},
+    {id:'collections',   label:'&#128181; Collections'},
+    {id:'pipeline',      label:'&#128200; Pipeline'},
+    {id:'aibrief',       label:'&#129302; AI Brief'},
     {id:'playbook',      label:'&#128203; Playbook'}
   ].map(function(t){
     var active = tab === t.id;
@@ -10885,9 +10888,12 @@ function renderManagerHub() {
   }).join('');
 
   var bodyHtml = '';
-  if (tab === 'scoreboard')     bodyHtml = _mgrScoreboardHtml(teamReps);
+  if (tab === 'scoreboard')         bodyHtml = _mgrScoreboardHtml(teamReps);
   else if (tab === 'accountability') bodyHtml = _mgrAccountabilityHtml(teamReps);
-  else if (tab === 'playbook')  bodyHtml = _mgrPlaybookHtml(teamReps);
+  else if (tab === 'collections')   bodyHtml = _mgrCollectionsHtml(teamReps);
+  else if (tab === 'pipeline')      bodyHtml = _mgrPipelineHtml(teamReps);
+  else if (tab === 'aibrief')       bodyHtml = _mgrAIBriefHtml(teamReps);
+  else if (tab === 'playbook')      bodyHtml = _mgrPlaybookHtml(teamReps);
 
   content.innerHTML =
     '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden">' +
@@ -10904,8 +10910,14 @@ function renderManagerHub() {
 
 function _mgrScoreboardHtml(teamReps) {
   var now = new Date();
+  var thisYear = now.getFullYear().toString();
   var thirtyAgo = new Date(now - 30*24*60*60*1000);
   var notesRows = Array.isArray(state.contactNotesCache) ? state.contactNotesCache.slice(1) : [];
+  var gpHdrs = state.gpCache.length > 0 ? Object.keys(state.gpCache[0]) : [];
+  var gpRepCol = gpHdrs.find(function(h){ return /SALES_REP/i.test(h); }) || 'SALES_REP';
+  var gpDateCol = gpHdrs.find(function(h){ return /INVOICE_DATE/i.test(h); }) || 'INVOICE_DATE';
+  var gpRevCol = gpHdrs.find(function(h){ return /EXTENDED_PRICE|INVOICE_TOTAL/i.test(h); }) || 'EXTENDED_PRICE';
+  var gpGpCol = gpHdrs.find(function(h){ return /^GP$/i.test(h); }) || 'GP';
 
   var rows = teamReps.map(function(repId) {
     var repAccs = state.accounts.filter(function(a){ return a.rep === repId; });
@@ -10917,10 +10929,15 @@ function _mgrScoreboardHtml(teamReps) {
     var overdue = repAccs.filter(function(a){ return a.followUpDate && new Date(a.followUpDate) < now; }).length;
     var repNotes = notesRows.filter(function(r){ return (r[5]||'').toLowerCase().indexOf(repId.toLowerCase()) !== -1; });
     var recentNotes = repNotes.filter(function(r){ try{ return new Date(r[4]) >= thirtyAgo; }catch(e){ return false; } }).length;
+    var gpForRep = state.gpCache.filter(function(r){ return (r[gpRepCol]||'').trim() === repId && (r[gpDateCol]||'').slice(0,4) === thisYear; });
+    var gpRevenue = gpForRep.reduce(function(s,r){ return s + parseMoney(r[gpRevCol]||0); }, 0);
+    var gpDollars = gpForRep.reduce(function(s,r){ return s + parseMoney(r[gpGpCol]||0); }, 0);
+    var gpPct = gpRevenue > 0 ? Math.round(gpDollars / gpRevenue * 100) : 0;
 
     var pctColor = activePct >= 60 ? 'var(--green)' : activePct >= 40 ? 'var(--gold)' : 'var(--red)';
     var notesColor = recentNotes >= 10 ? 'var(--green)' : recentNotes >= 5 ? 'var(--gold)' : 'var(--red)';
     var overdueColor = overdue > 5 ? 'var(--red)' : overdue > 0 ? 'var(--gold)' : 'var(--green)';
+    var gpColor = gpPct >= 20 ? 'var(--green)' : gpPct >= 12 ? 'var(--gold)' : 'var(--red)';
 
     return '<tr style="cursor:pointer;transition:background 0.15s" ' +
       'onclick="apkSelectRep(\'' + repId + '\');switchView(\'accounts\')" ' +
@@ -10928,7 +10945,8 @@ function _mgrScoreboardHtml(teamReps) {
       '<td class="mono" style="font-weight:700;color:var(--accent)">' + escHtml(repId) + '</td>' +
       '<td class="mono right">' + total + '</td>' +
       '<td class="mono right" style="color:' + pctColor + '">' + activePct + '%</td>' +
-      '<td class="mono right">$' + formatNum(revenue) + '</td>' +
+      '<td class="mono right">$' + formatNum(gpRevenue || revenue) + '</td>' +
+      '<td class="mono right" style="color:' + gpColor + '">' + (gpPct > 0 ? gpPct + '%' : '—') + '</td>' +
       '<td class="mono right">' + followUps + '</td>' +
       '<td class="mono right" style="color:' + overdueColor + '">' + (overdue > 0 ? '&#9888; ' + overdue : '&#10003;') + '</td>' +
       '<td class="mono right" style="color:' + notesColor + '">' + recentNotes + '</td>' +
@@ -10938,10 +10956,10 @@ function _mgrScoreboardHtml(teamReps) {
   return '<div style="overflow-x:auto">' +
     '<table class="data-table" style="width:100%">' +
     '<thead><tr><th>REP</th><th class="right">ACCOUNTS</th><th class="right">ACTIVE %</th>' +
-    '<th class="right">30D REVENUE</th><th class="right">FOLLOW-UPS</th><th class="right">OVERDUE</th><th class="right">NOTES (30d)</th></tr></thead>' +
+    '<th class="right">YTD REVENUE</th><th class="right">GP %</th><th class="right">FOLLOW-UPS</th><th class="right">OVERDUE</th><th class="right">NOTES (30d)</th></tr></thead>' +
     '<tbody>' + rows + '</tbody>' +
     '</table></div>' +
-    '<div style="margin-top:8px;font-size:11px;color:var(--text-3);font-family:var(--mono)">Click a row to view that rep\'s accounts &nbsp;&#183;&nbsp; Active% = sold in last 90 days &nbsp;&#183;&nbsp; Notes = contact notes written</div>';
+    '<div style="margin-top:8px;font-size:11px;color:var(--text-3);font-family:var(--mono)">Click a row to view that rep\'s accounts &nbsp;&#183;&nbsp; GP% target: 20%+ &nbsp;&#183;&nbsp; Active% = sold in last 90 days</div>';
 }
 
 function _mgrAccountabilityHtml(teamReps) {
@@ -11055,15 +11073,7 @@ function _mgrPlaybookHtml(teamReps) {
       '</div>';
   }).join('');
 
-  var aiSection =
-    '<div style="margin-top:20px;padding:16px;background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.2);border-radius:var(--r2)">' +
-    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--blue-b);margin-bottom:6px">&#9889; AI COACH REPORT</div>' +
-    '<div style="font-size:12px;color:var(--text-2);margin-bottom:12px">Generate a personalized coaching brief based on your team\'s current data — specific insights and action items for each rep.</div>' +
-    '<button id="mgr-coach-btn" onclick="mgrGenerateCoachReport()" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;padding:8px 20px;cursor:pointer;border-radius:var(--r)">GENERATE REPORT</button>' +
-    '<div id="mgr-coach-output" style="margin-top:14px;display:none"></div>' +
-    '</div>';
-
-  return accordionHtml + aiSection;
+  return accordionHtml;
 }
 
 async function mgrGenerateCoachReport() {
@@ -11103,6 +11113,248 @@ async function mgrGenerateCoachReport() {
     out.innerHTML = '<div style="color:var(--red);font-size:11px;font-family:var(--mono)">Could not generate report. Check AI connection.</div>';
     out.style.display = 'block';
     btn.textContent = 'GENERATE REPORT'; btn.disabled = false;
+  }
+}
+
+function _mgrCollectionsHtml(teamReps) {
+  var teamAccNames = new Set(
+    state.accounts.filter(function(a){ return teamReps.indexOf(a.rep) !== -1; })
+      .map(function(a){ return a.name.trim(); })
+  );
+  var collEntries = [];
+  Object.keys(state.collectionsCache).forEach(function(name) {
+    var c = state.collectionsCache[name];
+    if (!teamAccNames.has(name.trim())) return;
+    if (!c || c.balance <= 0) return;
+    var acc = state.accounts.find(function(a){ return a.name.trim() === name.trim(); });
+    collEntries.push({ name: name, balance: c.balance||0, daysPastDue: c.daysPastDue||0, risk: c.risk||'', terms: c.terms||'', appHold: c.appHold||'', rep: acc ? acc.rep : '' });
+  });
+  collEntries.sort(function(a,b){ return b.balance - a.balance; });
+  var totalAR = collEntries.reduce(function(s,c){ return s + c.balance; }, 0);
+  var highRiskCount = collEntries.filter(function(c){ return (c.risk||'').toUpperCase().indexOf('HIGH') !== -1; }).length;
+  var onHoldCount = collEntries.filter(function(c){ return c.appHold === 'YES'; }).length;
+  if (collEntries.length === 0) {
+    return '<div style="text-align:center;padding:40px;color:var(--green);font-family:var(--mono);font-size:13px">&#10003; No open balances for team accounts</div>';
+  }
+  var summaryHtml =
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">' +
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:14px;text-align:center">' +
+    '<div style="font-size:10px;font-family:var(--mono);color:var(--text-3);margin-bottom:4px">TOTAL TEAM AR</div>' +
+    '<div style="font-size:22px;font-weight:700;color:var(--gold)">$' + formatNum(totalAR) + '</div>' +
+    '<div style="font-size:10px;color:var(--text-3)">' + collEntries.length + ' accounts with balance</div></div>' +
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:14px;text-align:center">' +
+    '<div style="font-size:10px;font-family:var(--mono);color:var(--text-3);margin-bottom:4px">HIGH RISK</div>' +
+    '<div style="font-size:22px;font-weight:700;color:' + (highRiskCount > 0 ? 'var(--red)' : 'var(--green)') + '">' + highRiskCount + '</div>' +
+    '<div style="font-size:10px;color:var(--text-3)">accounts flagged</div></div>' +
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:14px;text-align:center">' +
+    '<div style="font-size:10px;font-family:var(--mono);color:var(--text-3);margin-bottom:4px">ON CREDIT HOLD</div>' +
+    '<div style="font-size:22px;font-weight:700;color:' + (onHoldCount > 0 ? 'var(--orange)' : 'var(--green)') + '">' + onHoldCount + '</div>' +
+    '<div style="font-size:10px;color:var(--text-3)">accounts</div></div>' +
+    '</div>';
+  var perRepHtml = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">' +
+    teamReps.map(function(repId) {
+      var rc = collEntries.filter(function(c){ return c.rep === repId; });
+      if (!rc.length) return '<div style="padding:6px 12px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);font-family:var(--mono);font-size:10px;color:var(--text-3)">' + escHtml(repId) + ' &#10003;</div>';
+      var rAR = rc.reduce(function(s,c){ return s + c.balance; }, 0);
+      var hasHR = rc.some(function(c){ return (c.risk||'').toUpperCase().indexOf('HIGH') !== -1; });
+      return '<div style="padding:6px 12px;background:var(--s1);border:1px solid ' + (hasHR ? 'var(--red)' : 'var(--border)') + ';border-radius:var(--r);font-family:var(--mono);font-size:10px">' +
+        '<span style="color:var(--accent)">' + escHtml(repId) + '</span>' +
+        ' <span style="color:var(--gold)">$' + formatNum(rAR) + '</span>' +
+        ' <span style="color:var(--text-3)">(' + rc.length + ')</span>' +
+        (hasHR ? ' <span style="color:var(--red)">&#9888;</span>' : '') + '</div>';
+    }).join('') + '</div>';
+  var tableRows = collEntries.map(function(c) {
+    var riskColor = (c.risk||'').toUpperCase().indexOf('HIGH') !== -1 ? 'var(--red)' : (c.risk||'').toUpperCase().indexOf('WATCH') !== -1 ? 'var(--gold)' : 'var(--text-3)';
+    var dpdColor = c.daysPastDue > 60 ? 'var(--red)' : c.daysPastDue > 30 ? 'var(--gold)' : 'var(--text-2)';
+    return '<tr>' +
+      '<td class="mono" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(c.name) + '</td>' +
+      '<td class="mono" style="color:var(--accent)">' + escHtml(c.rep) + '</td>' +
+      '<td class="mono right" style="color:var(--gold);font-weight:700">$' + formatNum(c.balance) + '</td>' +
+      '<td class="mono right" style="color:' + dpdColor + '">' + (c.daysPastDue > 0 ? c.daysPastDue + 'd' : '&#10003;') + '</td>' +
+      '<td class="mono right" style="color:' + riskColor + '">' + escHtml(c.risk || '—') + '</td>' +
+      '<td class="mono right">' + (c.appHold === 'YES' ? '<span style="color:var(--red);font-size:9px;font-family:var(--mono)">ON HOLD</span>' : '—') + '</td>' +
+      '</tr>';
+  }).join('');
+  return summaryHtml + perRepHtml +
+    '<div style="overflow-x:auto"><table class="data-table" style="width:100%">' +
+    '<thead><tr><th>ACCOUNT</th><th>REP</th><th class="right">BALANCE</th><th class="right">DAYS PAST DUE</th><th class="right">RISK</th><th class="right">HOLD</th></tr></thead>' +
+    '<tbody>' + tableRows + '</tbody></table></div>' +
+    '<div style="margin-top:8px;font-size:11px;color:var(--text-3);font-family:var(--mono)">All team accounts with open AR — sorted by balance. Jump to Collections view for email tools.</div>';
+}
+
+function _mgrPipelineHtml(teamReps) {
+  var now = new Date();
+  var thisYear = now.getFullYear().toString();
+  var lastYear = (now.getFullYear() - 1).toString();
+  var gpHdrs = state.gpCache.length > 0 ? Object.keys(state.gpCache[0]) : [];
+  var gpRepCol = gpHdrs.find(function(h){ return /SALES_REP/i.test(h); }) || 'SALES_REP';
+  var gpDateCol = gpHdrs.find(function(h){ return /INVOICE_DATE/i.test(h); }) || 'INVOICE_DATE';
+  var gpRevCol = gpHdrs.find(function(h){ return /EXTENDED_PRICE|INVOICE_TOTAL/i.test(h); }) || 'EXTENDED_PRICE';
+  var gpGpCol = gpHdrs.find(function(h){ return /^GP$/i.test(h); }) || 'GP';
+  var repStats = {};
+  teamReps.forEach(function(r){ repStats[r] = {tyRev:0,lyRev:0,tyGP:0,lyGP:0}; });
+  state.gpCache.forEach(function(r) {
+    var rep = (r[gpRepCol]||'').trim();
+    if (teamReps.indexOf(rep) === -1) return;
+    var yr = (r[gpDateCol]||'').slice(0,4);
+    var rev = parseMoney(r[gpRevCol]||0);
+    var gp = parseMoney(r[gpGpCol]||0);
+    if (yr === thisYear)  { repStats[rep].tyRev += rev; repStats[rep].tyGP += gp; }
+    else if (yr === lastYear) { repStats[rep].lyRev += rev; repStats[rep].lyGP += gp; }
+  });
+  var yoyRows = teamReps.map(function(repId) {
+    var s = repStats[repId];
+    var change = s.lyRev > 0 ? Math.round((s.tyRev - s.lyRev) / s.lyRev * 100) : null;
+    var chColor = change === null ? 'var(--text-3)' : change >= 5 ? 'var(--green)' : change >= -10 ? 'var(--gold)' : 'var(--red)';
+    var tyGpPct = s.tyRev > 0 ? Math.round(s.tyGP / s.tyRev * 100) : 0;
+    var lyGpPct = s.lyRev > 0 ? Math.round(s.lyGP / s.lyRev * 100) : 0;
+    var gpChColor = tyGpPct >= 20 ? 'var(--green)' : tyGpPct >= 12 ? 'var(--gold)' : tyGpPct > 0 ? 'var(--red)' : 'var(--text-3)';
+    return '<tr>' +
+      '<td class="mono" style="font-weight:700;color:var(--accent)">' + escHtml(repId) + '</td>' +
+      '<td class="mono right">$' + formatNum(s.lyRev) + '</td>' +
+      '<td class="mono right" style="color:var(--text-3)">' + (lyGpPct > 0 ? lyGpPct + '%' : '—') + '</td>' +
+      '<td class="mono right">$' + formatNum(s.tyRev) + '</td>' +
+      '<td class="mono right" style="color:' + gpChColor + '">' + (tyGpPct > 0 ? tyGpPct + '%' : '—') + '</td>' +
+      '<td class="mono right" style="color:' + chColor + ';font-weight:700">' + (change !== null ? (change >= 0 ? '+' : '') + change + '%' : '—') + '</td>' +
+      '</tr>';
+  }).join('');
+  var yoyHtml =
+    '<div style="margin-bottom:20px">' +
+    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text-3);letter-spacing:0.08em;margin-bottom:10px">YEAR-OVER-YEAR REVENUE &amp; GP</div>' +
+    '<div style="overflow-x:auto"><table class="data-table" style="width:100%">' +
+    '<thead><tr><th>REP</th><th class="right">' + lastYear + ' REVENUE</th><th class="right">' + lastYear + ' GP%</th>' +
+    '<th class="right">' + thisYear + ' REVENUE</th><th class="right">' + thisYear + ' GP%</th><th class="right">CHANGE</th></tr></thead>' +
+    '<tbody>' + yoyRows + '</tbody></table></div></div>';
+  var silentChurn = [];
+  state.accounts.filter(function(a){ return teamReps.indexOf(a.rep) !== -1; }).forEach(function(a) {
+    var yrs = a.years || {};
+    var lyRev = yrs[lastYear] || 0;
+    var tyRev = yrs[thisYear] || 0;
+    if (lyRev > 0 && tyRev === 0) silentChurn.push({name:a.name, rep:a.rep, lyRev:lyRev, followUpDate:a.followUpDate||''});
+  });
+  silentChurn.sort(function(a,b){ return b.lyRev - a.lyRev; });
+  var churnHtml = '';
+  if (silentChurn.length > 0) {
+    var topChurn = silentChurn.slice(0,20);
+    churnHtml = '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--red);letter-spacing:0.08em;margin-bottom:4px">&#9888; SILENT CHURN — BOUGHT IN ' + lastYear + ', NOTHING YET IN ' + thisYear + '</div>' +
+      '<div style="font-size:11px;color:var(--text-3);margin-bottom:10px">' + silentChurn.length + ' accounts — top ' + topChurn.length + ' by prior-year revenue</div>' +
+      '<div style="overflow-x:auto"><table class="data-table" style="width:100%">' +
+      '<thead><tr><th>ACCOUNT</th><th>REP</th><th class="right">' + lastYear + ' REVENUE</th><th class="right">FOLLOW-UP SET</th></tr></thead>' +
+      '<tbody>' + topChurn.map(function(c) {
+        return '<tr>' +
+          '<td class="mono" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(c.name) + '</td>' +
+          '<td class="mono" style="color:var(--accent)">' + escHtml(c.rep) + '</td>' +
+          '<td class="mono right" style="color:var(--gold)">$' + formatNum(c.lyRev) + '</td>' +
+          '<td class="mono right">' + (c.followUpDate ? '<span style="color:var(--green)">&#10003; Yes</span>' : '<span style="color:var(--red)">&#8212; None</span>') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div></div>';
+  } else {
+    churnHtml = '<div style="padding:12px 16px;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.2);border-radius:var(--r2);margin-bottom:20px;font-family:var(--mono);font-size:11px;color:var(--green)">&#10003; No silent churn — all ' + lastYear + ' accounts have already ordered in ' + thisYear + '</div>';
+  }
+  var atRisk = state.accounts.filter(function(a){ return teamReps.indexOf(a.rep) !== -1; }).filter(function(a) {
+    var s = (a.status||'').toLowerCase();
+    return (s.indexOf('decline') !== -1 || s.indexOf('stalled') !== -1) && state.collectionsCache[a.name.trim()] && state.collectionsCache[a.name.trim()].balance > 0;
+  }).map(function(a) {
+    return {name:a.name, rep:a.rep, status:a.status||'', balance:(state.collectionsCache[a.name.trim()]||{}).balance||0};
+  }).sort(function(a,b){ return b.balance - a.balance; });
+  var atRiskHtml = '';
+  if (atRisk.length > 0) {
+    atRiskHtml = '<div>' +
+      '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--orange);letter-spacing:0.08em;margin-bottom:10px">&#128680; HIGHEST RISK — DECLINING TREND + OPEN AR BALANCE</div>' +
+      '<div style="overflow-x:auto"><table class="data-table" style="width:100%">' +
+      '<thead><tr><th>ACCOUNT</th><th>REP</th><th>STATUS</th><th class="right">OPEN BALANCE</th></tr></thead>' +
+      '<tbody>' + atRisk.slice(0,10).map(function(a) {
+        return '<tr>' +
+          '<td class="mono" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(a.name) + '</td>' +
+          '<td class="mono" style="color:var(--accent)">' + escHtml(a.rep) + '</td>' +
+          '<td class="mono" style="color:var(--orange);font-size:10px">' + escHtml(a.status.replace(/[\u{1F534}\u{1F7E0}\u{26AB}\u{1F7E1}🔴🟠⚫🟡]/gu, '').trim()) + '</td>' +
+          '<td class="mono right" style="color:var(--red);font-weight:700">$' + formatNum(a.balance) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div></div>';
+  }
+  return yoyHtml + churnHtml + atRiskHtml;
+}
+
+function _mgrAIBriefHtml(teamReps) {
+  var repBtns = teamReps.map(function(repId) {
+    return '<button data-rep="' + repId + '" onclick="mgrAIBrief(\'oneone\',this.dataset.rep)" ' +
+      'style="flex:1;background:transparent;border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;padding:6px;cursor:pointer;border-radius:var(--r);transition:border-color 0.15s" ' +
+      'onmouseover="this.style.borderColor=\'var(--blue-b)\'" onmouseout="this.style.borderColor=\'var(--border)\'">' + escHtml(repId) + '</button>';
+  }).join('');
+  return '<div style="max-width:700px">' +
+    '<div style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:20px">Generate AI-powered reports using your team\'s live data. Each takes 15–30 seconds.</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">' +
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:16px">' +
+    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;margin-bottom:6px">&#128200; WEEKLY TEAM SUMMARY</div>' +
+    '<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">Who\'s winning, who needs help, 3 actions for this week.</div>' +
+    '<button onclick="mgrAIBrief(\'weekly\')" style="width:100%;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;padding:7px;cursor:pointer;border-radius:var(--r)">GENERATE</button>' +
+    '</div>' +
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:16px">' +
+    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;margin-bottom:6px">&#128202; MONTHLY FORECAST</div>' +
+    '<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">Revenue pacing, GP trends, end-of-month projections per rep.</div>' +
+    '<button onclick="mgrAIBrief(\'forecast\')" style="width:100%;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;padding:7px;cursor:pointer;border-radius:var(--r)">GENERATE</button>' +
+    '</div>' +
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:16px;grid-column:span 2">' +
+    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;margin-bottom:6px">&#128172; 1:1 COACHING PREP</div>' +
+    '<div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Specific wins, coaching points, and questions for each rep\'s 1:1.</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' + repBtns + '</div>' +
+    '</div>' +
+    '</div>' +
+    '<div id="mgr-ai-brief-output" style="display:none;background:var(--s1);border:1px solid rgba(59,130,246,0.3);border-radius:var(--r2);padding:16px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+    '<div id="mgr-ai-brief-title" style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--blue-b)"></div>' +
+    '<button onclick="document.getElementById(\'mgr-ai-brief-output\').style.display=\'none\'" style="background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:18px;line-height:1">&#215;</button>' +
+    '</div>' +
+    '<div id="mgr-ai-brief-content" style="font-size:12px;line-height:1.8;color:var(--text-2)"></div>' +
+    '</div>' +
+    '</div>';
+}
+
+async function mgrAIBrief(type, repId) {
+  var out = document.getElementById('mgr-ai-brief-output');
+  var title = document.getElementById('mgr-ai-brief-title');
+  var content = document.getElementById('mgr-ai-brief-content');
+  if (!out || !title || !content) return;
+  var mgrCfg = getManagerConfig();
+  var teamReps = mgrCfg ? mgrCfg.teamReps : [];
+  var now = new Date();
+  var thisYear = now.getFullYear().toString();
+  var weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay()); weekStart.setHours(0,0,0,0);
+  var notesRows = Array.isArray(state.contactNotesCache) ? state.contactNotesCache.slice(1) : [];
+  var targetReps = (type === 'oneone' && repId) ? [repId] : teamReps;
+  var teamData = targetReps.map(function(rId) {
+    var repAccs = state.accounts.filter(function(a){ return a.rep === rId; });
+    var active = repAccs.filter(function(a){ return !isInactive(a); }).length;
+    var total = repAccs.length;
+    var ytdRev = repAccs.reduce(function(s,a){ return s + ((a.years&&a.years[thisYear])||0); }, 0);
+    var overdue = repAccs.filter(function(a){ return a.followUpDate && new Date(a.followUpDate) < now; }).length;
+    var declining = repAccs.filter(function(a){ return (a.status||'').toLowerCase().indexOf('decline') !== -1; }).length;
+    var repNotes = notesRows.filter(function(r){ return (r[5]||'').toLowerCase().indexOf(rId.toLowerCase()) !== -1; });
+    var notesWeek = repNotes.filter(function(r){ try{ return new Date(r[4]) >= weekStart; }catch(e){ return false; } }).length;
+    var collBal = 0;
+    repAccs.forEach(function(a){ var c = state.collectionsCache[a.name.trim()]; if (c && c.balance > 0) collBal += c.balance; });
+    return rId + ': ' + total + ' accounts, ' + Math.round(active/total*100||0) + '% active, $' + formatNum(ytdRev) + ' YTD, ' + declining + ' declining, ' + notesWeek + ' notes this week, ' + overdue + ' overdue follow-ups, $' + formatNum(collBal) + ' open AR';
+  }).join('\n');
+  var prompts = {
+    weekly: 'You are a B2B sales manager coach. Write a concise weekly team briefing for a sales manager. Based on the data: (1) highlight who is performing best and why, (2) identify who needs the most coaching attention and what specifically they need to work on, (3) list 3 concrete actions for the manager to take this week. Be direct and specific, use rep names. Under 400 words.\n\nTeam data:\n' + teamData,
+    forecast: 'You are a B2B sales manager coach. Write a monthly revenue forecast based on this team\'s YTD data. Include: (1) projected end-of-month performance per rep based on current pace, (2) the 2 biggest revenue risks (declining accounts, high AR), (3) 2 specific opportunities to accelerate before month-end. Be specific with numbers and rep names. Under 400 words.\n\nTeam data:\n' + teamData,
+    oneone: 'You are a B2B sales manager preparing a 1:1 coaching session for ' + (repId||'') + '. Based on their data, write: (1) 2 specific wins to open with and celebrate, (2) 2-3 improvement areas with concrete action items, (3) 3 coaching questions to ask them. Be direct, practical, and specific to their numbers. Under 350 words.\n\nRep data:\n' + teamData
+  };
+  var titles = { weekly: '&#128200; Weekly Team Summary', forecast: '&#128202; Monthly Forecast', oneone: '&#128172; 1:1 Prep — ' + (repId||'') };
+  out.style.display = 'block';
+  title.innerHTML = titles[type] || 'AI Report';
+  content.innerHTML = '<span style="color:var(--text-3);font-family:var(--mono);font-size:11px;animation:pulse 1.5s infinite">Analyzing team data...</span>';
+  try {
+    var result = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:1000,
+      messages:[{role:'user',content:prompts[type]}] });
+    var text = result && result.content && result.content[0] ? result.content[0].text : 'Could not generate report.';
+    var html = text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>');
+    content.innerHTML = '<p>' + html + '</p>';
+  } catch(e) {
+    content.innerHTML = '<span style="color:var(--red);font-family:var(--mono);font-size:11px">Could not generate report: ' + escHtml(e.message||'unknown error') + '</span>';
   }
 }
 

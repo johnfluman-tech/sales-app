@@ -8708,7 +8708,7 @@ function getDisclaimer() {
     CKaren: 'kmancebo@intransittech.com',
     BillP:  'bill.pratt@intransittech.com',
     PIan:   'ian.pitman@intransittech.com',
-    RMauricio: 'mrangel@intransittech.com',
+    RMauricio: 'mauricio.rangel@intransittech.com',
     LMancera: 'lmancera@intransittech.com',
     bcastor: 'brandonar@intransittech.com',
     FJohn:  'john.fluman@intransittech.com',
@@ -8877,6 +8877,10 @@ function selectCollectionsAccount(name) {
     const firstWord = name.trim().toLowerCase().split(/\s+/).find(w => w.length > 4) || name.trim().toLowerCase().slice(0,8);
     const matchKey = Object.keys(state.contactsCache).find(k => k.trim().toLowerCase().startsWith(firstWord));
     if (matchKey) rawContacts = state.contactsCache[matchKey] || [];
+  }
+  // Final fallback — use primary contact from the rep tab if _CONTACTS has nothing
+  if (rawContacts.length === 0 && acc && acc.contactEmail) {
+    rawContacts = [{ name: acc.contactName || '', title: acc.contactTitle || '', email: acc.contactEmail, phone: acc.contactPhone || '', mobile: acc.contactMobile || '', type: '' }];
   }
   const allContacts = rawContacts.filter(ct => ct.email);
   const apContacts  = allContacts.filter(ct => ct.type === 'AP/Collections');

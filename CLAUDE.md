@@ -177,7 +177,7 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - Each rep needs to allow the popup once before first use
 - `_CONTACT_NOTES` tab may need to be manually created in History sheet if notes aren't persisting (create tab, add header row: `ACCOUNT_NAME, CONTACT_NAME, TYPE, NOTE, DATE, REP`)
 - `saveContactNoteFromView` (line ~8508) does not update `state.contactNotesCache` after save — notes from Contacts view only appear in Notes Feed after next reload
-- **`_CUSTOMER_DIRECTORY` still not loading** — `C:\Users\fluma\sales_report.py` (local) has `push_customer_directory_tab` function but `C:\scripts\sales_report.py` on INTRANSIT-RDS02 is the OLD version without it. Must copy local file to server and re-run. Look for `→ Pushed X accounts to _CUSTOMER_DIRECTORY tab` in script output to confirm success.
+- **`_CUSTOMER_DIRECTORY` confirmed working** — 2,487 accounts in History sheet as of 2026-05-22. Attack Plan CRM pool is live. Re-run `sales_report.py` on INTRANSIT-RDS02 to refresh.
 
 ## Session Log
 ### 2026-05-19
@@ -490,8 +490,7 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **New functions:** `apkSetPoolFilter`, `debugSimulateLogin`, `debugRestoreAdmin`, `reloadCRMDirectory`
 **Commits:** `ce82815` (CRM pool), `9a9646a` (simulate login)
 
-**Pending:**
-- `sales_report.py` copy from `C:\Users\fluma\sales_report.py` to `C:\scripts\sales_report.py` on INTRANSIT-RDS02 still needed to activate `_CUSTOMER_DIRECTORY` export
+**Note:** `_CUSTOMER_DIRECTORY` export confirmed working as of 2026-05-22 — 2,487 accounts pushed.
 
 ### 2026-05-21 (session 14 — Karen/Mauricio accounts crash fix)
 
@@ -530,3 +529,37 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 3. Then: `[TAB] Loaded RMauricio: N accounts` (N should be > 0)
 4. If instead: `[TAB] Error loading tab RMauricio: Sheets API error 400: Unable to parse range...` → the tab name in the sheet doesn't match 'RMauricio' exactly
 5. If: `[AUTH] Email not in REP_EMAIL_MAP` → add their email to `CONFIG.REP_EMAIL_MAP`
+
+### 2026-05-22 (session 15 — Mauricio email fix, Academy gate, Collections contacts, CRM directory)
+
+**Bug fixed — Mauricio repId null (no data loading):**
+- `CONFIG.REP_EMAIL_MAP` had `'mrangel@intransittech.com'` — actual Google account is `mauricio.rangel@intransittech.com`
+- Added correct mapping; kept old entry as fallback
+- Also fixed `getDisclaimer()` which had the same wrong email
+- **Commit:** `3b7e267`
+
+**Bug fixed — Academy showing only 1 page for new users:**
+- `renderAcademyView()` had a welcome gate that redirected first-time users (0 completed lessons) to a splash page instead of the tracks view
+- Removed the gate entirely — all users go straight to all 8 tracks
+- **Commit:** `097fb69`
+
+**Bug fixed — Collections email contacts not linking:**
+- `state.contactsCache` lookup by account name failed due to name format mismatches between `_COLLECTIONS` and `_CONTACTS` sheets
+- Added `state._buyerEmailMap` built at cache load: keyed by contact name (lowercase) → contacts with emails; cross-references `_GP` ORDERED_BY (buyer names) back to `_CONTACTS` emails
+- Added 2 new fallbacks in `selectCollectionsAccount()`:
+  1. Buyer-name fuzzy fallback: strips punctuation, matches on 2+ words >3 chars across `contactRevenueCache` keys
+  2. Rep-tab primary contact fallback: uses `acc.contactEmail` if all other lookups fail
+- **Commits:** `1543361`, `60d9631`, `0927771`
+
+**Bug fixed — `_CUSTOMER_DIRECTORY` not populating (CRM pool in Attack Plan):**
+- **Root cause 1:** `push_customer_directory_tab()` was called after the main `conn` was already closed (`→ SQL connection closed.` printed before push functions ran)
+- **Fix:** Function now opens its own fresh `pyodbc.connect()` internally; closes it in a `finally` block — no longer depends on the passed-in `conn`
+- **Root cause 2 (earlier):** Function had silent `except` — only printed exception message, not traceback. Added `import traceback` + `traceback.print_exc()` + step-by-step progress prints so failures are visible
+- Also added `resize_tab()` call before write to handle large datasets (default 5100-row tab limit was too small)
+- **Result:** 2,487 CRM accounts now in `_CUSTOMER_DIRECTORY` tab — Attack Plan CRM pool working
+- **Commits:** `a921207` (verbose logging), `adb4e9f` (fresh connection fix)
+
+**`sales_report.py` deployment note:**
+- Always copy `C:\Users\fluma\sales_report.py` (or `C:\Users\fluma\sales-app\sales_report.py`) → `C:\scripts\sales_report.py` on INTRANSIT-RDS02 before running
+- The repo version (`sales-app\sales_report.py`) and the working copy (`C:\Users\fluma\sales_report.py`) are kept in sync
+- `loadCustomerDirectory()` runs automatically for all users at page load — no manual action needed after script runs

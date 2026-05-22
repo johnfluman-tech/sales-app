@@ -8747,10 +8747,18 @@ function renderCollectionsView() {
   const _collRepMatch = !repFilter ? function(){ return true; } :
     (_collTeamReps ? function(r){ return _collTeamReps.includes(r); } : function(r){ return r === repFilter; });
 
-  // For non-admin users, build a set of their own account names from state.accounts
-  // This is the safest filter — it doesn't rely on rep-name lookups in the cache
+  // For non-admin users, build a set of allowed account names from state.accounts.
+  // Managers are further restricted to their teamReps only — prevents simulation
+  // (or any case where state.accounts has more reps than the manager owns) from
+  // leaking Anolan, FJohn, etc. into the collections view.
+  const _collMgrCfg = getManagerConfig();
   const _myAccNames = !state.isAdmin
-    ? new Set(state.accounts.map(a => a.name.trim().toLowerCase()))
+    ? new Set(
+        (isManager() && _collMgrCfg
+          ? state.accounts.filter(a => _collMgrCfg.teamReps.indexOf(a.rep) !== -1)
+          : state.accounts
+        ).map(a => a.name.trim().toLowerCase())
+      )
     : null;
 
   // Build collections list from cache, filtered by rep

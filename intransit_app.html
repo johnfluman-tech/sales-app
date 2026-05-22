@@ -12165,11 +12165,7 @@ function renderAcademyView() {
   const xp = progress.xp || 0;
   const completedLessons = progress.completedLessons || [];
 
-  // First visit check — managers and admin skip the welcome and go straight to tracks
-  if (completedLessons.length === 0 && !progress._welcomeShown && !isManager() && !isAdmin()) {
-    content.innerHTML = academyWelcomeHTML();
-    return;
-  }
+  // Welcome splash removed — all users go straight to the tracks view
 
   const level = academyGetLevel(xp);
   const nextLevel = ACADEMY_LEVELS.find(l => l.min > xp);

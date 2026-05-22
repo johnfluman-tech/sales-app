@@ -1662,6 +1662,17 @@ async function loadSupplementalData() {
     Object.keys(state.contactsCache).forEach(k => {
       state._contactsCacheNorm[k.toLowerCase().replace(/\s+/g,' ').trim()] = k;
     });
+    // Build buyer-name → contact lookup (contact name from _CONTACTS = ORDERED_BY from CRM)
+    // Used in Collections to find emails when account name doesn't match across sheets
+    state._buyerEmailMap = {};
+    Object.entries(state.contactsCache).forEach(function([accName, contacts]) {
+      contacts.forEach(function(ct) {
+        if (!ct.email || !ct.name) return;
+        const key = ct.name.trim().toLowerCase();
+        if (!state._buyerEmailMap[key]) state._buyerEmailMap[key] = [];
+        state._buyerEmailMap[key].push(ct);
+      });
+    });
 
     // Process collections
     if (collRows.length > 1) {
@@ -8877,6 +8888,19 @@ function selectCollectionsAccount(name) {
     const firstWord = name.trim().toLowerCase().split(/\s+/).find(w => w.length > 4) || name.trim().toLowerCase().slice(0,8);
     const matchKey = Object.keys(state.contactsCache).find(k => k.trim().toLowerCase().startsWith(firstWord));
     if (matchKey) rawContacts = state.contactsCache[matchKey] || [];
+  }
+  // Buyer-name fallback — every invoice has ORDERED_BY; match those names against _CONTACTS
+  // This catches accounts where _COLLECTIONS name ≠ _CONTACTS CUSTOMER_NAME
+  if (rawContacts.length === 0 && state._buyerEmailMap) {
+    const _buyers = Object.keys(state.contactRevenueCache[name] || {});
+    const _found = [];
+    _buyers.forEach(function(b) {
+      const _matches = state._buyerEmailMap[b.trim().toLowerCase()] || [];
+      _matches.forEach(function(ct) {
+        if (!_found.some(function(f){ return f.email === ct.email; })) _found.push(ct);
+      });
+    });
+    if (_found.length > 0) rawContacts = _found;
   }
   // Final fallback — use primary contact from the rep tab if _CONTACTS has nothing
   if (rawContacts.length === 0 && acc && acc.contactEmail) {

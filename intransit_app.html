@@ -3364,14 +3364,17 @@ async function checkForceLogout() {
 }
 
 function setRepFromEmail(email) {
-  state.isAdmin = (email === CONFIG.ADMIN_EMAIL);
-  state.repId   = CONFIG.REP_EMAIL_MAP[email] || null;
+  // Normalize: keep only printable ASCII (removes whitespace, invisible Unicode, BOM, etc.)
+  const _e = (email || '').split('').filter(function(c){ return c.charCodeAt(0) >= 33 && c.charCodeAt(0) <= 126; }).join('').toLowerCase();
+  state.isAdmin = (_e === CONFIG.ADMIN_EMAIL);
+  state.repId   = CONFIG.REP_EMAIL_MAP[_e] || null;
   const _mapped = state.repId || (state.isAdmin ? 'ADMIN' : 'NOT IN MAP');
-  console.log('[AUTH] setRepFromEmail:', email, '→ repId:', _mapped);
+  console.log('[AUTH] setRepFromEmail:', email, '→ normalized:', _e, '→ repId:', _mapped);
   if (!state.isAdmin && !state.repId) {
-    console.warn('[AUTH] Email not in REP_EMAIL_MAP — user will see empty data. Add this email to CONFIG.REP_EMAIL_MAP:', email);
+    const _codes = Array.from(email || '').map(function(c){ return c.charCodeAt(0); }).join(',');
+    console.warn('[AUTH] NOT IN MAP — char codes:', _codes, '| Add to REP_EMAIL_MAP:', _e);
     setTimeout(function() {
-      showToast('⚠ Email not recognized: ' + email + ' — contact john.fluman@intransittech.com', 'error');
+      showToast('⚠ Email not recognized: ' + _e + ' — contact john.fluman@intransittech.com', 'error');
     }, 1500);
   }
 }

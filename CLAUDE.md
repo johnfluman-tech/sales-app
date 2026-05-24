@@ -621,3 +621,41 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - Some requests to `intransit-worker.intransit-sales.workers.dev` fail with ERR_NAME_NOT_RESOLVED or ERR_INTERNET_DISCONNECTED
 - This is a network/DNS issue on her machine — could be corporate firewall, VPN, or proxy blocking Cloudflare Workers (`*.workers.dev`)
 - Workaround: ensure Karen's PC has internet access to `*.cloudflare.com` and `*.workers.dev`
+
+**Root cause identified — invisible Unicode chars in Google JWT email (commit `612458b`):**
+- Karen's email IS `kmancebo@intransittech.com` (confirmed) and IS in `CONFIG.REP_EMAIL_MAP`
+- The actual root cause: Google JWT `payload.email` can contain invisible Unicode characters (zero-width space U+200B, BOM U+FEFF, soft hyphen U+00AD, etc.) that appear identical visually but fail exact string comparison against the map key
+- `setRepFromEmail()` completely rewritten to normalize email before lookup:
+  - Filters characters to only printable ASCII (charCode 33–126), discarding all invisible/Unicode chars
+  - Lowercases the result before map lookup
+  - Logs both raw and normalized email + char codes to console when NOT IN MAP
+  - Shows toast with the normalized email (not the raw one) so the actual mismatch is visible
+
+**Belt-and-suspenders repId re-apply in `completeLogin()` (commit `9448909`):**
+- Added guard after `_loginComplete` is set: if `state.repId` is still null but `state.user.email` exists, calls `setRepFromEmail()` again
+- Covers any race condition where the email mapping ran before the email was fully loaded into state
+
+**403 token refresh in `sheetsGetFrom()` (commit `e2979c8`):**
+- Root cause: Google access tokens expire after 60 minutes; Worker returns 403 when token is expired; app had no auto-refresh in place for the Sheets proxy path
+- Fix: `sheetsGetFrom()` on 403 now calls `refreshTokenSilent()` (uses `prompt: 'none'` — no popup) once; if refresh succeeds, retries the request; if refresh fails (e.g., no `tokenClient` for cached login path), shows clear toast "Session expired — please sign out and sign back in"
+- `_retry='post403'` guard prevents infinite retry loop
+
+**CSP expanded (commit `e2979c8`):**
+- `connect-src` was missing `oauth2.googleapis.com`, `www.googleapis.com`, `sheets.googleapis.com` — all used by the Sheets/OAuth flow
+- `script-src` was missing `apis.google.com`
+- `font-src` expanded to include `data:`; `img-src` expanded to include `blob:`
+- `frame-src` added `content.googleapis.com`
+- Full updated CSP now allows all Google API resources the OAuth flow needs without CSP violations
+
+**Result:**
+- Karen fully working — sees "MANAGER — CKaren" in sidebar, her accounts load, view-as dropdown shows "My Accounts" + "MX Team View", Manager Hub / Team Notes / Team Profile nav items all appear
+- All four commits: `3445fff` (diagnostic), `9448909` (belt-and-suspenders), `e2979c8` (403 refresh + CSP), `612458b` (email normalization root-cause fix)
+
+### 2026-05-24 (session 18 — location modal fix)
+
+**Bug fixed — location modal (HOME / OFFICE / TRAVEL / Other) not appearing on login:**
+- **Symptom:** Users logged in without being asked to claim their location; Access Log showed "Known Location" instead of the actual place selected
+- **Root cause:** `checkIPAndProceed()` had two branches — known IP → skip modal entirely + log "Known Location"; new IP → show modal. Once any IP was saved as known (after first confirmed login), the location selection was bypassed on all future logins from that IP
+- **Intended behavior:** The modal should appear on **every** login so reps can claim HOME / OFFICE / TRAVEL / Other. The known-IP check should only suppress the red "This is a new location" security warning banner, not the modal itself
+- **Fix:** Removed the auto-proceed branch from `checkIPAndProceed()`; now always calls `showLocationModal(isNewIP)` where `isNewIP` is `false` for known IPs (no red banner) and `true` for new IPs (red banner shown)
+- **Commit:** `ad0da08`

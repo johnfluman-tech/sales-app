@@ -599,3 +599,25 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 
 **New functions:** `_mgrCollectionsHtml`, `_mgrPipelineHtml`, `_mgrAIBriefHtml`, `mgrAIBrief`
 **Commits:** `b88e005` (5 tools), `6c0ef05` (sim nav fix), `f55e331` (collections scope), `e3ebd27` (admin nav + all-reps default)
+
+### 2026-05-24 (session 17 — Karen email diagnosis + view-as dropdown fix)
+
+**Karen view-as dropdown fixed (prev session):**
+- Dropdown was listing CKaren twice — once as "My Accounts" and once in the team list
+- Fix: added `if (r === state.repId) return;` in the `teamReps.forEach` loop to skip the manager's own repId
+
+**Karen "READ ONLY / NO ACCOUNTS MATCH" — diagnostic deployed:**
+- **Symptom:** Karen's sidebar showed "READ ONLY" + "NO ACCOUNTS MATCH" — `state.repId` was null
+- **Root cause hypothesis:** Her Google OAuth email is NOT `kmancebo@intransittech.com` — it may be a different primary email (e.g., `karen.mancebo@intransittech.com`) while `kmancebo@...` is just an alias in Workspace
+- **Evidence:** `state.user.name = 'Karen Mancebo'` was set correctly (from JWT name field), but `state.repId` null means the email field didn't match REP_EMAIL_MAP
+- **F12 console also showed:** `ERR_INTERNET_DISCONNECTED`, `ERR_NAME_NOT_RESOLVED`, `400 Bad Request` — all to Cloudflare Worker — this is a secondary network issue on Karen's PC (likely firewall/proxy blocking `*.workers.dev` domains intermittently); the 400 errors are from `loadSupplementalData()` making Sheets API calls
+
+**Diagnostic fix deployed (commit `3445fff`):**
+1. `setRepFromEmail()`: added visible toast "⚠ Email not recognized: [email] — contact john.fluman@..." when email isn't in REP_EMAIL_MAP
+2. `completeLogin()` + `completeLoginAfterLocation()`: changed "READ ONLY" label to "NOT MAPPED: [actual email]" so the exact email is visible in the sidebar
+- **Next step:** Ask Karen to reload the page and tell you what email shows in the sidebar (or look at F12 console for `[AUTH] setRepFromEmail:` log) — then add that email to `CONFIG.REP_EMAIL_MAP` mapped to 'CKaren'
+
+**Secondary issue — Worker connectivity on Karen's PC:**
+- Some requests to `intransit-worker.intransit-sales.workers.dev` fail with ERR_NAME_NOT_RESOLVED or ERR_INTERNET_DISCONNECTED
+- This is a network/DNS issue on her machine — could be corporate firewall, VPN, or proxy blocking Cloudflare Workers (`*.workers.dev`)
+- Workaround: ensure Karen's PC has internet access to `*.cloudflare.com` and `*.workers.dev`

@@ -3061,15 +3061,21 @@ function completeLogin() {
       const mgrMid = state.managerRole;
       const teamName = mgrCfg ? mgrCfg.teamName : 'Team';
       const teamReps = mgrCfg ? mgrCfg.teamReps : getManagerTeam();
+      const isRepAndMgr = mgrMid === state.repId; // e.g. CKaren — has both own accounts + manages team
       let optHtml = '';
-      if (mgrMid === state.repId) {
-        optHtml += '<option value="">— My Accounts —</option>';
+      if (isRepAndMgr) {
+        optHtml += '<option value="">— My Accounts (' + state.repId + ') —</option>';
       }
       optHtml += '<option disabled>── ' + teamName + ' ──</option>';
-      optHtml += '<option value="__TEAM_ALL__">📊 ' + teamName + ' (All)</option>';
-      teamReps.forEach(function(r){ optHtml += '<option value="' + r + '">' + r + '</option>'; });
+      optHtml += '<option value="__TEAM_ALL__">&#128202; ' + teamName + ' (All)</option>';
+      // List team members — skip the manager's own repId since "My Accounts" already covers them
+      teamReps.forEach(function(r) {
+        if (r === state.repId) return;
+        optHtml += '<option value="' + r + '">' + r + '</option>';
+      });
       sel.innerHTML = optHtml;
-      if (mgrMid !== state.repId) {
+      if (!isRepAndMgr) {
+        // Manager-only users (CMancilla, MPerezfreye) default to team view
         sel.value = '__TEAM_ALL__';
         setTimeout(function(){ switchViewAs('__TEAM_ALL__'); }, 150);
       }

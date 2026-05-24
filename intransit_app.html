@@ -3003,6 +3003,11 @@ function completeLogin() {
   if (!sessionStorage.getItem('it_session_id')) {
     sessionStorage.setItem('it_session_id', generateSessionId());
   }
+  // Belt-and-suspenders: re-apply email mapping if repId was lost in a race condition
+  if (!state.repId && state.user && state.user.email) {
+    console.warn('[AUTH] repId was null at completeLogin — re-applying email mapping for:', state.user.email);
+    setRepFromEmail(state.user.email);
+  }
   state._loginComplete = true;
   state.viewAsRep = null; // always reset view-as on login — prevents stale rep filter
   _signedOut = false; // clear cascade-prevention flag for this new session

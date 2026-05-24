@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://intransit-worker.intransit-sales.workers.dev https://hutmehcaijdxbqchuivh.supabase.co https://accounts.google.com; frame-src https://accounts.google.com https://www.youtube.com; img-src 'self' data: https:; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; connect-src 'self' https://intransit-worker.intransit-sales.workers.dev https://hutmehcaijdxbqchuivh.supabase.co https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://sheets.googleapis.com; frame-src https://accounts.google.com https://www.youtube.com https://content.googleapis.com; img-src 'self' data: https: blob:; object-src 'none'; base-uri 'self';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Intransit Sales Intelligence v1.50</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -3422,15 +3422,22 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
     const res = await fetch(url, { headers: { 'X-Google-Token': state.accessToken } });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
-        // Never kick the user out for Sheets API errors — a 403 is a permissions
-        // issue on a specific call, not a reason to end the session.
-        // A 401 means the token expired; show a toast but let the user stay in the
-        // app and sign out manually (or refresh the page).
         if (_signedOut) { throw new Error('Session ended'); }
         if (!state._loginComplete) {
-          // During NDA/location phase: throw silently so non-critical writes
-          // (NDA log, access log) don't disrupt the login flow.
           throw new Error('Auth error during login setup — non-blocking');
+        }
+        // 403 = token expired on Google's side — try a silent refresh once
+        if (res.status === 403 && _retry !== 'post403' && state.tokenClient) {
+          try {
+            await refreshTokenSilent();
+            return sheetsGetFrom(spreadsheetId, range, 'post403');
+          } catch(refreshErr) {
+            console.warn('[AUTH] Silent token refresh failed after 403:', refreshErr.message);
+            showToast('Session expired — please sign out and sign back in', 'error');
+          }
+        } else if (res.status === 403 && _retry !== 'post403') {
+          // No tokenClient (cached login path) — show toast
+          showToast('Session expired — please sign out and sign back in', 'error');
         }
         if (res.status === 401 && !state._refreshingToken) {
           showToast('Session may have expired — please sign out and sign in again', 'error');

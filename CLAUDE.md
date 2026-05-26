@@ -709,3 +709,26 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - Loads non-blocking after login alongside `loadCustomerDirectory`
 - `state._lastCRMSync` stores the parsed run data for use elsewhere
 - **New function:** `loadLastRunTime()`
+
+### 2026-05-26 (session 21 — Account Intel search fix)
+
+**Bug fixed — Account Intel quick-access buttons returning no results (commit `88a3a33`):**
+- **Root cause 1:** `mgrIntelLookup` only searched `gpCache` by `BUYER_NAME` — never searched `state.accounts` by account name. The quick-access button labels ("San Luis Metal", "Siemens", etc.) are partial/informal names; the actual account names in the app differ (e.g., "San Luis Metal Stampings S.A." or similar). Since gpCache BUYER_NAME also stores the CRM-exact name, partial matches failed.
+- **Root cause 2:** AND-word matching (`qWords.every(...)`) required ALL words to appear in the BUYER_NAME. Multi-word searches like "San Luis Metal" required "san", "luis", AND "metal" — any variation in the stored name caused zero results.
+
+**Fix:**
+1. **Searches `state.accounts` by account name first** — the full list of accounts in the manager/admin view. Shows matching accounts as clickable cards with an **OPEN ACCOUNT** button (`selectAccountByName`) that navigates directly to that account's detail view.
+2. **OR-word fallback** — if AND-match finds nothing in either source, retries with any-word (OR) matching using words >3 chars. Result is marked "(broad match)" so Karen knows it's a fuzzy result.
+3. **"Did you mean?" suggestions** — when nothing is found at all, scores all `state.accounts` by word overlap and shows the top 6 closest names as clickable buttons.
+4. **historyCache lookup extended** — also tries matched account names (not just the raw query string) when searching for top recurring parts.
+5. **GP buyer name list** — header now shows the actual BUYER_NAME variants found in the data (e.g., "SAN LUIS METAL STAMPINGS") so Karen can see what the CRM calls the account.
+
+**How Account Intel now works:**
+- Click "Siemens" → finds any account in `state.accounts` whose name contains "siemens" → shows OPEN ACCOUNT → also shows all GP revenue for all BUYER_NAMEs containing "siemens" across all years
+- If exact name found in accounts, the historyCache lookup also tries that full name for top parts
+- If nothing matches, suggested account names from the app appear as buttons to try
+
+**`sales_report.py` scheduling note:**
+- Script runs on INTRANSIT-RDS02; last run was May 26 at 8:08 AM (visible in sidebar CRM DATA indicator)
+- To automate: on INTRANSIT-RDS02, create a Windows Task Scheduler task running `python C:\scripts\sales_report.py` every 30 minutes, logging to `C:\scripts\logs\sales_report.log`
+- This is still a pending manual setup item

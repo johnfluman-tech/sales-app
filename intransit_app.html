@@ -1242,9 +1242,9 @@ body::before {
       </div>
     </div>
         <div class="sidebar-footer">
-      <div id="crm-last-update" style="padding:5px 0 8px;margin-bottom:6px;border-bottom:1px solid var(--border)">
-        <div style="font-size:9px;color:var(--text-3);font-family:var(--mono);letter-spacing:0.1em;margin-bottom:2px">CRM DATA</div>
-        <div id="crm-update-time" style="font-size:10px;color:var(--text-3);font-family:var(--mono)">Loading...</div>
+      <div id="crm-last-update" style="padding:6px 0 10px;margin-bottom:6px;border-bottom:1px solid var(--border)">
+        <div style="font-size:9px;color:var(--text-3);font-family:var(--mono);letter-spacing:0.1em;margin-bottom:3px">DATA LAST UPDATED</div>
+        <div id="crm-update-time" style="font-size:12px;font-weight:600;font-family:var(--mono);color:var(--text-2)">Loading...</div>
       </div>
       <button class="signout-btn" onclick="handleSignout()">Sign Out</button>
       <button id="force-logout-btn" onclick="confirmForceLogoutAll()" style="display:none;margin-top:6px;width:100%;padding:8px;background:transparent;border:1px solid rgba(239,68,68,0.5);color:var(--red);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.06em">⏏ LOG OUT ALL</button>
@@ -16366,35 +16366,39 @@ async function loadLastRunTime() {
     }
     if (!lastRun) return;
     state._lastCRMSync = lastRun;
-    // Update sidebar indicator
-    var el = document.getElementById('crm-update-time');
-    if (el) {
-      // Parse date string "2026-05-26 14:30" and make it friendly
-      var parts = (lastRun.date || '').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
-      var friendly = lastRun.date;
-      if (parts) {
-        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        var h = parseInt(parts[4]);
-        var ampm = h >= 12 ? 'PM' : 'AM';
-        var h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-        friendly = months[parseInt(parts[2])-1] + ' ' + parseInt(parts[3]) + ', ' + h12 + ':' + parts[5] + ' ' + ampm;
-      }
-      el.textContent = friendly;
-      el.style.color = 'var(--text-2)';
-      // Check if stale (>2 hours old)
-      if (parts) {
-        var runDate = new Date(parseInt(parts[1]), parseInt(parts[2])-1, parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
-        var ageHrs = (Date.now() - runDate.getTime()) / 3600000;
-        if (ageHrs > 2) el.style.color = '#f59e0b'; // amber = stale
-        if (ageHrs > 8) el.style.color = 'var(--red)'; // red = very stale
-      }
+    _updateCRMSyncDisplay();
+    // Refresh display text every 60s (recalculates "X min ago" without re-fetching)
+    clearInterval(window._crmDisplayTimer);
+    window._crmDisplayTimer = setInterval(_updateCRMSyncDisplay, 60000);
+    // Re-fetch from Sheets every 15 min to pick up new script runs
+    if (!window._crmFetchTimer) {
+      window._crmFetchTimer = setInterval(function(){ loadLastRunTime().catch(function(){}); }, 15 * 60 * 1000);
     }
     console.log('[DATA] Last CRM sync:', lastRun.date, '— ' + lastRun.total + ' accounts');
   } catch(e) {
     console.warn('[DATA] Could not load last run time:', e.message);
     var el = document.getElementById('crm-update-time');
-    if (el) el.textContent = 'Unknown';
+    if (el) { el.textContent = 'Unknown'; el.style.color = 'var(--text-3)'; }
   }
+}
+
+function _updateCRMSyncDisplay() {
+  var el = document.getElementById('crm-update-time');
+  if (!el || !state._lastCRMSync) return;
+  var parts = (state._lastCRMSync.date || '').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
+  if (!parts) { el.textContent = state._lastCRMSync.date || 'Unknown'; return; }
+  var runDate = new Date(parseInt(parts[1]), parseInt(parts[2])-1, parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
+  var ageMins = Math.round((Date.now() - runDate.getTime()) / 60000);
+  var ageHrs = ageMins / 60;
+  var relTime;
+  if (ageMins < 2)        relTime = 'just now';
+  else if (ageMins < 60)  relTime = ageMins + ' min ago';
+  else if (ageMins < 120) relTime = '1 hr ' + (ageMins % 60) + ' min ago';
+  else                    relTime = Math.floor(ageHrs) + ' hrs ago';
+  el.textContent = relTime;
+  if (ageHrs < 1)      el.style.color = 'var(--green)';
+  else if (ageHrs < 8) el.style.color = '#f59e0b';
+  else                 el.style.color = 'var(--red)';
 }
 
 async function loadCustomerDirectory(force) {

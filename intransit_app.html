@@ -1259,8 +1259,8 @@ body::before {
       <div class="topbar-title" id="topbar-title">My Accounts</div>
       <input class="topbar-search" type="text" placeholder="Search accounts..." id="search-input" oninput="filterAccounts()">
       <button id="btn-find-account" onclick="showCRMSearch()" style="display:none;padding:6px 12px;background:var(--s2);border:1px solid var(--border);color:var(--blue-bright);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;cursor:pointer;border-radius:var(--r);white-space:nowrap">🔍 FIND ACCOUNT</button>
-      <button class="filter-btn" id="filter-all" onclick="setFilter('all')" style="display:none">ALL</button>
-      <button class="filter-btn active" id="filter-active" onclick="setFilter('active')">ACTIVE</button>
+      <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">ALL</button>
+      <button class="filter-btn" id="filter-active" onclick="setFilter('active')">ACTIVE</button>
       <button class="filter-btn" id="filter-inactive-btn" onclick="setFilter('inactive')">INACTIVE</button>
       <button class="filter-btn" id="filter-declining" onclick="setFilter('declining')">DECLINING</button>
       <button onclick="openSuggestionModal()" title="Suggest an improvement" class="filter-btn" style="margin-left:auto;padding:6px 12px;font-size:10px;letter-spacing:0.08em;display:flex;align-items:center;gap:5px">&#128161; SUGGEST</button>
@@ -1950,13 +1950,15 @@ function renderContactsTab(acc) {
       <div style="margin-bottom:16px">
         <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:${color};margin-bottom:8px;text-transform:uppercase">${label} (${list.length})</div>
         ${list.map(c => `
-          <div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${color};margin-bottom:8px">
-            <div style="font-weight:500;font-size:13px;cursor:pointer;color:var(--blue-b);text-decoration:underline" onclick="openContactFromAccount('${escHtml(acc.name)}','${escHtml(c.name)}')">${escHtml(c.name)}</div>
-            ${c.title ? `<div style="font-size:11px;color:var(--text-muted);margin-top:1px">${escHtml(c.title)}</div>` : ''}
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
-              ${c.email ? `<a class="contact-link contact-blur" href="mailto:${escHtml(c.email)}" style="font-size:11px">✉ ${escHtml(c.email)}</a>` : ''}
-              ${c.phone ? `<span class="contact-link contact-blur" style="font-size:11px">☎ ${escHtml(c.phone)}</span>` : ''}
-              ${c.mobile ? `<span class="contact-link contact-blur" style="font-size:11px">📱 ${escHtml(c.mobile)}</span>` : ''}
+          <div style="padding:7px 10px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${color};margin-bottom:5px;border-radius:var(--r)">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600;font-size:12px;cursor:pointer;color:var(--blue-b);text-decoration:underline" onclick="openContactFromAccount('${escHtml(acc.name)}','${escHtml(c.name)}')">${escHtml(c.name)}</span>
+              ${c.title ? `<span style="font-size:10px;color:var(--text-muted)">${escHtml(c.title)}</span>` : ''}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+              ${c.email ? `<a class="contact-link contact-blur" href="mailto:${escHtml(c.email)}" style="font-size:10px">✉ ${escHtml(c.email)}</a>` : ''}
+              ${c.phone ? `<span class="contact-link contact-blur" style="font-size:10px">☎ ${escHtml(c.phone)}</span>` : ''}
+              ${c.mobile ? `<span class="contact-link contact-blur" style="font-size:10px">📱 ${escHtml(c.mobile)}</span>` : ''}
             </div>
             ${renderContactNotes(c.name)}
             ${renderNoteForm(c.name, acc.name)}
@@ -1964,19 +1966,19 @@ function renderContactsTab(acc) {
       </div>`;
   };
 
-  // AI Next Best Action section
+  // AI Next Best Action — moved to bottom so contacts are immediately visible
   const nbaSection = `
-    <div style="margin-bottom:16px;padding:12px;background:var(--navy-mid);border:1px solid var(--border)">
-      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.15em;color:var(--blue-bright);margin-bottom:8px">✦ AI NEXT BEST ACTION</div>
-      <button class="nba-btn" onclick="generateNextBestAction('${escHtml(acc.name)}')">
-        ✦ ANALYZE ACCOUNT &amp; RECOMMEND NEXT STEPS
+    <div style="margin-top:16px;padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-radius:var(--r)">
+      <button class="nba-btn" style="width:100%" onclick="generateNextBestAction('${escHtml(acc.name)}')">
+        ✦ AI — ANALYZE ACCOUNT &amp; RECOMMEND NEXT STEPS
       </button>
-      <div id="nba-result-${btoa(encodeURIComponent(acc.name)).replace(/=/g,'')}" style="display:none"></div>
+      <div id="nba-result-${btoa(encodeURIComponent(acc.name)).replace(/=/g,'')}" style="display:none;margin-top:10px"></div>
     </div>`;
 
-  return nameNote + nbaSection +
+  return nameNote +
     renderGroup(purchasing, '🛒 Purchasing Contacts', 'var(--blue-bright)') +
-    renderGroup(ap, '💰 AP / Collections Contacts', 'var(--accent)');
+    renderGroup(ap, '💰 AP / Collections Contacts', 'var(--accent)') +
+    nbaSection;
 }
 
 // ── SAVE CONTACT NOTE ──────────────────────────────────────
@@ -2861,7 +2863,7 @@ let state = {
   filteredAccounts: [],
   selectedAccount: null,
   activeView: 'accounts',
-  activeFilter: 'active',
+  activeFilter: 'all',
   activeDetailTab: 'notes',
   viewAsRep: null,
   dashPeriod: 'mtd',   // persists selected dashboard period across re-renders

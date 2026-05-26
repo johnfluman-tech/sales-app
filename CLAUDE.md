@@ -776,3 +776,17 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - `mgrIntelLookup` now searches `state.accounts` by name first, then `gpCache` by BUYER_NAME
 - OR-word fallback when AND-match finds nothing; "Did you mean?" suggestions from state.accounts
 - OPEN ACCOUNT button on each matched account card → calls `selectAccountByName()`
+
+### 2026-05-26 (session 24 — Collections total fix + Account Intel before/after comparison)
+
+**Bug fixed — Manager Hub Collections grand total inflated (commit `315f93b`):**
+- **Root cause:** `collEntries` in `_mgrCollectionsHtml` included orphaned entries where `state.accounts.find()` returned null (account name matched `teamAccNames` via case-insensitive lookup but rep couldn't be assigned). These entries had `rep: ''` and counted in `totalAR` but not in any per-rep badge — causing grand total > sum of badges.
+- **Fix:** After building `collEntries`, added filter: `collEntries = collEntries.filter(function(c){ return teamReps.indexOf(c.rep) !== -1; });` — only entries with a recognized team rep are counted. Grand total now equals the exact sum of per-rep badge amounts.
+
+**Feature added — BEFORE / AFTER MX TEAM comparison card in Account Intel (commit `315f93b`):**
+- Added to `mgrIntelLookup()` — appears between the matching account cards and the revenue-by-year chart
+- Splits `gpRows` by `mxTeamReps` (from `getManagerConfig().teamReps`, falls back to hardcoded MX list): `preRows` = non-MX reps (Abraham/Arlin era), `postRows` = MX reps
+- Shows two-column comparison: BEFORE MX TEAM ($amount, years, rep names) vs SINCE MX TEAM ($amount, years)
+- Center column: trend arrow (↑ green / ↓ red) + % change — only appears if both sides have data
+- "No prior data" label when no pre-MX history; "no shipments yet" when MX team hasn't shipped yet
+- New computed variables: `mxTeamReps`, `preRows`, `postRows`, `preTotal`, `postTotal`, `preYears`, `postYears`, `preReps`, `comparisonHtml`

@@ -4113,8 +4113,7 @@ function renderDetail(acc) {
       <div class="revenue-year-row">${years.map(y => `<span class="rev-year-item"><span class="rev-year-label">${y}:</span> <span class="rev-year-val ${ (acc.years[y]||0) === 0 ? 'rev-zero' : '' }">$${formatNum(acc.years[y]||0)}</span></span>`).join('')}</div>
     </div>
 
-
-
+    <div class="detail-split-h" id="detail-split-h" title="Drag to resize"></div>
 
     <div class="detail-bottom" id="detail-bottom">
       <div class="detail-tabs">

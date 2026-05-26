@@ -2911,6 +2911,7 @@ let state = {
   tokenRequestInProgress: false, // guard: prevents duplicate OAuth token requests
   tokenClient: null,             // stored GIS token client instance
   _pendingRefresh: null,         // {resolve,reject,tid} for refreshTokenSilent()
+  hiddenAccounts: [],            // accounts where JOHN_APPROVAL=YES — excluded from all views
 };
 // Prevents cascade of handleSignout() calls from concurrent background API failures
 let _signedOut = false;
@@ -3668,7 +3669,11 @@ async function loadAllAccounts() {
           headers:       headers,
         };
 
-        state.accounts.push(acc);
+        if ((acc.johnApproval || '').toUpperCase() === 'YES') {
+          state.hiddenAccounts.push(acc);  // hidden by admin — excluded from all views
+        } else {
+          state.accounts.push(acc);
+        }
       }
 
       // Load note history for this tab
@@ -4111,9 +4116,22 @@ function renderDetail(acc) {
   const hasRemoveRequest = acc.removeFlag && acc.removeFlag.toUpperCase() !== 'YES' && acc.removeFlag.trim() !== '';
   const johnCanApprove = state.isAdmin && hasRemoveRequest;
 
+  const canHide = state.isAdmin || acc.rep === state.repId;
+  const hideBtn = canHide
+    ? `<button data-n="${escHtml(acc.name)}" onclick="showQuickHideRequest(this.dataset.n)"
+         style="float:right;padding:4px 10px;background:transparent;border:1px solid rgba(239,68,68,0.4);color:var(--red);font-family:var(--mono);font-size:9px;cursor:pointer;border-radius:var(--r);letter-spacing:0.06em;font-weight:700"
+         title="Request to hide this account from your list">🚫 REQUEST TO HIDE</button>`
+    : '';
+  const pendingHideBadge = hasRemoveRequest
+    ? `<span style="font-family:var(--mono);font-size:9px;color:var(--orange);letter-spacing:0.06em">⏳ HIDE PENDING</span>`
+    : '';
+
   panel.innerHTML = `
     <div class="detail-header">
-      <div class="detail-account-name">${escHtml(acc.name)}</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div class="detail-account-name" style="flex:1">${escHtml(acc.name)}</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">${pendingHideBadge}${hideBtn}</div>
+      </div>
       <div>${statusBadge(acc.status)}</div>
       <div class="detail-meta">
         <div class="detail-meta-item">Rep: <span>${escHtml(acc.rep)}</span></div>
@@ -5953,6 +5971,34 @@ async function renderRemovalsView() {
         </div>
       </div>
 
+      <!-- ⑤ HIDDEN ACCOUNTS (approved removals) ──────────────────── -->
+      <div style="margin-bottom:28px">
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:10px">
+          👁 Hidden Accounts
+          <span style="background:${state.hiddenAccounts.length?'var(--orange)':'var(--s2)'};color:${state.hiddenAccounts.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${state.hiddenAccounts.length}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:12px">Accounts you have approved to hide — invisible in all rep views. Click UNHIDE to restore.</div>
+        ${state.hiddenAccounts.length ? `
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${state.hiddenAccounts.map(acc => `
+            <div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:600;margin-bottom:3px">${escHtml(acc.name)}</div>
+                <div style="font-size:11px;color:var(--text-3)">Rep: ${escHtml(acc.rep)} · $${formatNum(acc.total||0)} lifetime</div>
+                ${acc.removeFlag ? `<div style="font-size:10px;color:var(--text-muted);margin-top:3px;font-family:var(--mono)">Reason: "${escHtml(acc.removeFlag)}"</div>` : ''}
+              </div>
+              <button data-n="${escHtml(acc.name)}" onclick="unhideAccount(this.dataset.n)"
+                style="padding:7px 14px;background:rgba(59,130,246,0.12);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">
+                ↩ UNHIDE
+              </button>
+            </div>`).join('')}
+        </div>` : `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)">
+          <div style="font-size:22px;margin-bottom:8px">✓</div>
+          <div style="font-family:var(--mono);font-size:11px">No hidden accounts</div>
+        </div>`}
+      </div>
+
       <!-- NDA LOG  ─────────────────────────────────────────────────── -->
       <div>
         <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
@@ -6032,6 +6078,94 @@ function exportNDALog() {
   a.click();
 }
 
+function showQuickHideRequest(name) {
+  const existing = document.getElementById('quick-hide-popup');
+  if (existing) { existing.remove(); return; }
+  const acc = state.accounts.find(function(a){ return a.name === name; });
+  if (acc && acc.removeFlag && acc.removeFlag.trim()) {
+    showToast('A hide request is already pending for this account (' + acc.removeFlag + ')', 'info');
+    return;
+  }
+  const reasons = [
+    'Not my account — belongs to another rep',
+    'Duplicate — same company listed twice',
+    'No longer active / company closed',
+    'Never worked with this account',
+    'Customer requested no contact'
+  ];
+  const overlay = document.createElement('div');
+  overlay.id = 'quick-hide-popup';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:22px 26px;width:400px;max-width:92vw;box-shadow:0 12px 40px rgba(0,0,0,0.5)">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.14em;color:var(--red);font-weight:700;margin-bottom:6px">🚫 REQUEST TO HIDE ACCOUNT</div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px">${escHtml(name)}</div>
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:16px">Select a reason — John will review and approve the request.</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+        ${reasons.map(function(r){ return `<button onclick="submitHideRequest(${JSON.stringify(name)},${JSON.stringify(r)});document.getElementById('quick-hide-popup').remove()"
+          style="text-align:left;padding:9px 14px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:12px;color:var(--text);font-family:var(--font)">${escHtml(r)}</button>`; }).join('')}
+      </div>
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">Or type a custom reason:</div>
+      <div style="display:flex;gap:8px">
+        <input id="hide-custom-reason" type="text" placeholder="Custom reason..."
+          style="flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;padding:7px 10px;border-radius:var(--r);outline:none">
+        <button onclick="var v=document.getElementById('hide-custom-reason').value.trim();if(v){submitHideRequest(${JSON.stringify(name)},v);document.getElementById('quick-hide-popup').remove();}"
+          style="padding:7px 14px;background:var(--red);border:none;color:#fff;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r);font-weight:700;white-space:nowrap">SUBMIT</button>
+      </div>
+      <button onclick="document.getElementById('quick-hide-popup').remove()"
+        style="margin-top:10px;width:100%;padding:7px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">CANCEL</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
+}
+
+async function submitHideRequest(accName, reason) {
+  const acc = state.accounts.find(function(a){ return a.name === accName; });
+  if (!acc) { showToast('Account not found', 'error'); return; }
+  try {
+    const iRemove = acc.headers.indexOf('REMOVE_FLAG');
+    if (iRemove < 0) { showToast('REMOVE_FLAG column not in sheet', 'error'); return; }
+    const range = "'" + acc.tabName + "'!A" + (acc.rowIndex+1) + ":Z" + (acc.rowIndex+1);
+    const rows = await sheetsGet(range);
+    const row = rows[0] || [];
+    const newRow = [...row];
+    while (newRow.length < acc.headers.length) newRow.push('');
+    newRow[iRemove] = reason;
+    await sheetsUpdate(range, [newRow]);
+    acc.removeFlag = reason;
+    showToast('Hide request sent to John for review ✓', 'success');
+    if (state.selectedAccount && state.selectedAccount.name === accName) renderDetail(acc);
+    const cnt = state.accounts.filter(function(a){ return a.removeFlag && a.removeFlag.trim() && a.removeFlag.toUpperCase()!=='YES' && (a.johnApproval||'').toUpperCase()!=='YES'; }).length;
+    const badge = document.getElementById('badge-removals');
+    if (badge) badge.textContent = cnt || '';
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function unhideAccount(accountName) {
+  if (!state.isAdmin) { showToast('Admin only', 'error'); return; }
+  const acc = state.hiddenAccounts.find(function(a){ return a.name === accountName; });
+  if (!acc) { showToast('Account not found in hidden list', 'error'); return; }
+  try {
+    const range = "'" + acc.tabName + "'!A" + (acc.rowIndex+1) + ":Z" + (acc.rowIndex+1);
+    const rows = await sheetsGet(range);
+    const row = rows[0] || [];
+    const newRow = [...row];
+    while (newRow.length < acc.headers.length) newRow.push('');
+    const iJohn = acc.headers.indexOf('JOHN_APPROVAL');
+    const iRemove = acc.headers.indexOf('REMOVE_FLAG');
+    if (iJohn >= 0) newRow[iJohn] = '';
+    if (iRemove >= 0) newRow[iRemove] = '';
+    await sheetsUpdate(range, [newRow]);
+    acc.johnApproval = '';
+    acc.removeFlag = '';
+    // Move back to active accounts
+    state.hiddenAccounts = state.hiddenAccounts.filter(function(a){ return a.name !== accountName; });
+    state.accounts.push(acc);
+    showToast(accountName + ' restored to ' + acc.rep + "'s account list ✓", 'success');
+    renderRemovalsView();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
 async function approveRemovalDirect(accountName) {
   if (!state.isAdmin) { showToast('Admin only', 'error'); return; }
   if (!confirm(`Approve removal of "${accountName}"? This will exclude it from all future reports.`)) return;
@@ -6047,7 +6181,11 @@ async function approveRemovalDirect(accountName) {
     if (iJohn >= 0) newRow[iJohn] = 'YES';
     await sheetsUpdate(range, [newRow]);
     acc.johnApproval = 'YES';
-    showToast(`${accountName} approved for removal ✓`, 'success');
+    // Immediately remove from all views — move to hiddenAccounts
+    state.accounts = state.accounts.filter(function(a){ return a.name !== accountName; });
+    state.hiddenAccounts.push(acc);
+    if (state.selectedAccount && state.selectedAccount.name === accountName) state.selectedAccount = null;
+    showToast(accountName + ' hidden from ' + acc.rep + "'s view ✓", 'success');
     renderRemovalsView();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }

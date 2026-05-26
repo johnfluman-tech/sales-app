@@ -11780,46 +11780,72 @@ function mgrIntelLookup(query) {
   if (!query) return;
   var out = document.getElementById('mgr-intel-result');
   if (!out) return;
-  out.innerHTML = '<div style="padding:16px 0;color:var(--text-3);font-family:var(--mono);font-size:11px">Searching ' + (state.gpCache||[]).length + ' GP records...</div>';
+  out.innerHTML = '<div style="padding:16px 0;color:var(--text-3);font-family:var(--mono);font-size:11px">Searching ' + (state.accounts||[]).length + ' accounts + ' + (state.gpCache||[]).length + ' GP records...</div>';
 
+  var norm = function(s){ return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim(); };
+  var normQ = norm(query);
+  var qWords = normQ.split(/\s+/).filter(function(w){ return w.length > 2; });
+  if (!qWords.length) qWords = [normQ];
+  // broader set: words >3 chars for OR fallback (avoids noise from short words)
+  var qWordsBroad = normQ.split(/\s+/).filter(function(w){ return w.length > 3; });
+  if (!qWordsBroad.length) qWordsBroad = qWords;
+
+  var matchAll = function(name) { var n=norm(name); return qWords.every(function(w){ return n.indexOf(w)>-1; }); };
+  var matchAny = function(name) { var n=norm(name); return qWordsBroad.some(function(w){ return n.indexOf(w)>-1; }); };
+  var scoreFn  = function(name) { var n=norm(name); return qWords.reduce(function(s,w){ return s+(n.indexOf(w)>-1?1:0); },0); };
+
+  // 1. Search state.accounts by account name (all accounts loaded in manager/admin view)
+  var allAccs = state.accounts || [];
+  var accMatches = allAccs.filter(function(a){ return matchAll(a.name||''); });
+  var usedAnyAcc = false;
+  if (!accMatches.length) { accMatches = allAccs.filter(function(a){ return matchAny(a.name||''); }); usedAnyAcc = true; }
+
+  // 2. Search gpCache BUYER_NAME (covers pre-transfer history all reps all years)
   var gpHdrs = (state.gpCache && state.gpCache.length > 0) ? Object.keys(state.gpCache[0]) : [];
   var gpRevCol  = gpHdrs.find(function(h){ return /EXTENDED_PRICE|INVOICE_TOTAL/i.test(h); }) || 'EXTENDED_PRICE';
   var gpDateCol = gpHdrs.find(function(h){ return /INVOICE_DATE/i.test(h); }) || 'INVOICE_DATE';
   var gpRepCol  = gpHdrs.find(function(h){ return /SALES_REP/i.test(h); }) || 'SALES_REP';
   var gpBuyerCol= gpHdrs.find(function(h){ return /BUYER_NAME/i.test(h); }) || 'BUYER_NAME';
 
-  var norm = function(s){ return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim(); };
-  var qWords = norm(query).split(/\s+/).filter(function(w){ return w.length > 2; });
-  if (!qWords.length) qWords = [norm(query)];
+  var gpRows = (state.gpCache||[]).filter(function(r){ return matchAll(r[gpBuyerCol]||''); });
+  var usedAnyGP = false;
+  if (!gpRows.length) { gpRows = (state.gpCache||[]).filter(function(r){ return matchAny(r[gpBuyerCol]||''); }); usedAnyGP = true; }
 
-  var gpRows = (state.gpCache||[]).filter(function(r) {
-    var buyer = norm(r[gpBuyerCol]||'');
-    return qWords.every(function(w){ return buyer.indexOf(w) > -1; });
-  });
-
-  if (!gpRows.length) {
-    out.innerHTML = '<div style="padding:20px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);color:var(--text-3);font-family:var(--mono);font-size:11px">No GP records found for "' + escHtml(query) + '". Try a shorter keyword (e.g. "Siemens" not "Siemens Corporation").</div>';
+  // Nothing found — show "Did you mean?" suggestions from state.accounts
+  if (!accMatches.length && !gpRows.length) {
+    var suggestions = allAccs.map(function(a){ return {a:a,score:scoreFn(a.name||'')}; })
+      .filter(function(x){ return x.score>0; }).sort(function(a,b){ return b.score-a.score; }).slice(0,6);
+    var suggHtml = suggestions.length
+      ? '<div style="margin-top:14px"><div style="font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);margin-bottom:8px">DID YOU MEAN?</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
+        suggestions.map(function(x){
+          return '<button data-iname="' + escHtml(x.a.name) + '" onclick="mgrIntelLookup(this.dataset.iname)" ' +
+            'style="background:var(--s2);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;padding:5px 12px;cursor:pointer;border-radius:var(--r)">' +
+            escHtml(x.a.name) + '</button>';
+        }).join('') + '</div></div>' : '';
+    out.innerHTML = '<div style="padding:16px 20px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);color:var(--text-3);font-family:var(--mono);font-size:11px">' +
+      'No accounts or GP records found for "' + escHtml(query) + '".<br>Try a single keyword — e.g. <b>Siemens</b>, <b>Navistar</b>, <b>Martinrea</b>.' + suggHtml + '</div>';
     return;
   }
 
-  // Revenue by year
+  // Revenue by year from GP data
   var byYear = {};
   gpRows.forEach(function(r) {
-    var yr = (r[gpDateCol]||'').slice(0,4)||'?';
-    var rev = parseFloat(r[gpRevCol]||0)||0;
-    var rep = (r[gpRepCol]||'').trim()||'?';
-    if (!byYear[yr]) byYear[yr] = {total:0,reps:{}};
-    byYear[yr].total += rev;
-    byYear[yr].reps[rep] = (byYear[yr].reps[rep]||0) + rev;
+    var yr=(r[gpDateCol]||'').slice(0,4)||'?';
+    var rev=parseFloat(r[gpRevCol]||0)||0;
+    var rep=(r[gpRepCol]||'').trim()||'?';
+    if (!byYear[yr]) byYear[yr]={total:0,reps:{}};
+    byYear[yr].total+=rev;
+    byYear[yr].reps[rep]=(byYear[yr].reps[rep]||0)+rev;
   });
   var years = Object.keys(byYear).filter(function(y){ return y.match(/^\d{4}$/); }).sort(function(a,b){ return b.localeCompare(a); });
   var grandTotal = gpRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
   var maxRev = Math.max.apply(null, years.map(function(y){ return byYear[y].total; }))||1;
 
   var yearRows = years.map(function(yr) {
-    var d = byYear[yr];
-    var pct = Math.round((d.total/maxRev)*100);
-    var repLine = Object.keys(d.reps).sort(function(a,b){ return d.reps[b]-d.reps[a]; }).map(function(rep) {
+    var d=byYear[yr];
+    var pct=Math.round((d.total/maxRev)*100);
+    var repLine=Object.keys(d.reps).sort(function(a,b){ return d.reps[b]-d.reps[a]; }).map(function(rep){
       return '<span style="font-size:10px;color:var(--text-3)">' + escHtml(rep) + ' <span style="color:var(--text-2)">$' + formatNum(d.reps[rep]) + '</span></span>';
     }).join(' &nbsp;·&nbsp; ');
     return '<div style="padding:9px 0;border-bottom:1px solid var(--border)">' +
@@ -11834,68 +11860,100 @@ function mgrIntelLookup(query) {
     '</div>';
   }).join('');
 
-  // Top parts from historyCache
+  // Top parts from historyCache — try matched account names too
   var hKey = null;
-  var normQ = norm(query);
+  var searchNorms = [normQ].concat(accMatches.slice(0,3).map(function(a){ return norm(a.name||''); }));
   Object.keys(state.historyCache||{}).forEach(function(k) {
-    if (norm(k).indexOf(normQ) > -1 || normQ.split(' ').filter(function(w){ return w.length>3; }).every(function(w){ return norm(k).indexOf(w)>-1; })) {
-      if (!hKey || norm(k).length < norm(hKey).length) hKey = k;
-    }
+    var nk=norm(k);
+    var hit=searchNorms.some(function(sq){
+      var sw=sq.split(/\s+/).filter(function(w){ return w.length>3; });
+      if (!sw.length) sw=[sq];
+      return sw.every(function(w){ return nk.indexOf(w)>-1; }) || sw.some(function(w){ return nk.indexOf(w)>-1; });
+    });
+    if (hit && (!hKey || norm(k).length<norm(hKey).length)) hKey=k;
   });
   var hData = hKey ? (state.historyCache[hKey]||{invoices:[]}) : {invoices:[]};
   var partMap = {};
   (hData.invoices||[]).forEach(function(inv) {
     if (!inv.part) return;
-    if (!partMap[inv.part]) partMap[inv.part] = {count:0, desc:inv.desc||'', total:0, lastDate:''};
+    if (!partMap[inv.part]) partMap[inv.part]={count:0,desc:inv.desc||'',total:0,lastDate:''};
     partMap[inv.part].count++;
-    partMap[inv.part].total += inv.lineTotal||0;
-    if (!partMap[inv.part].lastDate || inv.date > partMap[inv.part].lastDate) partMap[inv.part].lastDate = inv.date;
+    partMap[inv.part].total+=inv.lineTotal||0;
+    if (!partMap[inv.part].lastDate||inv.date>partMap[inv.part].lastDate) partMap[inv.part].lastDate=inv.date;
   });
   var topParts = Object.keys(partMap).sort(function(a,b){ return partMap[b].count-partMap[a].count; }).slice(0,12);
 
   var partsHtml = topParts.length > 0
-    ? '<table style="width:100%;border-collapse:collapse">' +
-        '<thead><tr>' +
-          '<th style="text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">PART NUMBER</th>' +
-          '<th style="text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">DESCRIPTION</th>' +
-          '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 8px;border-bottom:1px solid var(--border)">ORDERS</th>' +
-          '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">REVENUE</th>' +
-          '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">LAST SOLD</th>' +
-        '</tr></thead><tbody>' +
-        topParts.map(function(p) {
-          var d = partMap[p];
-          return '<tr style="border-bottom:1px solid var(--border)">' +
-            '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;color:var(--blue-b);font-weight:600">' + escHtml(p) + '</td>' +
-            '<td style="font-size:11px;padding:7px 6px;color:var(--text-2)">' + escHtml((d.desc||'').slice(0,55)) + '</td>' +
-            '<td style="font-family:var(--mono);font-size:11px;padding:7px 8px;text-align:right;color:var(--text)">' + d.count + '</td>' +
-            '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;text-align:right;color:var(--text)">$' + formatNum(d.total) + '</td>' +
-            '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;text-align:right;color:var(--text-3)">' + escHtml(d.lastDate||'—') + '</td>' +
-          '</tr>';
-        }).join('') +
-        '</tbody></table>'
-    : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No line-item history found in Invoice History for this account. (Invoice History is limited to current rep assignments — pre-transfer line items may not be available here, but GP revenue above covers all years.)</div>';
+    ? '<table style="width:100%;border-collapse:collapse"><thead><tr>' +
+        '<th style="text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">PART NUMBER</th>' +
+        '<th style="text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">DESCRIPTION</th>' +
+        '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 8px;border-bottom:1px solid var(--border)">ORDERS</th>' +
+        '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">REVENUE</th>' +
+        '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">LAST SOLD</th>' +
+      '</tr></thead><tbody>' +
+      topParts.map(function(p) {
+        var d=partMap[p];
+        return '<tr style="border-bottom:1px solid var(--border)">' +
+          '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;color:var(--blue-b);font-weight:600">' + escHtml(p) + '</td>' +
+          '<td style="font-size:11px;padding:7px 6px;color:var(--text-2)">' + escHtml((d.desc||'').slice(0,55)) + '</td>' +
+          '<td style="font-family:var(--mono);font-size:11px;padding:7px 8px;text-align:right;color:var(--text)">' + d.count + '</td>' +
+          '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;text-align:right;color:var(--text)">$' + formatNum(d.total) + '</td>' +
+          '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;text-align:right;color:var(--text-3)">' + escHtml(d.lastDate||'—') + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table>'
+    : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No line-item history in Invoice History for this account. GP revenue above covers all years including pre-transfer.</div>';
 
-  // Matched buyer name variants
-  var matchedNames = {};
-  gpRows.forEach(function(r){ matchedNames[r[gpBuyerCol]||''] = true; });
-  var nameList = Object.keys(matchedNames).slice(0,4);
+  // Matched GP buyer name variants
+  var matchedBuyers = {};
+  gpRows.forEach(function(r){ var b=r[gpBuyerCol]||''; if(b) matchedBuyers[b]=true; });
+  var buyerList = Object.keys(matchedBuyers).slice(0,4);
+
+  // App account cards with OPEN ACCOUNT link
+  var accCardsHtml = '';
+  if (accMatches.length) {
+    accCardsHtml = '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:10px">MATCHING ACCOUNTS IN APP' +
+        (usedAnyAcc ? ' <span style="color:#f59e0b;font-size:8px">(broad match)</span>' : '') + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+      accMatches.slice(0,6).map(function(acc) {
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--s2);border-radius:var(--r);border:1px solid var(--border)">' +
+          '<div style="flex:1">' +
+            '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text)">' + escHtml(acc.name||'') + '</div>' +
+            '<div style="font-size:10px;color:var(--text-3);margin-top:2px">Rep: ' + escHtml(acc.rep||'—') +
+              (acc.city ? ' &nbsp;·&nbsp; ' + escHtml(acc.city) : '') +
+              (acc.revenue ? ' &nbsp;·&nbsp; $' + formatNum(acc.revenue) + ' YTD' : '') + '</div>' +
+          '</div>' +
+          '<button data-accname="' + escHtml(acc.name||'') + '" onclick="selectAccountByName(this.dataset.accname)" ' +
+            'style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:9px;font-weight:700;padding:5px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">OPEN ACCOUNT</button>' +
+        '</div>';
+      }).join('') +
+      (accMatches.length > 6 ? '<div style="font-size:10px;color:var(--text-3);padding:4px 0">...and ' + (accMatches.length-6) + ' more. Refine your search for a more specific result.</div>' : '') +
+      '</div></div>';
+  }
+
+  var matchNote = usedAnyGP ? ' <span style="font-size:9px;color:var(--text-3);font-family:var(--mono)">(broad match — try exact name from account card above for precise results)</span>' : '';
 
   out.innerHTML =
     '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;margin-bottom:12px">' +
     '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start">' +
       '<div>' +
         '<div style="font-family:var(--mono);font-size:14px;font-weight:700;margin-bottom:3px">' + escHtml(query.toUpperCase()) + '</div>' +
-        '<div style="font-size:10px;color:var(--text-3)">Matched as: ' + escHtml(nameList.join(' / ')) + (Object.keys(matchedNames).length>4?' +more':'') + '</div>' +
+        (buyerList.length ? '<div style="font-size:10px;color:var(--text-3)">GP buyer names: ' + escHtml(buyerList.join(' / ')) + (Object.keys(matchedBuyers).length>4?' +more':'') + '</div>' : '') +
       '</div>' +
       '<div style="text-align:right">' +
-        '<div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--blue-b)">$' + formatNum(grandTotal) + '</div>' +
-        '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + gpRows.length + ' records &nbsp;·&nbsp; ' + years.length + ' years</div>' +
+        (grandTotal>0 ? '<div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--blue-b)">$' + formatNum(grandTotal) + '</div>' : '') +
+        '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' +
+          (gpRows.length>0 ? gpRows.length + ' GP records &nbsp;·&nbsp; ' + years.length + ' years' : 'No GP records') + '</div>' +
       '</div>' +
     '</div>' +
-    '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
-      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">REVENUE BY YEAR — ALL REPS (incl. pre-transfer)</div>' +
-      yearRows +
-    '</div>' +
+    accCardsHtml +
+    (years.length > 0
+      ? '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
+          '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">REVENUE BY YEAR — ALL REPS (incl. pre-transfer)' + matchNote + '</div>' +
+          yearRows +
+        '</div>'
+      : '<div style="padding:16px 20px;border-bottom:1px solid var(--border);color:var(--text-3);font-size:11px;font-family:var(--mono)">No GP revenue history found. The buyer name in CRM may differ — try the exact name from the account card above.</div>'
+    ) +
     '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
       '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:10px">TOP RECURRING PARTS</div>' +
       partsHtml +

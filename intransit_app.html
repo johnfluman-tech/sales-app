@@ -8634,6 +8634,11 @@ function switchViewAs(rep) {
     label.style.color = rep ? 'var(--accent)' : '';
   }
   state.selectedAccount = null;
+  // Always reset to ALL CRM filter when switching rep view so full account list shows
+  state.activeFilter = 'all';
+  document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
+  var _allBtn = document.getElementById('filter-all');
+  if (_allBtn) _allBtn.classList.add('active');
   switchView('accounts');
 }
 
@@ -17053,6 +17058,11 @@ async function loadCustomerDirectory(force) {
     }).filter(function(c){ return c.name; });
     state._directoryLoadedAt = Date.now();
     console.log('Customer directory loaded:', state.customerDirectory.length, 'accounts');
+    // Re-render accounts view if we're on it with ALL CRM filter — directory just arrived
+    if (state.activeFilter === 'all' && state.activeView !== 'followup' &&
+        document.getElementById('account-tbody')) {
+      renderAccountsView();
+    }
   } catch(e) {
     state.customerDirectory = [];
     console.warn('Customer directory not available (run sales_report.py to populate):', e.message);

@@ -16032,7 +16032,7 @@ async function _renderNotesFeed(isTeamView) {
   const headerLabel = isTeamView ? (teamName.toUpperCase() + ' NOTES') : (isAdm ? 'ALL NOTES FEED' : 'MY NOTES');
 
   el.innerHTML = '<div style="display:flex;height:100%;overflow:hidden">' +
-    '<div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)">' +
+    '<div id="nf-notes-panel" style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">' +
       '<div style="padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0">' +
         '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--blue-b);letter-spacing:0.12em;margin-bottom:8px">&#128203; ' + headerLabel + ' — ' + allNotes.length + ' total</div>' +
         '<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:5px">' +
@@ -16046,6 +16046,7 @@ async function _renderNotesFeed(isTeamView) {
       '</div>' +
       '<div style="flex:1;overflow-y:auto;padding:10px 12px">' + cards + '</div>' +
     '</div>' +
+    '<div class="splitter-h" id="nf-splitter-h"></div>' +
     '<div id="nf-ai-panel" style="width:300px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--s1)">' +
       '<div style="padding:10px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);letter-spacing:0.1em">&#9733; AI INTELLIGENCE</div>' +
       '<div id="nf-ai-analysis" style="flex:1;overflow-y:auto;padding:10px 12px;font-size:11px;color:var(--text-3);font-style:italic">Analyzing notes...</div>' +
@@ -16059,6 +16060,11 @@ async function _renderNotesFeed(isTeamView) {
     '</div>' +
   '</div>';
 
+  setTimeout(function() {
+    restoreSplitPositions();
+    var sp = document.getElementById('nf-splitter-h');
+    if (sp) sp.onmousedown = function(e) { startSplitH(e,'nf-notes-panel','nf-ai-panel','nf-splitter-h'); };
+  }, 10);
   _nfAutoAnalyze(allNotes.slice(0,60), isAdm, isMgr, isTeamView, teamName);
 }
 
@@ -17002,8 +17008,14 @@ function renderProspectsView() {
     ? _renderProspectDetailHtml(selP)
     : '<div class="detail-panel" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-3);flex-direction:column;gap:10px"><div style="font-size:28px">🎯</div><div style="font-size:12px">Select a prospect to view details</div></div>';
 
-  el.innerHTML = '<div class="split-view" style="display:flex;height:100%;min-height:0">' + listHtml + detailHtml + '</div>';
+  const prospSplitter = '<div class="splitter-h" id="prospect-splitter-h"></div>';
+  el.innerHTML = '<div class="split-view" style="display:flex;height:100%;min-height:0">' + listHtml + prospSplitter + detailHtml + '</div>';
 
+  setTimeout(function() {
+    restoreSplitPositions();
+    var sp = document.getElementById('prospect-splitter-h');
+    if (sp) sp.onmousedown = function(e) { startSplitH(e,'prospect-list-panel','prospect-detail-panel','prospect-splitter-h'); };
+  }, 10);
   // Re-attach AI panel event if selection exists
   if (selP) _attachProspectDetailEvents(selP);
 }
@@ -17589,9 +17601,11 @@ function restoreSplitPositions() {
   }
   // Restore panel splitter positions
   const panels = [
-    { id: 'account-list',       type: 'h' },
-    { id: 'coll-list',          type: 'h' },
-    { id: 'contacts-list-panel',type: 'h' }
+    { id: 'account-list',        type: 'h' },
+    { id: 'coll-list',           type: 'h' },
+    { id: 'contacts-list-panel', type: 'h' },
+    { id: 'nf-notes-panel',      type: 'h' },
+    { id: 'prospect-list-panel', type: 'h' }
   ];
   panels.forEach(p => {
     const saved = localStorage.getItem('it_split_' + p.id);

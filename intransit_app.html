@@ -1854,10 +1854,43 @@ async function loadSupplementalData() {
 }
 
 // ── CONTACTS TAB ──────────────────────────────────────────
+function _resolveContactsForAccount(accName) {
+  const exact = state.contactsCache[accName.trim()];
+  if (exact && exact.length) return { contacts: exact, matchedKey: accName.trim() };
+
+  // Normalized lookup (handles case/punctuation differences between sheet names)
+  const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').replace(/\s+/g,' ').trim();
+  const normKey = norm(accName);
+  const normMatch = state._contactsCacheNorm && state._contactsCacheNorm[normKey];
+  if (normMatch && state.contactsCache[normMatch] && state.contactsCache[normMatch].length) {
+    return { contacts: state.contactsCache[normMatch], matchedKey: normMatch };
+  }
+
+  // Word-overlap fallback — any word > 4 chars from the account name matches a cache key
+  const words = normKey.split(/\s+/).filter(w => w.length > 4);
+  if (words.length) {
+    let best = null, bestScore = 0;
+    Object.keys(state.contactsCache).forEach(k => {
+      const kn = norm(k);
+      const score = words.filter(w => kn.includes(w)).length;
+      if (score > bestScore) { bestScore = score; best = k; }
+    });
+    if (best && bestScore >= Math.ceil(words.length * 0.6)) {
+      return { contacts: state.contactsCache[best], matchedKey: best };
+    }
+  }
+
+  return { contacts: [], matchedKey: null };
+}
+function _contactsFor(name) { return _resolveContactsForAccount(name||'').contacts; }
+
 function renderContactsTab(acc) {
-  const contacts = state.contactsCache[acc.name.trim()] || [];
+  const { contacts, matchedKey } = _resolveContactsForAccount(acc.name);
+  const nameNote = matchedKey && matchedKey !== acc.name.trim()
+    ? `<div style="font-size:9px;color:var(--text-3);margin-bottom:10px;font-family:var(--mono)">Matched CRM name: ${escHtml(matchedKey)}</div>`
+    : '';
   if (contacts.length === 0) {
-    return `<div class="note-empty">NO CONTACTS FOUND<br><span style="font-size:10px;margin-top:4px;display:block">Contacts load on first account click</span></div>`;
+    return `<div class="note-empty">NO CONTACTS FOUND<br><span style="font-size:10px;margin-top:4px;display:block">Contacts load from _CONTACTS sheet — account name may differ from CRM</span></div>`;
   }
 
   const purchasing = contacts.filter(c => c.type !== 'AP/Collections');
@@ -1941,7 +1974,7 @@ function renderContactsTab(acc) {
       <div id="nba-result-${btoa(encodeURIComponent(acc.name)).replace(/=/g,'')}" style="display:none"></div>
     </div>`;
 
-  return nbaSection +
+  return nameNote + nbaSection +
     renderGroup(purchasing, '🛒 Purchasing Contacts', 'var(--blue-bright)') +
     renderGroup(ap, '💰 AP / Collections Contacts', 'var(--accent)');
 }
@@ -2002,7 +2035,7 @@ async function generateNextBestAction(accountName, resultDivId) {
 
   // Gather account data for the prompt
   const h = state.historyCache[accountName.trim()] || { invoices: [], reqs: [], quotes: [] };
-  const contacts = state.contactsCache[accountName.trim()] || [];
+  const contacts = _contactsFor(accountName);
   const notes = (state.contactNotesCache || {})[accountName.trim()] || [];
 
   // Top parts purchased
@@ -4266,7 +4299,7 @@ function renderNoteInput(acc) {
 
 
 function renderEmailTab(acc) {
-  const contacts = (state.contactsCache[acc.name.trim()] || []).filter(ct => ct.email);
+  const contacts = _contactsFor(acc.name).filter(ct => ct.email);
   const apContacts = contacts.filter(ct => ct.type === 'AP/Collections');
   const primaryContact = contacts[0] || null;
   const apEmails = [...new Set(apContacts.map(ct => ct.email).filter(Boolean))];
@@ -4436,7 +4469,7 @@ function renderInfoTab(acc) {
 function renderResearchTab(acc) {
   const safeId = btoa(encodeURIComponent(acc.name)).replace(/[=+/]/g,'');
   const h = state.historyCache[acc.name.trim()] || { invoices:[], reqs:[], quotes:[] };
-  const contacts = state.contactsCache[acc.name.trim()] || [];
+  const contacts = _contactsFor(acc.name);
   const partCounts = {};
   h.invoices.forEach(inv => { if(inv.part) partCounts[inv.part] = (partCounts[inv.part]||0)+1; });
   const topParts = Object.entries(partCounts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([p])=>p).join(', ');
@@ -4547,7 +4580,7 @@ async function askResearchQuestion(accountName, safeId) {
   // Build account context
   const acc = state.accounts.find(a => a.name === accountName) || {};
   const h   = state.historyCache[accountName.trim()] || { invoices:[], reqs:[], quotes:[] };
-  const contacts = state.contactsCache[accountName.trim()] || [];
+  const contacts = _contactsFor(accountName);
   const partCounts = {};
   h.invoices.forEach(inv => { if(inv.part) partCounts[inv.part] = (partCounts[inv.part]||0)+1; });
   const topParts = Object.entries(partCounts).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([p])=>p).join(', ');
@@ -8582,7 +8615,7 @@ async function generateEmail() {
 
     // Get selected contact for TO
     const toEmail = document.getElementById('email-to-contact')?.value || acc.contactEmail || '';
-    const toContact = (state.contactsCache[acc.name.trim()]||[]).find(ct => ct.email === toEmail);
+    const toContact = _contactsFor(acc.name).find(ct => ct.email === toEmail);
     const contactFirstName = toContact?.name?.trim().split(' ')[0] || acc.contactName?.trim().split(' ')[0] || '';
     const contactTitle = toContact?.title || acc.contactTitle || '';
 
@@ -10055,7 +10088,7 @@ function selectContactCard(el, accountName, contactName) {
   const acc = state.accounts.find(a => a.name.trim() === accountName.trim());
   if (!acc) return;
 
-  const contacts = state.contactsCache[accountName.trim()] || [];
+  const contacts = _contactsFor(accountName);
   const ct = contacts.find(c => c.name === contactName) || contacts[0];
   const acctNotes = (state.contactNotesCache || {})[accountName.trim()] || [];
   const ctNotes = acctNotes.filter(n => n.contact === contactName);
@@ -10544,7 +10577,7 @@ async function callAI(payload) {
 // ══════════════════════════════════════════════════════════════
 async function generateContactEmail(accountName, contactName, safeId, emailType) {
   const acc      = state.accounts.find(a => a.name.trim() === accountName.trim());
-  const contacts = state.contactsCache[accountName] || [];
+  const contacts = _contactsFor(accountName);
   const ct       = contacts.find(c => c.name === contactName) || contacts[0];
   const h        = state.historyCache[accountName] || { invoices:[], reqs:[], quotes:[] };
   const ctNotes  = (state.contactNotesCache||{})[accountName]?.filter(n => n.contact === contactName) || [];

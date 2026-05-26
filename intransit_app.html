@@ -11522,6 +11522,7 @@ function _mgrCollectionsHtml(teamReps) {
     var acc = state.accounts.find(function(a){ return a.name.trim().toLowerCase() === name.trim().toLowerCase(); });
     collEntries.push({ name: name, balance: c.balance||0, daysPastDue: c.daysPastDue||0, risk: c.risk||'', terms: c.terms||'', appHold: c.appHold||'', rep: acc ? acc.rep : '' });
   });
+  collEntries = collEntries.filter(function(c){ return teamReps.indexOf(c.rep) !== -1; });
   collEntries.sort(function(a,b){ return b.balance - a.balance; });
   var totalAR = collEntries.reduce(function(s,c){ return s + c.balance; }, 0);
   var highRiskCount = collEntries.filter(function(c){ return (c.risk||'').toUpperCase().indexOf('HIGH') !== -1; }).length;
@@ -11844,6 +11845,45 @@ function mgrIntelLookup(query) {
   var grandTotal = gpRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
   var maxRev = Math.max.apply(null, years.map(function(y){ return byYear[y].total; }))||1;
 
+  // Before / after MX team comparison
+  var mgrCfg2 = getManagerConfig();
+  var mxTeamReps = mgrCfg2 ? mgrCfg2.teamReps : ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor'];
+  var preRows = gpRows.filter(function(r){ return mxTeamReps.indexOf((r[gpRepCol]||'').trim()) === -1; });
+  var postRows = gpRows.filter(function(r){ return mxTeamReps.indexOf((r[gpRepCol]||'').trim()) !== -1; });
+  var preTotal = preRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
+  var postTotal = postRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
+  var preYears = Array.from(new Set(preRows.map(function(r){ return (r[gpDateCol]||'').slice(0,4); }).filter(function(y){ return y.match(/^\d{4}$/); }))).sort();
+  var postYears = Array.from(new Set(postRows.map(function(r){ return (r[gpDateCol]||'').slice(0,4); }).filter(function(y){ return y.match(/^\d{4}$/); }))).sort();
+  var preReps = Array.from(new Set(preRows.map(function(r){ return (r[gpRepCol]||'').trim(); }).filter(Boolean)));
+  var comparisonHtml = '';
+  if (preTotal > 0 || postTotal > 0) {
+    var trend = (preTotal > 0 && postTotal > 0) ? (postTotal >= preTotal ? '↑' : '↓') : '';
+    var trendColor = trend === '↑' ? 'var(--green)' : trend === '↓' ? 'var(--red)' : 'var(--text-3)';
+    var pctChange = preTotal > 0 && postTotal > 0 ? Math.round(((postTotal - preTotal) / preTotal) * 100) : null;
+    comparisonHtml =
+      '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">BEFORE / AFTER MX TEAM</div>' +
+      '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center">' +
+        '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px;text-align:center">' +
+          '<div style="font-size:9px;font-family:var(--mono);color:var(--text-3);margin-bottom:4px;letter-spacing:0.08em">BEFORE MX TEAM</div>' +
+          '<div style="font-size:20px;font-weight:700;color:var(--text)">' + (preTotal > 0 ? '$' + formatNum(preTotal) : '—') + '</div>' +
+          (preYears.length ? '<div style="font-size:10px;color:var(--text-3);margin-top:3px">' + (preYears[0]||'') + (preYears.length > 1 ? '–' + preYears[preYears.length-1] : '') + '</div>' : '') +
+          (preReps.length ? '<div style="font-size:9px;color:var(--text-3);margin-top:2px">' + escHtml(preReps.slice(0,3).join(', ')) + '</div>' : '<div style="font-size:9px;color:var(--text-3);margin-top:2px">no prior data</div>') +
+        '</div>' +
+        '<div style="text-align:center;font-size:26px;color:' + trendColor + ';font-weight:700;min-width:48px">' +
+          trend +
+          (pctChange !== null ? '<div style="font-size:11px;font-family:var(--mono);white-space:nowrap">' + (pctChange >= 0 ? '+' : '') + pctChange + '%</div>' : '') +
+        '</div>' +
+        '<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.3);border-radius:var(--r2);padding:14px;text-align:center">' +
+          '<div style="font-size:9px;font-family:var(--mono);color:var(--blue-b);margin-bottom:4px;letter-spacing:0.08em">SINCE MX TEAM</div>' +
+          '<div style="font-size:20px;font-weight:700;color:var(--blue-b)">' + (postTotal > 0 ? '$' + formatNum(postTotal) : '—') + '</div>' +
+          (postYears.length ? '<div style="font-size:10px;color:var(--text-3);margin-top:3px">' + (postYears[0]||'') + (postYears.length > 1 ? '–' + postYears[postYears.length-1] : '') + '</div>' : '') +
+          (postTotal === 0 ? '<div style="font-size:9px;color:var(--text-3);margin-top:2px">no shipments yet</div>' : '') +
+        '</div>' +
+      '</div>' +
+      '</div>';
+  }
+
   var yearRows = years.map(function(yr) {
     var d=byYear[yr];
     var pct=Math.round((d.total/maxRev)*100);
@@ -11949,6 +11989,7 @@ function mgrIntelLookup(query) {
       '</div>' +
     '</div>' +
     accCardsHtml +
+    comparisonHtml +
     (years.length > 0
       ? '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
           '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">REVENUE BY YEAR — ALL REPS (incl. pre-transfer)' + matchNote + '</div>' +

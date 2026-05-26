@@ -1260,7 +1260,8 @@ body::before {
       <div class="topbar-title" id="topbar-title">My Accounts</div>
       <input class="topbar-search" type="text" placeholder="Search accounts..." id="search-input" oninput="filterAccounts()">
       <button id="btn-find-account" onclick="showCRMSearch()" style="display:none;padding:6px 12px;background:var(--s2);border:1px solid var(--border);color:var(--blue-bright);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;cursor:pointer;border-radius:var(--r);white-space:nowrap">🔍 FIND ACCOUNT</button>
-      <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">ALL</button>
+      <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">ALL CRM</button>
+      <button class="filter-btn" id="filter-shipped" onclick="setFilter('shipped')">SHIPPED</button>
       <button class="filter-btn" id="filter-active" onclick="setFilter('active')">ACTIVE</button>
       <button class="filter-btn" id="filter-inactive-btn" onclick="setFilter('inactive')">INACTIVE</button>
       <button class="filter-btn" id="filter-declining" onclick="setFilter('declining')">DECLINING</button>
@@ -3739,7 +3740,8 @@ function parseMoney(val) {
 function setFilter(f) {
   state.activeFilter = f;
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  const btn = document.getElementById('filter-' + (f === 'inactive' ? 'inactive-btn' : f));
+  const idMap = { inactive: 'filter-inactive-btn' };
+  const btn = document.getElementById(idMap[f] || ('filter-' + f));
   if (btn) btn.classList.add('active');
   renderAccountsView();
 }
@@ -3879,17 +3881,21 @@ function getViewAccounts() {
   const search = document.getElementById('search-input')?.value.toLowerCase() || '';
   let accs = [...state.accounts];
 
-  // View-as-rep / manager filter
+  // View-as-rep / manager filter — track repFilter for CRM merge
+  let _repFilter = null, _repList = null;
   if (state.viewAsRep === '__TEAM_ALL__' || state.viewAsRep === 'MX_TEAM') {
     const _mgrCfg = getManagerConfig();
-    const _team = _mgrCfg ? _mgrCfg.teamReps : getManagerTeam();
-    accs = accs.filter(function(a){return _team.includes(a.rep);});
+    _repList = _mgrCfg ? _mgrCfg.teamReps : getManagerTeam();
+    accs = accs.filter(function(a){ return _repList.includes(a.rep); });
   } else if (state.viewAsRep) {
-    accs = accs.filter(function(a){return a.rep === state.viewAsRep;});
+    _repFilter = state.viewAsRep;
+    accs = accs.filter(function(a){ return a.rep === state.viewAsRep; });
   } else if (isManager()) {
-    accs = accs.filter(function(a){return a.rep === state.repId;});
+    _repFilter = state.repId;
+    accs = accs.filter(function(a){ return a.rep === state.repId; });
   } else if (!isAdmin()) {
-    accs = accs.filter(function(a){return a.rep === state.repId;});
+    _repFilter = state.repId;
+    accs = accs.filter(function(a){ return a.rep === state.repId; });
   }
 
   // View filter
@@ -3902,28 +3908,44 @@ function getViewAccounts() {
       const d = parseDate(a.followUpDate);
       return d && d <= today;
     });
-  } else if (state.activeView === 'all') {
-    // all accounts
-  } else {
-    // 'accounts' — default
   }
 
   // Status filter
-  if (state.activeFilter === 'active') {
+  if (state.activeFilter === 'all') {
+    // Merge CRM directory accounts not yet in the shipped list
+    if (state.customerDirectory && state.customerDirectory.length) {
+      const shippedNames = new Set(accs.map(a => a.name.toLowerCase().trim()));
+      let crmPool = state.customerDirectory;
+      if (_repList)   crmPool = crmPool.filter(c => _repList.includes(c.rep));
+      else if (_repFilter) crmPool = crmPool.filter(c => c.rep === _repFilter);
+      const crmOnly = crmPool
+        .filter(c => !shippedNames.has(c.name.toLowerCase().trim()))
+        .map(c => ({
+          name: c.name, rep: c.rep, city: c.city || '', state: c.state || '',
+          lastActivity: c.lastActivity || '', _crmOnly: true,
+          total: 0, status: '', lastSaleDate: '', contactName: '', contactTitle: '',
+          contactEmail: '', contactPhone: '', contactMobile: '', repNote: '',
+          followUpDate: '', years: {}, removeFlag: '', johnApproval: '', headers: []
+        }));
+      accs = [...accs, ...crmOnly];
+    }
+  } else if (state.activeFilter === 'active') {
     accs = accs.filter(a => !isInactive(a) && !isDeclining(a));
   } else if (state.activeFilter === 'inactive') {
     accs = accs.filter(a => isInactive(a));
   } else if (state.activeFilter === 'declining') {
     accs = accs.filter(a => isDeclining(a));
   }
+  // 'shipped' = state.accounts for this rep only (no CRM merge — falls through)
 
-  // Search
+  // Search — also match city for CRM accounts
   if (search) {
     accs = accs.filter(a =>
       a.name.toLowerCase().includes(search) ||
-      a.contactName.toLowerCase().includes(search) ||
-      a.contactEmail.toLowerCase().includes(search) ||
-      a.rep.toLowerCase().includes(search)
+      (a.contactName || '').toLowerCase().includes(search) ||
+      (a.contactEmail || '').toLowerCase().includes(search) ||
+      (a.rep || '').toLowerCase().includes(search) ||
+      (a.city || '').toLowerCase().includes(search)
     );
   }
 
@@ -4037,20 +4059,43 @@ function renderAccountsView() {
       tr.classList.add('selected');
     }
 
-    const followUpDisplay = acc.followUpDate
-      ? `<span style="color:var(--accent);font-family:var(--font-mono);font-size:11px">${acc.followUpDate}</span>`
-      : '<span style="color:var(--text-muted)">—</span>';
-
-    tr.innerHTML = `
-      <td class="td-name">${escHtml(acc.name)}</td>
-      ${showRep ? `<td class="td-mono">${escHtml(acc.rep)}</td>` : ''}
-      <td>${statusBadge(acc.status)}</td>
-      <td class="td-mono">${acc.lastSaleDate ? acc.lastSaleDate.slice(0,10) : '—'}</td>
-      <td class="td-amount">${acc.total > 0 ? '$' + formatNum(acc.total) : '<span style="color:var(--text-muted)">—</span>'}</td>
-      <td>${followUpDisplay}</td>
-    `;
+    if (acc._crmOnly) {
+      const loc = [acc.city, acc.state].filter(Boolean).join(', ') || '—';
+      tr.style.opacity = '0.72';
+      tr.innerHTML =
+        '<td class="td-name">' + escHtml(acc.name) +
+          '<span style="display:inline-block;margin-left:6px;background:var(--s2);border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:8px;padding:1px 5px;border-radius:var(--r);vertical-align:middle;letter-spacing:0.06em">CRM</span>' +
+        '</td>' +
+        (showRep ? '<td class="td-mono">' + escHtml(acc.rep) + '</td>' : '') +
+        '<td><span style="color:var(--text-3);font-size:11px">' + escHtml(loc) + '</span></td>' +
+        '<td class="td-mono" style="color:var(--text-3)">' + (acc.lastActivity ? acc.lastActivity.slice(0,10) : '—') + '</td>' +
+        '<td class="td-amount"><span style="color:var(--text-muted)">No shipments</span></td>' +
+        '<td>—</td>';
+    } else {
+      const followUpDisplay = acc.followUpDate
+        ? '<span style="color:var(--accent);font-family:var(--font-mono);font-size:11px">' + escHtml(acc.followUpDate) + '</span>'
+        : '<span style="color:var(--text-muted)">—</span>';
+      tr.innerHTML =
+        '<td class="td-name">' + escHtml(acc.name) + '</td>' +
+        (showRep ? '<td class="td-mono">' + escHtml(acc.rep) + '</td>' : '') +
+        '<td>' + statusBadge(acc.status) + '</td>' +
+        '<td class="td-mono">' + (acc.lastSaleDate ? acc.lastSaleDate.slice(0,10) : '—') + '</td>' +
+        '<td class="td-amount">' + (acc.total > 0 ? '$' + formatNum(acc.total) : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+        '<td>' + followUpDisplay + '</td>';
+    }
     tbody.appendChild(tr);
   });
+
+  // Show count strip when in ALL CRM mode
+  if (state.activeFilter === 'all') {
+    const shippedCount = accs.filter(a => !a._crmOnly).length;
+    const crmCount = accs.filter(a => a._crmOnly).length;
+    const strip = document.createElement('div');
+    strip.style.cssText = 'padding:5px 10px;background:rgba(59,130,246,0.07);border-top:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text-3);flex-shrink:0;display:flex;gap:14px';
+    strip.innerHTML = '<span>' + accs.length + ' total</span><span style="color:var(--blue-b)">' + shippedCount + ' shipped</span><span>' + crmCount + ' CRM only</span>';
+    const listEl = document.getElementById('account-list');
+    if (listEl) listEl.appendChild(strip);
+  }
 
   updateBadges();
 }
@@ -4067,6 +4112,16 @@ function selectAccount(acc) {
     state.hasUnsavedNote = false;
   }
   state.selectedAccount = acc;
+
+  // CRM-only accounts (not yet shipped to) get a lightweight panel
+  if (acc._crmOnly) {
+    document.querySelectorAll('#account-tbody tr').forEach((tr, i) => {
+      tr.classList.toggle('selected', state.filteredAccounts[i]?.name === acc.name);
+    });
+    renderCRMOnlyDetail(acc);
+    return;
+  }
+
   state.activeDetailTab = 'notes';
   trackAccountView(acc);
   // Load supplemental data on first account click
@@ -4090,6 +4145,30 @@ function selectAccount(acc) {
     const sp = document.getElementById('detail-split-h');
     if (sp && !sp._bound) { sp._bound = true; sp.addEventListener('mousedown', startDetailSplit); }
   }, 50);
+}
+
+function renderCRMOnlyDetail(acc) {
+  const panel = document.getElementById('detail-panel');
+  if (!panel) return;
+  const loc = [acc.city, acc.state].filter(Boolean).join(', ');
+  panel.innerHTML =
+    '<div style="padding:24px 26px;max-width:540px">' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.14em;color:var(--text-3);margin-bottom:8px">CRM ACCOUNT · NO SHIPMENT HISTORY</div>' +
+      '<div style="font-size:20px;font-weight:700;margin-bottom:18px;line-height:1.2">' + escHtml(acc.name) + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px;font-size:13px;margin-bottom:20px">' +
+        (loc ? '<div style="color:var(--text-2)">📍 ' + escHtml(loc) + '</div>' : '') +
+        '<div style="color:var(--text-3)">Rep: <span style="color:var(--text-1);font-weight:600">' + escHtml(acc.rep) + '</span></div>' +
+        (acc.lastActivity ? '<div style="color:var(--text-3)">Last CRM activity: <span style="font-family:var(--mono);color:var(--text-2)">' + escHtml(acc.lastActivity.slice(0,10)) + '</span></div>' : '') +
+      '</div>' +
+      '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px;font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:18px">' +
+        'This account is in your CRM but has no shipments recorded in the app. ' +
+        'It shows here because you selected <strong style="color:var(--text-2)">ALL CRM</strong>. ' +
+        'Switch to <strong style="color:var(--text-2)">SHIPPED</strong> to see only accounts with revenue history.' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button data-n="' + escHtml(acc.name) + '" onclick="_openAddProspectForm(this.dataset.n,\'\',\'\')" style="padding:8px 16px;background:rgba(59,130,246,0.12);border:1px solid var(--blue-b);color:var(--blue-b);font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r);font-weight:700">🎯 ADD TO PROSPECTS</button>' +
+      '</div>' +
+    '</div>';
 }
 
 function renderDetail(acc) {

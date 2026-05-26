@@ -7859,7 +7859,18 @@ function fupRemove(accName, safeId) {}
 function fupPin() {}
 function fupAddAccount() {}
 function fupFilter() {}
-function selectAccountByName(name) { const acc = state.accounts.find(a=>a.name===name); if(acc){switchView('accounts');setTimeout(()=>selectAccount(acc),400);} }
+function selectAccountByName(name) {
+  const acc = state.accounts.find(a=>a.name===name);
+  if (!acc) return;
+  // If the account belongs to a different rep than current view, switch to the right scope first
+  if (isManager() && acc.rep && acc.rep !== state.repId && state.viewAsRep !== '__TEAM_ALL__') {
+    state.viewAsRep = '__TEAM_ALL__';
+  } else if (isAdmin() && state.viewAsRep && state.viewAsRep !== '__TEAM_ALL__' && acc.rep !== state.viewAsRep) {
+    state.viewAsRep = null;
+  }
+  switchView('accounts');
+  setTimeout(()=>selectAccount(acc), 400);
+}
 function fupLogAndDismiss(accName, safeId) {}
 function fupSnoozeMenu(accName, safeId) {}
 function fupSnooze(accName, safeId, days) {}
@@ -12365,7 +12376,7 @@ async function mgrPortfolioReview() {
   var gpDateCol = gpHdrs.find(function(h){ return /INVOICE_DATE/i.test(h); }) || 'INVOICE_DATE';
   var gpRepCol  = gpHdrs.find(function(h){ return /SALES_REP/i.test(h); }) || 'SALES_REP';
   var gpBuyerCol= gpHdrs.find(function(h){ return /BUYER_NAME/i.test(h); }) || 'BUYER_NAME';
-  var allAccs   = (typeof getViewAccounts === 'function' ? getViewAccounts() : null) || state.accounts || [];
+  var allAccs   = state.accounts || [];  // use full list so managers find team rep accounts
   var currentYear = new Date().getFullYear();
 
   var summaries = _MGR_INTEL_TARGETS.map(function(target) {

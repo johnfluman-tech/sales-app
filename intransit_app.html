@@ -5036,208 +5036,549 @@ async function checkUnusualActivity() {
   } catch(e) { /* non-blocking */ }
 }
 
+// ──────────────────────────────────────────────────────────
+//  ACCESS LOG v2 — date/rep/search filters, per-rep cards,
+//  activity chart, anomaly tagging, AI brief, AI row explain,
+//  pagination
+// ──────────────────────────────────────────────────────────
+var _AL_PAGE_SIZE = 50;
+
 async function renderAccessLog() {
   if (!state.isAdmin || state.viewAsRep) {
     document.getElementById('main-content').innerHTML = '<div style="padding:40px;color:var(--text-3)">Admin only.</div>';
     return;
   }
-  const el = document.getElementById('main-content');
+  var el = document.getElementById('main-content');
   el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div style="font-family:var(--mono);letter-spacing:0.15em">LOADING ACCESS LOG...</div></div>';
 
-  let rows = [];
+  var rows = [];
   try {
-    const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!A1:P2000");
+    var raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACCESS_LOG'!A1:P2000");
     if (raw && raw.length > 1) {
-      const hdrs = raw[0];
-      const iTs=hdrs.indexOf('TIMESTAMP'), iEmail=hdrs.indexOf('EMAIL'),
-            iName=hdrs.indexOf('NAME'), iRep=hdrs.indexOf('REP_ID'),
-            iLoc=hdrs.indexOf('LOCATION_CLAIM'), iIp=hdrs.indexOf('IP_ADDRESS'),
-            iCity=hdrs.indexOf('CITY'), iCountry=hdrs.indexOf('COUNTRY'),
-            iOrg=hdrs.indexOf('ORG'), iDev=hdrs.indexOf('DEVICE'),
-            iBrow=hdrs.indexOf('BROWSER'), iTz=hdrs.indexOf('TIMEZONE'),
-            iSusp=hdrs.indexOf('SUSPICIOUS'), iReason=hdrs.indexOf('SUSPICION_REASON');
-      rows = raw.slice(1).reverse().map(r => ({
-        timestamp:  r[iTs]   ||'',
-        email:      r[iEmail]||'',
-        name:       r[iName] ||'',
-        rep:        r[iRep]  ||'',
-        location:   r[iLoc]  ||'',
-        ip:         r[iIp]   ||'',
-        city:       r[iCity] ||'',
-        country:    r[iCountry]||'',
-        org:        r[iOrg]  ||'',
-        device:     r[iDev]  ||'',
-        browser:    r[iBrow] ||'',
-        timezone:   r[iTz]   ||'',
-        suspicious: (r[iSusp]||'').toUpperCase() === 'YES',
-        reason:     r[iReason]||'',
-      }));
+      var hdrs = raw[0];
+      var iTs=hdrs.indexOf('TIMESTAMP'), iEmail=hdrs.indexOf('EMAIL'),
+          iName=hdrs.indexOf('NAME'), iRep=hdrs.indexOf('REP_ID'),
+          iLoc=hdrs.indexOf('LOCATION_CLAIM'), iIp=hdrs.indexOf('IP_ADDRESS'),
+          iCity=hdrs.indexOf('CITY'), iCountry=hdrs.indexOf('COUNTRY'),
+          iOrg=hdrs.indexOf('ORG'), iDev=hdrs.indexOf('DEVICE'),
+          iBrow=hdrs.indexOf('BROWSER'), iTz=hdrs.indexOf('TIMEZONE'),
+          iSusp=hdrs.indexOf('SUSPICIOUS'), iReason=hdrs.indexOf('SUSPICION_REASON');
+      rows = raw.slice(1).reverse().map(function(r) {
+        return {
+          timestamp:  r[iTs]   ||'',
+          email:      r[iEmail]||'',
+          name:       r[iName] ||'',
+          rep:        r[iRep]  ||'',
+          location:   r[iLoc]  ||'',
+          ip:         r[iIp]   ||'',
+          city:       r[iCity] ||'',
+          country:    r[iCountry]||'',
+          org:        r[iOrg]  ||'',
+          device:     r[iDev]  ||'',
+          browser:    r[iBrow] ||'',
+          timezone:   r[iTz]   ||'',
+          suspicious: (r[iSusp]||'').toUpperCase() === 'YES',
+          reason:     r[iReason]||'',
+          tags: []
+        };
+      });
     }
   } catch(e) {
-    // 400 = tab doesn't exist yet — treat as empty (first login will create it)
     if (e.message && (e.message.includes('400') || e.message.includes('Unable to parse range'))) {
-      rows = []; // no data yet — fall through to render empty state
+      rows = [];
     } else {
       el.innerHTML = '<div style="padding:40px;color:var(--red)">Error loading access log: ' + escHtml(e.message) + '</div>';
       return;
     }
   }
 
-  // Also merge any in-memory entries from this session not yet in Sheet
   if (window._accessLogCache) {
-    window._accessLogCache.forEach(c => {
-      if (!rows.find(r => r.isoTime === c.isoTime)) {
-        rows.unshift({ ...c, suspicious: c.isSuspicious });
+    window._accessLogCache.forEach(function(c) {
+      if (!rows.find(function(r) { return r.isoTime === c.isoTime; })) {
+        rows.unshift(Object.assign({}, c, { suspicious: c.isSuspicious, tags: [] }));
       }
     });
   }
 
-  const total    = rows.length;
-  const suspicious = rows.filter(r => r.suspicious).length;
-  const today    = rows.filter(r => r.timestamp && r.timestamp.startsWith(new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'}))).length;
-  const uniqueIPs = new Set(rows.map(r => r.ip).filter(Boolean)).size;
-  const uniqueUsers = new Set(rows.map(r => r.email).filter(Boolean)).size;
+  rows = _alTagAnomalies(rows);
+  window._alRows = rows;
 
-  // Location icon helper
-  const locIcon = l => l==='Office'?'🏢':l==='Home'?'🏠':l==='Travel'?'✈':'📍';
+  if (!window._alDateRange) window._alDateRange = '30d';
+  if (!window._alRepFilter) window._alRepFilter = 'all';
+  if (window._alSearch === undefined) window._alSearch = '';
+  if (!window._alLocFilter) window._alLocFilter = 'all';
+  window._alPage = 0;
 
-  el.innerHTML = `
-  <div style="flex:1;overflow-y:auto;padding:24px">
-
-    <!-- KPI row -->
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px">
-      <div class="stat-card">
-        <div class="stat-label">Total Logins</div>
-        <div class="stat-value blue">${total}</div>
-        <div class="stat-sub">all time</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Today</div>
-        <div class="stat-value">${today}</div>
-        <div class="stat-sub">sessions today</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Unique Users</div>
-        <div class="stat-value">${uniqueUsers}</div>
-        <div class="stat-sub">distinct emails</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Unique IPs</div>
-        <div class="stat-value">${uniqueIPs}</div>
-        <div class="stat-sub">IP addresses</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Suspicious</div>
-        <div class="stat-value ${suspicious>0?'red':''}">${suspicious}</div>
-        <div class="stat-sub">flagged sessions</div>
-      </div>
-    </div>
-
-    ${suspicious > 0 ? `
-    <!-- Suspicious alerts -->
-    <div style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.35);border-left:4px solid var(--red);border-radius:var(--r2);padding:14px 18px;margin-bottom:20px">
-      <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--red);margin-bottom:8px">⚠ SUSPICIOUS ACTIVITY — ${suspicious} FLAG${suspicious!==1?'S':''}</div>
-      ${rows.filter(r=>r.suspicious).map(r=>`
-      <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;margin-bottom:6px;display:flex;gap:14px;align-items:flex-start">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:12px;font-weight:600;margin-bottom:2px">${escHtml(r.email)} <span style="font-family:var(--mono);font-size:10px;color:var(--text-3)">${escHtml(r.rep)}</span></div>
-          <div style="font-size:11px;color:var(--red);margin-bottom:2px">⚠ ${escHtml(r.reason)}</div>
-          <div style="font-size:11px;color:var(--text-3)">${escHtml(r.timestamp)} · ${locIcon(r.location)} ${escHtml(r.location)} · ${escHtml(r.ip)} · ${escHtml(r.city)}, ${escHtml(r.country)}</div>
-        </div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text-3);white-space:nowrap">${escHtml(r.device)}<br>${escHtml(r.browser)}</div>
-      </div>`).join('')}
-    </div>` : ''}
-
-    <!-- Filter row -->
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
-      <button class="filter-btn active" onclick="filterAccessLog('all',this)">ALL (${total})</button>
-      <button class="filter-btn" onclick="filterAccessLog('suspicious',this)">⚠ SUSPICIOUS (${suspicious})</button>
-      <button class="filter-btn" onclick="filterAccessLog('office',this)">🏢 OFFICE</button>
-      <button class="filter-btn" onclick="filterAccessLog('home',this)">🏠 HOME</button>
-      <button class="filter-btn" onclick="filterAccessLog('travel',this)">✈ TRAVEL</button>
-      <button class="filter-btn" onclick="filterAccessLog('other',this)">📍 OTHER</button>
-      <button onclick="exportAccessLog()" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:4px 12px;cursor:pointer;border-radius:var(--r)">⬇ EXPORT CSV</button>
-    </div>
-
-    <!-- Access log table -->
-    <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">
-      <table class="data-table" id="access-log-table" style="width:100%">
-        <thead><tr>
-          <th>Time</th>
-          <th>User</th>
-          <th>Rep</th>
-          <th>Location Claim</th>
-          <th>IP Address</th>
-          <th>City / Country</th>
-          <th>Device</th>
-          <th>Status</th>
-        </tr></thead>
-        <tbody id="access-log-body">
-          ${rows.map(r => `
-          <tr data-location="${escHtml(r.location.toLowerCase())}" data-suspicious="${r.suspicious}" style="${r.suspicious ? 'background:rgba(220,38,38,0.05)' : ''}">
-            <td class="mono" style="font-size:11px;white-space:nowrap;color:var(--text-3)">${escHtml(r.timestamp)}</td>
-            <td style="font-size:11px">
-              <div style="font-weight:500">${escHtml(r.name||r.email)}</div>
-              <div style="font-size:10px;color:var(--text-3);font-family:var(--mono)">${escHtml(r.email)}</div>
-            </td>
-            <td class="mono" style="font-size:11px">${escHtml(r.rep)}</td>
-            <td style="font-size:12px">${locIcon(r.location)} ${escHtml(r.location)}</td>
-            <td class="mono" style="font-size:11px;color:var(--text-2)">${escHtml(r.ip)}</td>
-            <td style="font-size:11px">
-              <div>${escHtml(r.city)}</div>
-              <div style="font-size:10px;color:var(--text-3)">${escHtml(r.country)}</div>
-            </td>
-            <td style="font-size:10px;color:var(--text-3)">
-              <div>${escHtml(r.device)}</div>
-              <div>${escHtml(r.browser)}</div>
-            </td>
-            <td>
-              ${r.suspicious
-                ? `<div style="display:inline-block;background:rgba(220,38,38,0.12);color:var(--red);font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:10px;font-weight:700" title="${escHtml(r.reason)}">⚠ FLAGGED</div>
-                   <div style="font-size:10px;color:var(--red);margin-top:2px">${escHtml(r.reason.slice(0,50))}</div>`
-                : '<div style="display:inline-block;background:rgba(34,197,94,0.12);color:var(--green);font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:10px">✓ NORMAL</div>'
-              }
-              ${isAdmin() && !state.viewAsRep && r.rep && r.rep !== 'FJohn' && r.rep !== 'ADMIN'
-                ? `<br><button onclick="forceLogoutUser('${escHtml(r.rep)}','${escHtml(r.email)}')" style="margin-top:4px;background:transparent;border:1px solid rgba(239,68,68,0.4);color:var(--red);font-family:var(--mono);font-size:9px;padding:2px 7px;cursor:pointer;border-radius:2px">⏏ Force Logout</button>`
-                : ''}
-            </td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-      ${rows.length === 0 ? '<div style="padding:40px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">No access records yet — records appear after first login with location claim</div>' : ''}
-    </div>
-  </div>`;
+  _alBuildView();
 }
 
-function filterAccessLog(type, btn) {
-  document.querySelectorAll('[onclick*="filterAccessLog"]').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  const rows = document.querySelectorAll('#access-log-body tr');
-  rows.forEach(row => {
-    const loc = row.dataset.location || '';
-    const susp = row.dataset.suspicious === 'true';
-    let show = true;
-    if (type === 'suspicious') show = susp;
-    else if (type === 'office')  show = loc === 'office';
-    else if (type === 'home')    show = loc === 'home';
-    else if (type === 'travel')  show = loc === 'travel' || loc === 'travel / field';
-    else if (type === 'other')   show = loc !== 'office' && loc !== 'home' && (loc.includes('travel') || loc === 'other' || (!['office','home'].includes(loc)));
-    row.style.display = show ? '' : 'none';
+function _alTagAnomalies(rows) {
+  var repDevices = {};
+  var chrono = rows.slice().reverse();
+  chrono.forEach(function(r) {
+    var dk = ((r.device||'') + '|' + (r.browser||'')).toLowerCase();
+    if (!repDevices[r.rep]) repDevices[r.rep] = [];
+    r._newDevice = repDevices[r.rep].indexOf(dk) === -1;
+    if (r._newDevice) repDevices[r.rep].push(dk);
   });
+
+  var repDayMap = {};
+  chrono.forEach(function(r) {
+    var dm = (r.timestamp||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (!dm) return;
+    var dayKey = r.rep + '|' + dm[1] + dm[2] + dm[3];
+    if (!repDayMap[dayKey]) repDayMap[dayKey] = new Set();
+    if (r.city && r.city !== 'unknown') repDayMap[dayKey].add(r.city);
+  });
+
+  rows.forEach(function(r) {
+    r.tags = [];
+    if (r.suspicious) r.tags.push('SUSPICIOUS');
+    var hm = (r.timestamp||'').match(/,\s*(\d+):/);
+    if (hm) {
+      var hour = parseInt(hm[1]);
+      if (hour < 6 || hour >= 22) r.tags.push('AFTER_HOURS');
+    }
+    var dm2 = (r.timestamp||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (dm2) {
+      var d = new Date(parseInt(dm2[3]), parseInt(dm2[1])-1, parseInt(dm2[2]));
+      if (d.getDay() === 0 || d.getDay() === 6) r.tags.push('WEEKEND');
+    }
+    if (r._newDevice) r.tags.push('NEW_DEVICE');
+    if (dm2) {
+      var dayKey2 = r.rep + '|' + dm2[1] + dm2[2] + dm2[3];
+      if (repDayMap[dayKey2] && repDayMap[dayKey2].size > 1) r.tags.push('MULTI_LOCATION');
+    }
+  });
+  return rows;
 }
+
+function _alBuildView() {
+  var el = document.getElementById('main-content');
+  var rows = window._alRows || [];
+
+  var total      = rows.length;
+  var suspicious = rows.filter(function(r) { return r.suspicious; }).length;
+  var anomalies  = rows.filter(function(r) { return r.tags && r.tags.some(function(t) { return ['AFTER_HOURS','WEEKEND','NEW_DEVICE','MULTI_LOCATION'].includes(t); }); }).length;
+  var todayStr   = new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+  var today      = rows.filter(function(r) { return (r.timestamp||'').startsWith(todayStr); }).length;
+  var uniqueIPs  = new Set(rows.map(function(r) { return r.ip; }).filter(Boolean)).size;
+  var uniqueUsers= new Set(rows.map(function(r) { return r.email; }).filter(Boolean)).size;
+
+  var rangeHtml = ['7d','30d','90d','all'].map(function(r) {
+    var lbl = r === 'all' ? 'ALL TIME' : r.toUpperCase();
+    var active = window._alDateRange === r;
+    return '<button onclick="accessLogDateRange(\'' + r + '\')" data-alrange="' + r + '" style="background:' + (active?'var(--blue-b)':'transparent') + ';color:' + (active?'#fff':'var(--text-2)') + ';border:none;font-family:var(--mono);font-size:9px;padding:4px 10px;cursor:pointer;border-radius:3px;letter-spacing:0.1em">' + lbl + '</button>';
+  }).join('');
+
+  var repOpts = '<option value="all"' + (window._alRepFilter==='all'?' selected':'') + '>All Reps</option>';
+  (CONFIG.REPS||[]).forEach(function(r) {
+    repOpts += '<option value="' + escHtml(r) + '"' + (window._alRepFilter===r?' selected':'') + '>' + escHtml(r) + '</option>';
+  });
+
+  var repCards = _alRepCards(rows);
+  var chartHtml = _alActivityChart(_alBuildChartData(rows, 30));
+
+  el.innerHTML =
+    '<div style="flex:1;overflow-y:auto;padding:24px" id="al-scroll">' +
+
+    '<div style="display:flex;gap:8px;align-items:center;margin-bottom:20px;flex-wrap:wrap">' +
+      '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:3px;display:flex;gap:2px">' + rangeHtml + '</div>' +
+      '<select onchange="accessLogRepFilter(this.value)" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:5px 8px;border-radius:var(--r);cursor:pointer">' + repOpts + '</select>' +
+      '<input id="al-search-input" type="text" placeholder="Search email, IP, city..." value="' + escHtml(window._alSearch||'') + '" oninput="accessLogSearch()" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:5px 10px;border-radius:var(--r);width:220px">' +
+      '<button onclick="exportAccessLog()" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:5px 12px;cursor:pointer;border-radius:var(--r)">⬇ EXPORT CSV</button>' +
+      '<button onclick="accessLogAIBrief()" style="background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.4);color:#a78bfa;font-family:var(--mono);font-size:9px;padding:5px 12px;cursor:pointer;border-radius:var(--r)">🤖 AI SECURITY BRIEF</button>' +
+    '</div>' +
+
+    '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px">' +
+      '<div class="stat-card"><div class="stat-label">Total Logins</div><div class="stat-value blue">' + total + '</div><div class="stat-sub">all time</div></div>' +
+      '<div class="stat-card"><div class="stat-label">Today</div><div class="stat-value">' + today + '</div><div class="stat-sub">sessions</div></div>' +
+      '<div class="stat-card"><div class="stat-label">Unique Users</div><div class="stat-value">' + uniqueUsers + '</div><div class="stat-sub">distinct emails</div></div>' +
+      '<div class="stat-card"><div class="stat-label">Unique IPs</div><div class="stat-value">' + uniqueIPs + '</div><div class="stat-sub">IP addresses</div></div>' +
+      '<div class="stat-card"><div class="stat-label">Suspicious</div><div class="stat-value ' + (suspicious>0?'red':'') + '">' + suspicious + '</div><div class="stat-sub">flagged</div></div>' +
+      '<div class="stat-card"><div class="stat-label">Anomalies</div><div class="stat-value ' + (anomalies>0?'gold':'') + '">' + anomalies + '</div><div class="stat-sub">after-hrs/device</div></div>' +
+    '</div>' +
+
+    '<div id="al-ai-panel" style="display:none;background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.3);border-radius:var(--r2);padding:16px 20px;margin-bottom:20px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+        '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:#a78bfa">🤖 AI SECURITY BRIEF</div>' +
+        '<button onclick="document.getElementById(\'al-ai-panel\').style.display=\'none\'" style="background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:14px">✕</button>' +
+      '</div>' +
+      '<div id="al-ai-content" style="font-size:13px;line-height:1.65;color:var(--text)"></div>' +
+    '</div>' +
+
+    '<div id="al-row-ai-panel" style="display:none;background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.3);border-radius:var(--r2);padding:16px 20px;margin-bottom:20px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+        '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--blue-b)">🤖 ROW ANALYSIS</div>' +
+        '<button onclick="document.getElementById(\'al-row-ai-panel\').style.display=\'none\'" style="background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:14px">✕</button>' +
+      '</div>' +
+      '<div id="al-row-ai-content" style="font-size:13px;line-height:1.65;color:var(--text)"></div>' +
+    '</div>' +
+
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:10px">REP ACTIVITY SUMMARY</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">' + repCards + '</div>' +
+    '</div>' +
+
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:16px;margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:12px">LOGIN ACTIVITY — LAST 30 DAYS</div>' +
+      chartHtml +
+    '</div>' +
+
+    '<div id="al-table-wrapper"></div>' +
+    '</div>';
+
+  _alApplyFilters();
+}
+
+function _alRepCards(rows) {
+  var reps = CONFIG.REPS || [];
+  var now = new Date();
+  var monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  return reps.map(function(rep) {
+    var repRows = rows.filter(function(r) { return r.rep === rep; });
+    var lastRow = repRows[0];
+    var thisMonthCount = repRows.filter(function(r) {
+      var dm = (r.timestamp||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (!dm) return false;
+      var d = new Date(parseInt(dm[3]), parseInt(dm[1])-1, parseInt(dm[2]));
+      return d >= monthStart;
+    }).length;
+    var locCounts = {};
+    repRows.forEach(function(r) { if (r.location) locCounts[r.location] = (locCounts[r.location]||0)+1; });
+    var usualLoc = Object.keys(locCounts).sort(function(a,b) { return locCounts[b]-locCounts[a]; })[0] || '—';
+    var suspCount = repRows.filter(function(r) { return r.suspicious; }).length;
+    var anomCount = repRows.filter(function(r) { return r.tags && r.tags.some(function(t) { return ['AFTER_HOURS','NEW_DEVICE','MULTI_LOCATION'].includes(t); }); }).length;
+    var risk = suspCount > 0 ? 'HIGH' : anomCount > 2 ? 'MEDIUM' : 'LOW';
+    var riskColor = risk==='HIGH'?'var(--red)':risk==='MEDIUM'?'#f59e0b':'var(--green)';
+    var riskBg = risk==='HIGH'?'rgba(220,38,38,0.1)':risk==='MEDIUM'?'rgba(245,158,11,0.1)':'rgba(34,197,94,0.1)';
+    var locIco = function(l) { return l==='Office'?'🏢':l==='Home'?'🏠':l&&l.toLowerCase().includes('travel')?'✈':'📍'; };
+    var lastLogin = '—', lastLoc = '';
+    if (lastRow) {
+      var dm3 = (lastRow.timestamp||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      lastLogin = dm3 ? dm3[1]+'/'+dm3[2]+'/'+dm3[3] : (lastRow.timestamp||'').slice(0,10);
+      lastLoc = locIco(lastRow.location);
+    }
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:12px 14px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">' +
+        '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text)">' + escHtml(rep) + '</div>' +
+        '<div style="background:' + riskBg + ';color:' + riskColor + ';font-family:var(--mono);font-size:8px;padding:2px 7px;border-radius:10px;font-weight:700">' + risk + '</div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--text-2);margin-bottom:3px">Last login: <span style="color:var(--text)">' + lastLoc + ' ' + escHtml(lastLogin) + '</span></div>' +
+      '<div style="font-size:11px;color:var(--text-2);margin-bottom:3px">This month: <span style="color:var(--text)">' + thisMonthCount + ' sessions</span></div>' +
+      '<div style="font-size:11px;color:var(--text-2)">Usual: <span style="color:var(--text)">' + locIco(usualLoc) + ' ' + escHtml(usualLoc) + '</span></div>' +
+    '</div>';
+  }).join('');
+}
+
+function _alBuildChartData(rows, days) {
+  var result = [];
+  var now = new Date();
+  for (var i = days - 1; i >= 0; i--) {
+    var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    var m = String(d.getMonth()+1).padStart(2,'0');
+    var dy = String(d.getDate()).padStart(2,'0');
+    var y = d.getFullYear();
+    var dStr = m + '/' + dy + '/' + y;
+    var dayRows = rows.filter(function(r) { return (r.timestamp||'').startsWith(dStr); });
+    result.push({
+      label: (d.getMonth()+1) + '/' + d.getDate(),
+      count: dayRows.length,
+      hasSusp: dayRows.some(function(r) { return r.suspicious; }),
+      hasAnom: dayRows.some(function(r) { return r.tags && r.tags.some(function(t) { return ['AFTER_HOURS','WEEKEND','NEW_DEVICE','MULTI_LOCATION'].includes(t); }); })
+    });
+  }
+  return result;
+}
+
+function _alActivityChart(data) {
+  var maxVal = Math.max.apply(null, data.map(function(d) { return d.count; })) || 1;
+  var barW = 18, gap = 4, h = 80;
+  var w = data.length * (barW + gap);
+  var svgBars = data.map(function(d, i) {
+    var barH = d.count > 0 ? Math.max(4, Math.round((d.count / maxVal) * h)) : 0;
+    var x = i * (barW + gap);
+    var y = h - barH;
+    var fill = d.hasSusp ? '#ef4444' : d.hasAnom ? '#f59e0b' : '#3b82f6';
+    return '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + barH + '" fill="' + fill + '" opacity="0.75" rx="2"><title>' + d.label + ': ' + d.count + ' login' + (d.count!==1?'s':'') + '</title></rect>';
+  }).join('');
+  var labels = data.map(function(d, i) {
+    if (i % 5 !== 0) return '';
+    return '<text x="' + (i*(barW+gap)+barW/2) + '" y="' + (h+14) + '" text-anchor="middle" font-size="9" fill="#6b7280" font-family="monospace">' + escHtml(d.label) + '</text>';
+  }).join('');
+  return '<div style="overflow-x:auto"><svg viewBox="0 0 ' + w + ' ' + (h+20) + '" style="width:100%;max-width:' + w + 'px;height:' + (h+20) + 'px">' + svgBars + labels + '</svg></div>' +
+    '<div style="display:flex;gap:16px;margin-top:8px">' +
+      '<div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-3)"><div style="width:10px;height:10px;background:#3b82f6;border-radius:2px;opacity:0.75"></div>Normal</div>' +
+      '<div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-3)"><div style="width:10px;height:10px;background:#f59e0b;border-radius:2px;opacity:0.75"></div>Anomaly</div>' +
+      '<div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-3)"><div style="width:10px;height:10px;background:#ef4444;border-radius:2px;opacity:0.75"></div>Suspicious</div>' +
+    '</div>';
+}
+
+function _alApplyFilters() {
+  var rows = window._alRows || [];
+  var cutoff = null;
+  if (window._alDateRange && window._alDateRange !== 'all') {
+    var daysBack = parseInt(window._alDateRange);
+    cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysBack);
+    cutoff.setHours(0,0,0,0);
+  }
+  var search = (window._alSearch||'').toLowerCase().trim();
+  var filtered = rows.filter(function(r) {
+    if (cutoff) {
+      var dm = (r.timestamp||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (dm) {
+        var d = new Date(parseInt(dm[3]), parseInt(dm[1])-1, parseInt(dm[2]));
+        if (d < cutoff) return false;
+      }
+    }
+    if (window._alRepFilter && window._alRepFilter !== 'all' && r.rep !== window._alRepFilter) return false;
+    if (search) {
+      var hay = ((r.email||'')+(r.name||'')+(r.ip||'')+(r.city||'')+(r.country||'')+(r.rep||'')+(r.location||'')+(r.org||'')).toLowerCase();
+      if (hay.indexOf(search) === -1) return false;
+    }
+    var loc = (window._alLocFilter||'all');
+    var rl = (r.location||'').toLowerCase();
+    if (loc === 'suspicious') return r.suspicious;
+    if (loc === 'office') return rl === 'office';
+    if (loc === 'home') return rl === 'home';
+    if (loc === 'travel') return rl.includes('travel');
+    if (loc === 'after_hours') return r.tags && r.tags.indexOf('AFTER_HOURS') > -1;
+    if (loc === 'weekend') return r.tags && r.tags.indexOf('WEEKEND') > -1;
+    if (loc === 'new_device') return r.tags && r.tags.indexOf('NEW_DEVICE') > -1;
+    if (loc === 'multi_loc') return r.tags && r.tags.indexOf('MULTI_LOCATION') > -1;
+    if (loc === 'anomaly') return r.tags && r.tags.some(function(t) { return ['AFTER_HOURS','WEEKEND','NEW_DEVICE','MULTI_LOCATION'].includes(t); });
+    return true;
+  });
+  window._alFiltered = filtered;
+  window._alPage = 0;
+  _alRenderTable();
+}
+
+function _alRenderTable() {
+  var wrapper = document.getElementById('al-table-wrapper');
+  if (!wrapper) return;
+  var filtered = window._alFiltered || [];
+  var page = window._alPage || 0;
+  var total = filtered.length;
+  var pages = Math.ceil(total / _AL_PAGE_SIZE);
+  var start = page * _AL_PAGE_SIZE;
+  var pageRows = filtered.slice(start, start + _AL_PAGE_SIZE);
+
+  var suspicious = filtered.filter(function(r) { return r.suspicious; }).length;
+  var anomalies = filtered.filter(function(r) { return r.tags && r.tags.some(function(t) { return ['AFTER_HOURS','WEEKEND','NEW_DEVICE','MULTI_LOCATION'].includes(t); }); }).length;
+
+  var locIco = function(l) { return l==='Office'?'🏢':l==='Home'?'🏠':(l&&l.toLowerCase().includes('travel'))?'✈':'📍'; };
+
+  var tagColors = {
+    'SUSPICIOUS':    'rgba(220,38,38,0.12);color:#ef4444',
+    'AFTER_HOURS':   'rgba(245,158,11,0.12);color:#f59e0b',
+    'WEEKEND':       'rgba(245,158,11,0.12);color:#f59e0b',
+    'NEW_DEVICE':    'rgba(59,130,246,0.12);color:#60a5fa',
+    'MULTI_LOCATION':'rgba(139,92,246,0.12);color:#a78bfa'
+  };
+  var tagLabels = {
+    'SUSPICIOUS':'⚠ SUSPICIOUS', 'AFTER_HOURS':'🌙 AFTER HRS',
+    'WEEKEND':'📅 WEEKEND', 'NEW_DEVICE':'📱 NEW DEVICE', 'MULTI_LOCATION':'🌍 MULTI-LOC'
+  };
+  var tagBadge = function(tag) {
+    var c = tagColors[tag] || 'rgba(100,100,100,0.1);color:var(--text-3)';
+    return '<span style="display:inline-block;background:' + c + ';font-family:var(--mono);font-size:8px;padding:1px 6px;border-radius:10px;margin:1px;white-space:nowrap">' + (tagLabels[tag]||tag) + '</span>';
+  };
+
+  var locBtns = [
+    ['all','ALL ('+total+')'],
+    ['suspicious','⚠ SUSP ('+suspicious+')'],
+    ['office','🏢 OFFICE'],
+    ['home','🏠 HOME'],
+    ['travel','✈ TRAVEL'],
+    ['after_hours','🌙 AFTER HRS'],
+    ['weekend','📅 WEEKEND'],
+    ['new_device','📱 NEW DEVICE'],
+    ['multi_loc','🌍 MULTI-LOC'],
+    ['anomaly','⚡ ANOMALY ('+anomalies+')']
+  ].map(function(b) {
+    var a = window._alLocFilter === b[0];
+    return '<button onclick="accessLogLocFilter(\'' + b[0] + '\',this)" class="filter-btn' + (a?' active':'') + '" style="font-size:9px">' + b[1] + '</button>';
+  }).join('');
+
+  var trows = pageRows.map(function(r, i) {
+    var rowIdx = start + i;
+    var rowBg = r.suspicious ? 'background:rgba(220,38,38,0.04);' : '';
+    var badges = (r.tags||[]).map(tagBadge).join('');
+    var forceBtn = (isAdmin() && !state.viewAsRep && r.rep && r.rep !== 'FJohn' && r.rep !== 'ADMIN')
+      ? '<div style="margin-top:3px"><button onclick="forceLogoutUser(\'' + escHtml(r.rep) + '\',\'' + escHtml(r.email) + '\')" style="background:transparent;border:1px solid rgba(239,68,68,0.4);color:var(--red);font-family:var(--mono);font-size:8px;padding:2px 7px;cursor:pointer;border-radius:2px">⏏ Force Logout</button></div>'
+      : '';
+    return '<tr style="' + rowBg + '">' +
+      '<td class="mono" style="font-size:10px;white-space:nowrap;color:var(--text-3)">' + escHtml(r.timestamp) + '</td>' +
+      '<td style="font-size:11px"><div style="font-weight:500">' + escHtml(r.name||r.email) + '</div><div style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml(r.email) + '</div></td>' +
+      '<td class="mono" style="font-size:11px">' + escHtml(r.rep) + '</td>' +
+      '<td style="font-size:12px">' + locIco(r.location) + ' ' + escHtml(r.location) + '</td>' +
+      '<td class="mono" style="font-size:11px;color:var(--text-2)">' + escHtml(r.ip) + '</td>' +
+      '<td style="font-size:11px"><div>' + escHtml(r.city) + '</div><div style="font-size:10px;color:var(--text-3)">' + escHtml(r.country) + '</div></td>' +
+      '<td style="font-size:10px;color:var(--text-3)"><div>' + escHtml(r.device) + '</div><div>' + escHtml(r.browser) + '</div></td>' +
+      '<td style="min-width:150px">' + badges + forceBtn + '</td>' +
+      '<td style="text-align:center"><button data-ridx="' + rowIdx + '" onclick="accessLogAIRow(this.dataset.ridx)" style="background:transparent;border:1px solid rgba(139,92,246,0.3);color:#a78bfa;font-family:var(--mono);font-size:8px;padding:2px 8px;cursor:pointer;border-radius:var(--r)">🤖</button></td>' +
+      '</tr>';
+  }).join('');
+
+  var paginHtml = '';
+  if (pages > 1) {
+    var btns = [];
+    btns.push('<button onclick="accessLogSetPage(0)" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:3px">«</button>');
+    for (var p = 0; p < Math.min(pages, 20); p++) {
+      var pA = p === page ? 'background:var(--blue-b);color:#fff;border-color:var(--blue-b);' : 'background:transparent;color:var(--text-3);border-color:var(--border);';
+      btns.push('<button onclick="accessLogSetPage(' + p + ')" style="' + pA + 'border:1px solid;font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:3px">' + (p+1) + '</button>');
+    }
+    btns.push('<button onclick="accessLogSetPage(' + (pages-1) + ')" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:3px">»</button>');
+    paginHtml = '<div style="display:flex;gap:4px;align-items:center;justify-content:center;padding:14px;flex-wrap:wrap">' + btns.join('') + '</div>';
+  }
+
+  var showingEnd = Math.min(start + _AL_PAGE_SIZE, total);
+  var showingStart = total > 0 ? start + 1 : 0;
+
+  wrapper.innerHTML =
+    '<div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;flex-wrap:wrap">' + locBtns + '</div>' +
+    '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-bottom:8px">Showing ' + showingStart + '–' + showingEnd + ' of ' + total + ' records</div>' +
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">' +
+      '<table class="data-table" id="access-log-table" style="width:100%">' +
+        '<thead><tr><th>Time</th><th>User</th><th>Rep</th><th>Location</th><th>IP Address</th><th>City / Country</th><th>Device</th><th>Tags</th><th></th></tr></thead>' +
+        '<tbody>' + trows + '</tbody>' +
+      '</table>' +
+      (total === 0 ? '<div style="padding:40px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">No records match the current filters</div>' : '') +
+    '</div>' +
+    paginHtml;
+}
+
+function accessLogDateRange(r) {
+  window._alDateRange = r;
+  window._alPage = 0;
+  document.querySelectorAll('[data-alrange]').forEach(function(b) {
+    var active = b.dataset.alrange === r;
+    b.style.background = active ? 'var(--blue-b)' : 'transparent';
+    b.style.color = active ? '#fff' : 'var(--text-2)';
+  });
+  _alApplyFilters();
+}
+
+function accessLogRepFilter(r) {
+  window._alRepFilter = r;
+  window._alPage = 0;
+  _alApplyFilters();
+}
+
+function accessLogSearch() {
+  window._alSearch = (document.getElementById('al-search-input')||{value:''}).value || '';
+  window._alPage = 0;
+  _alApplyFilters();
+}
+
+function accessLogLocFilter(type) {
+  window._alLocFilter = type;
+  window._alPage = 0;
+  _alApplyFilters();
+}
+
+function accessLogSetPage(n) {
+  window._alPage = n;
+  _alRenderTable();
+  var sc = document.getElementById('al-scroll');
+  if (sc) sc.scrollTop = 0;
+}
+
+async function accessLogAIBrief() {
+  var panel = document.getElementById('al-ai-panel');
+  var content = document.getElementById('al-ai-content');
+  if (!panel || !content) return;
+  panel.style.display = 'block';
+  content.innerHTML = '<span style="font-family:var(--mono);font-size:10px;color:#a78bfa;letter-spacing:0.1em">Analyzing security logs...</span>';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  var rows = window._alFiltered || window._alRows || [];
+  var cutoff30 = new Date(); cutoff30.setDate(cutoff30.getDate() - 30); cutoff30.setHours(0,0,0,0);
+  var recent = rows.filter(function(r) {
+    var dm = (r.timestamp||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (!dm) return false;
+    return new Date(parseInt(dm[3]), parseInt(dm[1])-1, parseInt(dm[2])) >= cutoff30;
+  });
+
+  var repSummary = {};
+  recent.forEach(function(r) {
+    if (!repSummary[r.rep]) repSummary[r.rep] = { count:0, locs:[], ips:new Set(), susp:0, flags:[] };
+    var s = repSummary[r.rep];
+    s.count++;
+    if (r.location && s.locs.indexOf(r.location) === -1) s.locs.push(r.location);
+    if (r.ip) s.ips.add(r.ip);
+    if (r.suspicious) s.susp++;
+    (r.tags||[]).forEach(function(t) { if (s.flags.indexOf(t) === -1) s.flags.push(t); });
+  });
+
+  var txt = 'Access log summary — last 30 days:\nTotal logins: ' + recent.length + '\nSuspicious events: ' + recent.filter(function(r) { return r.suspicious; }).length + '\n\nPer-rep:\n';
+  Object.keys(repSummary).forEach(function(rep) {
+    var s = repSummary[rep];
+    txt += '- ' + rep + ': ' + s.count + ' logins, ' + s.ips.size + ' IP(s), locations: ' + (s.locs.join('/')||'none') + (s.susp>0?', SUSPICIOUS:'+s.susp:'') + (s.flags.length>0?', flags:'+s.flags.join(','):'') + '\n';
+  });
+  var flagged = recent.filter(function(r) { return r.suspicious || (r.tags && r.tags.length > 0); });
+  if (flagged.length > 0) {
+    txt += '\nFlagged events (up to 15):\n';
+    flagged.slice(0,15).forEach(function(r) {
+      txt += '- ' + r.rep + ' | ' + r.timestamp + ' | ' + r.city + ',' + r.country + ' | [' + (r.tags||[]).join(',') + '] ' + (r.reason||'') + '\n';
+    });
+  }
+
+  try {
+    var aiRes = await callAI({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 900,
+      messages: [{ role: 'user', content: 'You are a security analyst reviewing access logs for Intransit Technologies, a small B2B sales team of 8 reps. Review this summary and provide: (1) 2-3 sentence overall security posture assessment, (2) any per-rep patterns or concerns, (3) 2-3 specific action recommendations. Be concise and practical. Plain English — audience is a non-technical sales manager.\n\n' + txt }]
+    });
+    var resp = (aiRes.content && aiRes.content[0] && aiRes.content[0].text) || 'No response';
+    content.innerHTML = resp.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  } catch(e) {
+    content.innerHTML = '<span style="color:var(--red)">AI error: ' + escHtml(e.message) + '</span>';
+  }
+}
+
+async function accessLogAIRow(idx) {
+  var panel = document.getElementById('al-row-ai-panel');
+  var content = document.getElementById('al-row-ai-content');
+  if (!panel || !content) return;
+  panel.style.display = 'block';
+  content.innerHTML = '<span style="font-family:var(--mono);font-size:10px;color:var(--blue-b);letter-spacing:0.1em">Analyzing this login event...</span>';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  var r = (window._alFiltered || window._alRows || [])[parseInt(idx)];
+  if (!r) { content.innerHTML = 'Row not found.'; return; }
+
+  var rowDesc = 'Login event:\nUser: ' + r.name + ' (' + r.email + '), Rep: ' + r.rep + '\nTime: ' + r.timestamp + '\nLocation claimed: ' + r.location + '\nIP: ' + r.ip + '\nCity/Country: ' + r.city + ', ' + r.country + '\nISP/Org: ' + r.org + '\nDevice: ' + r.device + ' | Browser: ' + r.browser + '\nTimezone: ' + r.timezone + '\nAnomaly tags: ' + ((r.tags||[]).join(', ')||'none') + '\nFlagged suspicious: ' + (r.suspicious ? 'YES — ' + r.reason : 'NO');
+
+  try {
+    var aiRes = await callAI({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{ role: 'user', content: 'You are a security analyst reviewing a single login event for a small B2B sales company. In 4-6 sentences: (1) risk level (Low/Medium/High) and why, (2) whether the anomaly flags are concerning or routine, (3) recommended action if any. Be concise and practical.\n\n' + rowDesc }]
+    });
+    var resp = (aiRes.content && aiRes.content[0] && aiRes.content[0].text) || 'No response';
+    content.innerHTML = '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-bottom:8px">ANALYZING: ' + escHtml(r.email) + ' · ' + escHtml(r.timestamp) + '</div>' + resp.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  } catch(e) {
+    content.innerHTML = '<span style="color:var(--red)">AI error: ' + escHtml(e.message) + '</span>';
+  }
+}
+
+function filterAccessLog(type, btn) { accessLogLocFilter(type); }
 
 function exportAccessLog() {
-  const table = document.getElementById('access-log-table');
+  var table = document.getElementById('access-log-table');
   if (!table) { showToast('No data to export', 'error'); return; }
-  const rows = [];
-  table.querySelectorAll('tr').forEach(tr => {
-    const cells = Array.from(tr.querySelectorAll('th,td')).map(c => '"' + c.innerText.replace(/"/g,'""').replace(/\n/g,' ') + '"');
+  var rows = [];
+  table.querySelectorAll('tr').forEach(function(tr) {
+    var cells = Array.from(tr.querySelectorAll('th,td')).map(function(c) { return '"' + c.innerText.replace(/"/g,'""').replace(/\n/g,' ') + '"'; });
     if (cells.length) rows.push(cells.join(','));
   });
-  const csv = rows.join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  var csv = rows.join('\n');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
   a.href = url;
   a.download = 'intransit_access_log_' + new Date().toISOString().slice(0,10) + '.csv';
   document.body.appendChild(a); a.click();

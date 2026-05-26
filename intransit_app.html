@@ -11834,6 +11834,35 @@ function mgrIntelLookup(query) {
     });
   }
 
+  // Last resort: synthesize gpRows from _TRANSFER_HISTORY lines when gpCache has no BUYER_NAME match
+  // (covers accounts like Siemens where CRM stores a different legal entity name than GP export)
+  if (!gpRows.length && state.transferHistoryCache) {
+    var _thKey = null, _thBest = 0;
+    var _thSearchKeys = [normQ].concat((accMatches||[]).slice(0,3).map(function(a){ return norm(a.name||''); }));
+    Object.keys(state.transferHistoryCache).forEach(function(k) {
+      var score = _thSearchKeys.reduce(function(s, sq) {
+        var sw = sq.split(/\s+/).filter(function(w){ return w.length > 3; });
+        if (!sw.length) sw = [sq];
+        return s + sw.filter(function(w){ return k.indexOf(w) > -1; }).length;
+      }, 0);
+      if (score > _thBest) { _thBest = score; _thKey = k; }
+    });
+    var _thEntry = (_thKey && _thBest > 0) ? state.transferHistoryCache[_thKey] : null;
+    if (_thEntry && _thEntry.lines && _thEntry.lines.length) {
+      gpRows = _thEntry.lines.map(function(l) {
+        var r = {};
+        r[gpBuyerCol] = _thEntry.displayName || _thKey;
+        r[gpRevCol]   = l.revenue || 0;
+        r[gpDateCol]  = l.date    || '';
+        r[gpRepCol]   = l.rep     || '';
+        r['GP']       = 0;
+        return r;
+      });
+      usedAnyGP = true;
+      console.log('[INTEL] Synthesized', gpRows.length, 'gpRows from _TRANSFER_HISTORY for:', _thEntry.displayName);
+    }
+  }
+
   // Nothing found — show "Did you mean?" suggestions from state.accounts
   if (!accMatches.length && !gpRows.length) {
     var suggestions = allAccs.map(function(a){ return {a:a,score:scoreFn(a.name||'')}; })
@@ -12131,6 +12160,7 @@ function _mgrIntelTransferPartsHtml(query, accMatches, currentRepId) {
   if (!cache) return '<div style="padding:12px 20px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text-3)">&#8987; Pre-transfer history loading...</div>';
   if (!Object.keys(cache).length) return '';
 
+  var _repNames = {CKaren:'Karen Mancebo',BillP:'Bill Pratt',PIan:'Ian Pitman',RMauricio:'Mauricio Rangel',LMancera:'Lizeth Mancera',bcastor:'Brandon Castor',Anolan:'Ana Nolan',Abraham:'Abraham',Arlin:'Arlin'};
   var norm = function(s){ return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim(); };
   var normQ = norm(query);
   var qWords = normQ.split(/\s+/).filter(function(w){ return w.length > 3; });
@@ -12184,18 +12214,22 @@ function _mgrIntelTransferPartsHtml(query, accMatches, currentRepId) {
   var topPre = Object.keys(partMap).sort(function(a,b){ return partMap[b].count - partMap[a].count; }).slice(0,15);
   var totalRevThatYear = yearLines.reduce(function(s,l){ return s+(l.revenue||0); }, 0);
 
+  var crRepName = _repNames[crId] || crId || 'current rep';
+
   // Store for copy function
   window._intelTransferParts = {
     account: displayName,
     year: priorYear || 'pre-transfer',
     transferYear: transferYear,
+    currentRepId: crId,
+    currentRepName: crRepName,
     parts: topPre.map(function(p){ return {part:p, desc:partMap[p].desc, count:partMap[p].count, revenue:partMap[p].revenue}; })
   };
 
   var yearLabel = usedFallback
     ? 'All pre-transfer years (no data for ' + priorYear + ')'
     : priorYear
-      ? priorYear + ' — year before MX team took over' + (transferYear ? ' (' + transferYear + ')' : '')
+      ? priorYear + ' — year before ' + crRepName + ' took over' + (transferYear ? ' (' + transferYear + ')' : '')
       : 'Pre-transfer period (all years)';
 
   var tableHtml = topPre.length > 0
@@ -12222,7 +12256,7 @@ function _mgrIntelTransferPartsHtml(query, accMatches, currentRepId) {
   return '<div style="padding:16px 20px;border-bottom:1px solid var(--border);background:rgba(245,158,11,0.03)">' +
     '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">' +
       '<div>' +
-        '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.12em;color:#f59e0b;font-weight:700;margin-bottom:4px">★ OUTREACH LIST — WHAT THEY WERE BUYING BEFORE ' + escHtml((currentRepId||'current rep').toUpperCase()) + ' TOOK OVER</div>' +
+        '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.12em;color:#f59e0b;font-weight:700;margin-bottom:4px">★ OUTREACH LIST — WHAT THEY WERE BUYING BEFORE ' + escHtml((_repNames[currentRepId]||currentRepId||'Current Rep').toUpperCase()) + ' TOOK OVER</div>' +
         '<div style="font-size:11px;color:var(--text-2);margin-bottom:2px">' + escHtml(yearLabel) + '</div>' +
         '<div style="font-size:10px;color:var(--text-3)">' + yearLines.length + ' line items &nbsp;·&nbsp; <strong style="color:var(--text-2)">$' + formatNum(totalRevThatYear) + '</strong> total revenue that year</div>' +
       '</div>' +
@@ -12239,7 +12273,8 @@ function copyTransferPartsList() {
   var d = window._intelTransferParts;
   if (!d || !d.parts || !d.parts.length) { alert('No parts data available to copy.'); return; }
   var header = 'OUTREACH PARTS LIST — ' + (d.account||'').toUpperCase();
-  var sub    = 'Year: ' + (d.year||'Pre-Transfer').toUpperCase() + (d.transferYear ? ' (before MX team took over in ' + d.transferYear + ')' : '');
+  var _repNm  = d.currentRepName || d.currentRepId || 'current rep';
+  var sub    = 'Year: ' + (d.year||'Pre-Transfer').toUpperCase() + (d.transferYear ? ' (before ' + _repNm + ' took over in ' + d.transferYear + ')' : '');
   var date   = 'Exported: ' + new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
   var divider = '='.repeat(65);
   var colHdr  = 'RANK  PART NUMBER           ORDERS   DESCRIPTION';

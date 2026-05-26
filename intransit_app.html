@@ -1243,8 +1243,9 @@ body::before {
     </div>
         <div class="sidebar-footer">
       <div id="crm-last-update" style="padding:6px 0 10px;margin-bottom:6px;border-bottom:1px solid var(--border)">
-        <div style="font-size:9px;color:var(--text-3);font-family:var(--mono);letter-spacing:0.1em;margin-bottom:3px">DATA LAST UPDATED</div>
+        <div style="font-size:9px;color:var(--text-3);font-family:var(--mono);letter-spacing:0.1em;margin-bottom:3px">CRM DATA LAST UPDATED</div>
         <div id="crm-update-time" style="font-size:12px;font-weight:600;font-family:var(--mono);color:var(--text-2)">Loading...</div>
+        <div id="crm-stale-warn" style="display:none;font-size:9px;color:var(--red);font-family:var(--mono);margin-top:2px">⚠ Scheduler may be down</div>
       </div>
       <button class="signout-btn" onclick="handleSignout()">Sign Out</button>
       <button id="force-logout-btn" onclick="confirmForceLogoutAll()" style="display:none;margin-top:6px;width:100%;padding:8px;background:transparent;border:1px solid rgba(239,68,68,0.5);color:var(--red);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.06em">⏏ LOG OUT ALL</button>
@@ -1966,19 +1967,29 @@ function renderContactsTab(acc) {
       </div>`;
   };
 
-  // AI Next Best Action — moved to bottom so contacts are immediately visible
   const nbaSection = `
-    <div style="margin-top:16px;padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-radius:var(--r)">
+    <div style="padding:10px 12px;background:var(--navy-mid);border:1px solid var(--border);border-radius:var(--r)">
       <button class="nba-btn" style="width:100%" onclick="generateNextBestAction('${escHtml(acc.name)}')">
         ✦ AI — ANALYZE ACCOUNT &amp; RECOMMEND NEXT STEPS
       </button>
       <div id="nba-result-${btoa(encodeURIComponent(acc.name)).replace(/=/g,'')}" style="display:none;margin-top:10px"></div>
     </div>`;
 
-  return nameNote +
-    renderGroup(purchasing, '🛒 Purchasing Contacts', 'var(--blue-bright)') +
-    renderGroup(ap, '💰 AP / Collections Contacts', 'var(--accent)') +
-    nbaSection;
+  const savedNbaH = parseInt(localStorage.getItem('it_contacts_nba_h') || '100');
+
+  // Full-height split layout: contacts (scrollable, flex:1) + drag handle + AI section (resizable from above)
+  // Negative margin cancels detail-body's 16px/18px padding so we fill the full height
+  return '<div style="display:flex;flex-direction:column;height:100%;margin:-16px -18px;overflow:hidden">' +
+    '<div id="contacts-scroll-area" style="flex:1;overflow-y:auto;min-height:80px;padding:10px 18px">' +
+      nameNote +
+      renderGroup(purchasing, '🛒 Purchasing Contacts', 'var(--blue-bright)') +
+      renderGroup(ap, '💰 AP / Collections Contacts', 'var(--accent)') +
+    '</div>' +
+    '<div class="detail-split-h" id="contacts-body-split" title="Drag to resize AI section"></div>' +
+    '<div id="contacts-nba-area" style="height:' + savedNbaH + 'px;min-height:50px;flex-shrink:0;overflow-y:auto;padding:10px 18px;border-top:1px solid var(--border)">' +
+      nbaSection +
+    '</div>' +
+  '</div>';
 }
 
 // ── SAVE CONTACT NOTE ──────────────────────────────────────
@@ -4113,8 +4124,6 @@ function renderDetail(acc) {
       <div class="revenue-year-row">${years.map(y => `<span class="rev-year-item"><span class="rev-year-label">${y}:</span> <span class="rev-year-val ${ (acc.years[y]||0) === 0 ? 'rev-zero' : '' }">$${formatNum(acc.years[y]||0)}</span></span>`).join('')}</div>
     </div>
 
-    <div class="detail-split-h" id="detail-split-h" title="Drag to resize"></div>
-
     <div class="detail-bottom" id="detail-bottom">
       <div class="detail-tabs">
         ${tabs.map(t => `
@@ -4130,11 +4139,10 @@ function renderDetail(acc) {
       ${state.activeDetailTab === 'notes' ? renderNoteInput(acc) : ''}
     </div>
   `;
-  // Rebind splitter after innerHTML reset
+  // Bind inner contacts split if on contacts tab
   setTimeout(() => {
-    const sp = document.getElementById('detail-split-h');
-    if (sp) { sp.onmousedown = startDetailSplit; }
-    restoreDetailSplit();
+    const sp = document.getElementById('contacts-body-split');
+    if (sp) sp.onmousedown = startContactsBodySplit;
   }, 10);
 }
 
@@ -4146,9 +4154,42 @@ function restoreDetailSplit() {
   }
 }
 
+function startContactsBodySplit(e) {
+  e.preventDefault();
+  const splitEl = document.getElementById('contacts-body-split');
+  const nbaArea = document.getElementById('contacts-nba-area');
+  if (!splitEl || !nbaArea) return;
+  splitEl.classList.add('dragging');
+  const startY  = e.clientY;
+  const startH  = nbaArea.getBoundingClientRect().height;
+  const maxH    = (splitEl.parentElement ? splitEl.parentElement.getBoundingClientRect().height : 600) - 80;
+
+  function onMove(ev) {
+    // Drag DOWN → nba shrinks (contacts grow); drag UP → nba grows (contacts shrink)
+    const delta = startY - ev.clientY;
+    const newH  = Math.max(50, Math.min(startH + delta, maxH));
+    nbaArea.style.height    = newH + 'px';
+    nbaArea.style.minHeight = newH + 'px';
+    try { localStorage.setItem('it_contacts_nba_h', newH); } catch(ex) {}
+  }
+  function onUp() {
+    splitEl.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
 function switchDetailTab(tab) {
   state.activeDetailTab = tab;
-  if (state.selectedAccount) { renderDetail(state.selectedAccount); setTimeout(restoreDetailSplit, 10); }
+  if (state.selectedAccount) {
+    renderDetail(state.selectedAccount);
+    setTimeout(() => {
+      const sp = document.getElementById('contacts-body-split');
+      if (sp) sp.onmousedown = startContactsBodySplit;
+    }, 10);
+  }
 }
 
 function renderDetailTab(acc, tab) {
@@ -8409,6 +8450,9 @@ function switchViewAs(rep) {
     if (removalsNav) removalsNav.style.display = showAdminNav ? 'block' : 'none';
     const accessNavEl = document.getElementById('nav-access');
     if (accessNavEl) accessNavEl.style.display = showAdminNav ? 'block' : 'none';
+    // Manager Hub: visible in own admin view or manager simulation; hidden when viewing as regular rep
+    const _mgrHubNav = document.getElementById('nav-manager-hub');
+    if (_mgrHubNav) _mgrHubNav.style.display = showAdminNav ? 'block' : 'none';
     // Suggestions board: only show in own admin view — hidden in all view-as modes
     const _suggNav = document.getElementById('nav-suggestions-board');
     if (_suggNav) _suggNav.style.display = !state.viewAsRep ? 'block' : 'none';
@@ -11300,6 +11344,8 @@ async function apkAcceptAIPicks() {
 
 function renderManagerHub() {
   if (!isManager() && !isAdmin()) { switchView('accounts'); return; }
+  // Block when admin is simulating a regular (non-manager) rep
+  if (isAdmin() && state.viewAsRep && !state.viewingAsManager) { switchView('accounts'); return; }
   var mgrCfg = getManagerConfig();
   // Admin with no managerRole: show all sales reps (exclude FJohn/admin)
   var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan']).filter(function(r){ return r !== 'FJohn'; });
@@ -16807,6 +16853,8 @@ function _updateCRMSyncDisplay() {
   if (ageHrs < 1)      el.style.color = 'var(--green)';
   else if (ageHrs < 8) el.style.color = '#f59e0b';
   else                 el.style.color = 'var(--red)';
+  var warnEl = document.getElementById('crm-stale-warn');
+  if (warnEl) warnEl.style.display = ageHrs >= 1 ? 'block' : 'none';
 }
 
 async function loadCustomerDirectory(force) {

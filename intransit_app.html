@@ -1782,6 +1782,7 @@ async function loadSupplementalData() {
 
     // Load customer directory and prospects (non-blocking)
     loadCustomerDirectory().catch(e => console.warn('Customer directory load failed:', e));
+    loadTransferHistory().catch(e => console.warn('Transfer history load failed:', e));
     loadProspects().catch(e => console.warn('Prospects load failed:', e));
     loadLastRunTime().catch(e => console.warn('Last run time load failed:', e));
 
@@ -2857,6 +2858,7 @@ let state = {
   _cacheLoadingPromise: null,
   prospectCache: [],        // rep's prospects from _PROSPECTS tab
   customerDirectory: [],    // customer list from _CUSTOMER_DIRECTORY tab
+  transferHistoryCache: null, // keyed by account name (lowercase) → [{rep,date,part,desc,qty,revenue}]
   _prospectsLoaded: false,
   _selectedProspect: null,
   _prospectTab: 'notes',    // active tab in prospect detail panel
@@ -11955,9 +11957,10 @@ function mgrIntelLookup(query) {
       : '<div style="padding:16px 20px;border-bottom:1px solid var(--border);color:var(--text-3);font-size:11px;font-family:var(--mono)">No GP revenue history found. The buyer name in CRM may differ — try the exact name from the account card above.</div>'
     ) +
     '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
-      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:10px">TOP RECURRING PARTS</div>' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:10px">TOP RECURRING PARTS (current rep data)</div>' +
       partsHtml +
     '</div>' +
+    _mgrIntelTransferPartsHtml(query, accMatches) +
     '<div style="padding:16px 20px">' +
       '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:10px">AI OUTREACH STRATEGY</div>' +
       '<button data-iq="' + escHtml(query) + '" onclick="mgrIntelAI(this.dataset.iq)" ' +
@@ -11965,6 +11968,88 @@ function mgrIntelLookup(query) {
       '<div id="mgr-intel-ai-out" style="margin-top:12px"></div>' +
     '</div>' +
     '</div>';
+}
+
+function _mgrIntelTransferPartsHtml(query, accMatches) {
+  var cache = state.transferHistoryCache;
+  if (!cache) return '<div style="padding:12px 20px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text-3)">Pre-transfer history loading...</div>';
+  if (!Object.keys(cache).length) return '';
+
+  var norm = function(s){ return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim(); };
+  var normQ = norm(query);
+  var qWords = normQ.split(/\s+/).filter(function(w){ return w.length > 3; });
+  if (!qWords.length) qWords = [normQ];
+
+  // Find matching entries — try matched account names first, then query words
+  var searchKeys = [normQ].concat((accMatches||[]).slice(0,3).map(function(a){ return norm(a.name||''); }));
+  var matchedKey = null;
+  var bestScore = 0;
+  Object.keys(cache).forEach(function(k) {
+    var score = searchKeys.reduce(function(s, sq) {
+      var sw = sq.split(/\s+/).filter(function(w){ return w.length > 3; });
+      if (!sw.length) sw = [sq];
+      var hit = sw.filter(function(w){ return k.indexOf(w) > -1; }).length;
+      return s + hit;
+    }, 0);
+    if (score > bestScore) { bestScore = score; matchedKey = k; }
+  });
+
+  if (!matchedKey || !cache[matchedKey] || !cache[matchedKey].lines.length) {
+    return '<div style="padding:12px 20px;border-bottom:1px solid var(--border)">' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:6px">PRE-TRANSFER PARTS HISTORY</div>' +
+      '<div style="font-size:11px;color:var(--text-3)">No pre-transfer line items found for this account in _TRANSFER_HISTORY. The account name in the CRM may differ — try searching by the exact name shown in the account card above.</div>' +
+    '</div>';
+  }
+
+  var lines = cache[matchedKey].lines;
+  var displayName = cache[matchedKey].displayName;
+
+  // Group by rep/year to show pre-transfer vs MX-team periods
+  var mxReps = ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor'];
+  var preLines = lines.filter(function(l){ return mxReps.indexOf(l.rep) === -1; });
+  var postLines = lines.filter(function(l){ return mxReps.indexOf(l.rep) !== -1; });
+
+  // Top parts by order frequency — pre-transfer
+  var partMap = {};
+  preLines.forEach(function(l) {
+    if (!l.part) return;
+    if (!partMap[l.part]) partMap[l.part] = {count:0, desc:l.desc||'', revenue:0, lastDate:'', reps:{}};
+    partMap[l.part].count++;
+    partMap[l.part].revenue += l.revenue;
+    if (!partMap[l.part].lastDate || l.date > partMap[l.part].lastDate) partMap[l.part].lastDate = l.date;
+    partMap[l.part].reps[l.rep] = true;
+  });
+  var topPre = Object.keys(partMap).sort(function(a,b){ return partMap[b].count - partMap[a].count; }).slice(0,15);
+
+  var prePartsHtml = topPre.length > 0
+    ? '<table style="width:100%;border-collapse:collapse"><thead><tr>' +
+        '<th style="text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">PART NUMBER</th>' +
+        '<th style="text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">DESCRIPTION</th>' +
+        '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 8px;border-bottom:1px solid var(--border)">ORDERS</th>' +
+        '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">REVENUE</th>' +
+        '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">LAST DATE</th>' +
+      '</tr></thead><tbody>' +
+      topPre.map(function(p) {
+        var d = partMap[p];
+        return '<tr style="border-bottom:1px solid var(--border)">' +
+          '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;color:#f59e0b;font-weight:600">' + escHtml(p) + '</td>' +
+          '<td style="font-size:11px;padding:7px 6px;color:var(--text-2)">' + escHtml((d.desc||'').slice(0,50)) + '</td>' +
+          '<td style="font-family:var(--mono);font-size:11px;padding:7px 8px;text-align:right;color:var(--text)">' + d.count + '</td>' +
+          '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;text-align:right;color:var(--text)">$' + formatNum(d.revenue) + '</td>' +
+          '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;text-align:right;color:var(--text-3)">' + escHtml(d.lastDate||'—') + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table>'
+    : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No pre-transfer line items found.</div>';
+
+  var statLine = '<div style="font-size:10px;color:var(--text-3);margin-bottom:10px">' +
+    'Matched as: <span style="color:var(--text-2)">' + escHtml(displayName) + '</span> &nbsp;·&nbsp; ' +
+    preLines.length + ' pre-transfer lines &nbsp;·&nbsp; ' + postLines.length + ' post-transfer lines</div>';
+
+  return '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
+    '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:#f59e0b;margin-bottom:6px">&#9733; PRE-TRANSFER PARTS — WHAT THEY WERE BUYING BEFORE MX TEAM</div>' +
+    statLine +
+    prePartsHtml +
+  '</div>';
 }
 
 async function mgrIntelAI(query) {
@@ -16298,6 +16383,44 @@ async function loadCustomerDirectory(force) {
   } catch(e) {
     state.customerDirectory = [];
     console.warn('Customer directory not available (run sales_report.py to populate):', e.message);
+  }
+}
+
+async function loadTransferHistory() {
+  if (state.transferHistoryCache !== null) return;
+  try {
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_TRANSFER_HISTORY'!A1:J20000");
+    if (!rows || rows.length < 2) { state.transferHistoryCache = {}; return; }
+    const hdrs = rows[0].map(function(h){ return (h||'').trim().toUpperCase(); });
+    const iAcc  = hdrs.findIndex(function(h){ return /ACCOUNT|CUSTOMER|NAME/i.test(h); });
+    const iRep  = hdrs.findIndex(function(h){ return /SALES_REP|USERNAME|REP/i.test(h); });
+    const iDate = hdrs.findIndex(function(h){ return /ORDER_DATE|DATE/i.test(h); });
+    const iPart = hdrs.findIndex(function(h){ return /PART_NO|PART_NUMBER|PART/i.test(h); });
+    const iDesc = hdrs.findIndex(function(h){ return /DESCRIPTION|DESC/i.test(h); });
+    const iQty  = hdrs.findIndex(function(h){ return /QTY|QUANTITY/i.test(h); });
+    const iRev  = hdrs.findIndex(function(h){ return /REVENUE|EXTENDED|PRICE|AMOUNT/i.test(h); });
+    var cache = {};
+    rows.slice(1).forEach(function(r) {
+      var acc = (r[iAcc]||'').trim();
+      if (!acc) return;
+      var key = acc.toLowerCase();
+      if (!cache[key]) cache[key] = { displayName: acc, lines: [] };
+      var part = (r[iPart]||'').trim();
+      if (!part) return;
+      cache[key].lines.push({
+        rep:  (r[iRep]||'').trim(),
+        date: (r[iDate]||'').trim(),
+        part: part,
+        desc: (r[iDesc]||'').trim(),
+        qty:  parseFloat(r[iQty]||0)||0,
+        revenue: parseFloat(r[iRev]||0)||0
+      });
+    });
+    state.transferHistoryCache = cache;
+    console.log('[TRANSFER] Loaded transfer history:', Object.keys(cache).length, 'accounts,', rows.length-1, 'rows');
+  } catch(e) {
+    state.transferHistoryCache = {};
+    console.warn('[TRANSFER] Transfer history not available:', e.message);
   }
 }
 

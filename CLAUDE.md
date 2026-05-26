@@ -867,6 +867,33 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - Header reads: "WHAT THEY WERE BUYING BEFORE IAN PITMAN TOOK OVER"
 - yearLabel: "2022 — year before Ian Pitman took over (2023)"
 
+### 2026-05-26 (session 27 — Tasks 1–4: Pool UI cleanup, Requests page redesign, CRM accounts, Request Log)
+
+**Task 1 — Removed "POOL VISIBILITY — ADMIN" block from Notes tab:**
+- Removed `johnPoolHtml` variable and its `${johnPoolHtml}` usage from `renderNoteInput` return template
+- `adminSetPoolHide()` function retained — still used by Attack Plan pool filter logic (lines ~11104, 13030, 13072, 13098)
+- Pool hide/restore is now only accessible via Attack Plan pool cards, not the Notes tab
+
+**Task 2 — Attack Plan modal + Requests & Approvals page redesign:**
+- Attack Plan modal: replaced "🚫 REQUEST REMOVE FROM POOL" button with "🚫 REQUEST TO HIDE FROM APP" — routes through `showQuickHideRequest()` → `submitHideRequest()` → REMOVE_FLAG column → admin approval (same path as Notes tab request)
+- `renderRemovalsView()` completely rewritten: loads all request data into `window._reqData`, defers rendering to `_reqRenderPage()`
+- `_reqRenderPage()` — new function: 4 KPI cards (Needs Approval / Info+CRM / Accounts Hidden / NDA Records); tab bar (PENDING REVIEW / APPROVED+HIDDEN / NDA LOG); filter chips (All Types / Hide / Hold / Transfer)
+- `removeCard()` — rich hide-request card: rep initials circle, color-coded border, rep's reason quote block, APPROVE HIDE + DENY buttons via `data-n`
+- `infoCard()` — rich hold/transfer card: same visual language, action box shows CRM instructions
+- APPROVED/HIDDEN tab: hidden accounts (UNHIDE) + globally removed accounts (RESTORE TO POOLS)
+- NDA LOG tab: table + CSV export
+- `reqSwitchTab(tab)` + `reqSetFilter(f)` — helper functions for tab/filter state without re-fetching data
+- Python binary-mode replacement script used for the 320-line function rewrite
+
+**Task 3 — All CRM accounts visible in Accounts view:**
+- Filter buttons changed: ALL → "ALL CRM" (shows all CRM accounts merged with shipped); SHIPPED → revenue accounts only; ACTIVE/INACTIVE/DECLINING apply to shipped accounts only
+- `getViewAccounts()` updated: when `activeFilter === 'all'`, merges `state.customerDirectory` accounts not already in `state.accounts` as `_crmOnly` stubs; respects `_repFilter` and `_repList` for team/rep scoping
+- `renderAccountsView()`: CRM-only rows render at 72% opacity with "CRM" badge, city/state, last activity, "No shipments" amount; count strip shows "X shipped + Y CRM accounts"
+- `selectAccount()`: CRM-only accounts branch to `renderCRMOnlyDetail(acc)` — shows account name, rep, city/state, last CRM activity, "ADD TO PROSPECTS" button
+- `loadCustomerDirectory()`: after load, re-renders accounts view if filter is 'all' and tbody exists (fixes timing — directory loads async after initial render)
+- `switchViewAs()`: resets `state.activeFilter = 'all'` on every rep switch so each view starts showing full CRM pool
+- Anolan had 20 shipped accounts visible before; now shows all 700+ CRM accounts in ALL CRM filter
+
 ### 2026-05-26 (session 27 — Task 4: Request Log + deny-with-note)
 
 **Features added (commit `9e49d5c`):**
@@ -901,3 +928,7 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **Modified functions:** `denyRemoval` (new adminNote param + modal flow), `approveRemovalDirect` (+ resolveRequestLog), `submitHideRequest` (+ writeRequestLog), `apkDoRequestTransfer` (+ writeRequestLog), `infoCard` in `_reqRenderPage` (+ deny button for TRANSFER), `removeCard` in `_reqRenderPage` (DENY now calls showDenyHideModal)
 
 **Setup required:** `_REQUEST_LOG` tab will auto-create in History sheet on first request submit (sheetsAppend creates the tab if it exists; if not, create tab manually with header: `TIMESTAMP, TYPE, ACCOUNT, REP, REASON, STATUS, ADMIN_NOTE`)
+
+**Bug fixed — JS syntax error crashing entire app (commit `11d251a`):**
+- `infoCard` deny button used `\'@intransittech.com\'` (backslash-escaped quote) in expression context — valid inside a JS string literal but a hard SyntaxError at expression level; caused the entire `<script>` block to fail parsing, making the app completely non-functional
+- Fix: switched to `data-rid` attribute (repId only, no email concatenation needed in template); `showDenyTransferModal(accName, repIdOrEmail)` now accepts either repId or full email — appends `@intransittech.com` if `@` is absent

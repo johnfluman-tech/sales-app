@@ -11761,8 +11761,22 @@ function _mgrIntelHtml(teamReps) {
       'style="background:var(--s2);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r)" ' +
       'onmouseover="this.style.borderColor=\'var(--blue-b)\'" onmouseout="this.style.borderColor=\'var(--border)\'">' + escHtml(name) + '</button>';
   }).join('');
-  return '<div style="max-width:820px">' +
-    '<div style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:20px">Look up any account\'s complete purchase history — including years before account transfer. Shows revenue by year across all reps, top recurring parts, and AI-generated outreach strategy.</div>' +
+  return '<div style="max-width:860px">' +
+
+    // ── AI Portfolio Review ──────────────────────────────────────────────────
+    '<div style="margin-bottom:20px;background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.3);border-radius:var(--r2);padding:16px 18px">' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:10px">' +
+        '<div>' +
+          '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:#a78bfa;font-weight:700;margin-bottom:4px">🤖 AI PORTFOLIO REVIEW — ALL TRANSFERRED ACCOUNTS</div>' +
+          '<div style="font-size:11px;color:var(--text-3);line-height:1.6">Analyzes all 6 transferred accounts at once — compares each current rep\'s annual performance vs the prior rep, flags which accounts need attention, and tells Karen what to focus on this week.</div>' +
+        '</div>' +
+        '<button onclick="mgrPortfolioReview()" style="flex-shrink:0;background:rgba(139,92,246,0.18);border:1px solid rgba(139,92,246,0.45);color:#a78bfa;font-family:var(--mono);font-size:10px;font-weight:700;padding:9px 18px;cursor:pointer;border-radius:var(--r)">RUN REVIEW ▶</button>' +
+      '</div>' +
+      '<div id="mgr-portfolio-out"></div>' +
+    '</div>' +
+
+    // ── Search ───────────────────────────────────────────────────────────────
+    '<div style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:16px">Look up any account\'s complete purchase history — including years before account transfer. Shows revenue by year across all reps, top recurring parts, and AI-generated outreach strategy.</div>' +
     '<div style="display:flex;gap:8px;margin-bottom:14px">' +
       '<input id="mgr-intel-input" type="text" placeholder="Search any account name..." ' +
         'onkeydown="if(event.key===\'Enter\')mgrIntelLookup(this.value)" ' +
@@ -12336,6 +12350,147 @@ async function mgrIntelAI(query) {
       '<p>' + text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n\n/g,'</p><p style="margin-top:10px">').replace(/\n/g,'<br>') + '</p></div>';
   } catch(e) {
     out.innerHTML = '<span style="color:var(--red);font-size:11px">AI error: '+escHtml(e.message)+'</span>';
+  }
+}
+
+async function mgrPortfolioReview() {
+  var out = document.getElementById('mgr-portfolio-out');
+  if (!out) return;
+  out.innerHTML = '<div style="color:#a78bfa;font-family:var(--mono);font-size:11px;padding:4px 0">&#9203; Computing portfolio metrics...</div>';
+
+  var _repNames = {CKaren:'Karen Mancebo',BillP:'Bill Pratt',PIan:'Ian Pitman',RMauricio:'Mauricio Rangel',LMancera:'Lizeth Mancera',bcastor:'Brandon Castor',Anolan:'Ana Nolan',Abraham:'Abraham',Arlin:'Arlin'};
+  var norm = function(s){ return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim(); };
+  var gpHdrs = (state.gpCache && state.gpCache.length > 0) ? Object.keys(state.gpCache[0]) : [];
+  var gpRevCol  = gpHdrs.find(function(h){ return /EXTENDED_PRICE|INVOICE_TOTAL/i.test(h); }) || 'EXTENDED_PRICE';
+  var gpDateCol = gpHdrs.find(function(h){ return /INVOICE_DATE/i.test(h); }) || 'INVOICE_DATE';
+  var gpRepCol  = gpHdrs.find(function(h){ return /SALES_REP/i.test(h); }) || 'SALES_REP';
+  var gpBuyerCol= gpHdrs.find(function(h){ return /BUYER_NAME/i.test(h); }) || 'BUYER_NAME';
+  var allAccs   = (typeof getViewAccounts === 'function' ? getViewAccounts() : null) || state.accounts || [];
+  var currentYear = new Date().getFullYear();
+
+  var summaries = _MGR_INTEL_TARGETS.map(function(target) {
+    var tWords = norm(target).split(/\s+/).filter(function(w){ return w.length > 3; });
+    if (!tWords.length) tWords = [norm(target)];
+    var matchAny = function(s){ return tWords.some(function(w){ return norm(s).indexOf(w)>-1; }); };
+
+    // Find account in state.accounts
+    var accMatches = allAccs.filter(function(a){ return matchAny(a.name||''); });
+    var currentRepId = accMatches.length && accMatches[0].rep ? accMatches[0].rep : '';
+
+    // Get gpRows — try gpCache, then synthesize from transferHistoryCache
+    var gpRows = (state.gpCache||[]).filter(function(r){ var b=norm(r[gpBuyerCol]||''); return tWords.every(function(w){ return b.indexOf(w)>-1; }); });
+    if (!gpRows.length) gpRows = (state.gpCache||[]).filter(function(r){ return matchAny(r[gpBuyerCol]||''); });
+    if (!gpRows.length && state.transferHistoryCache) {
+      var _thKey = null, _thBest = 0;
+      Object.keys(state.transferHistoryCache).forEach(function(k) {
+        var sc = tWords.filter(function(w){ return k.indexOf(w)>-1; }).length;
+        if (sc > _thBest) { _thBest = sc; _thKey = k; }
+      });
+      var _thE = (_thKey && _thBest > 0) ? state.transferHistoryCache[_thKey] : null;
+      if (_thE && _thE.lines && _thE.lines.length) {
+        gpRows = _thE.lines.map(function(l) {
+          var r = {}; r[gpBuyerCol]=_thE.displayName||_thKey; r[gpRevCol]=l.revenue||0; r[gpDateCol]=l.date||''; r[gpRepCol]=l.rep||''; return r;
+        });
+      }
+    }
+
+    // Derive current rep from most recent invoice if not in state.accounts
+    if (!currentRepId && gpRows.length) {
+      var latest = gpRows.reduce(function(a,b){ return ((a[gpDateCol]||'')>(b[gpDateCol]||''))?a:b; });
+      currentRepId = (latest[gpRepCol]||'').trim();
+    }
+    var currentRepName = _repNames[currentRepId] || currentRepId || '?';
+
+    // Split by current vs prior rep
+    var curRows  = currentRepId ? gpRows.filter(function(r){ return (r[gpRepCol]||'').trim()===currentRepId; }) : [];
+    var prevRows = currentRepId ? gpRows.filter(function(r){ return (r[gpRepCol]||'').trim()!==currentRepId; }) : gpRows;
+
+    // Transfer year = earliest year current rep appears
+    var crYears = curRows.map(function(r){ return parseInt((r[gpDateCol]||'').slice(0,4)); }).filter(function(y){ return y>2000; });
+    var transferYear = crYears.length ? Math.min.apply(null, crYears) : null;
+
+    // Annual averages — exclude partial current year from denominator
+    var curCompleted = curRows.filter(function(r){ return parseInt((r[gpDateCol]||'').slice(0,4)) < currentYear; });
+    var curYrSet = new Set(curCompleted.map(function(r){ return (r[gpDateCol]||'').slice(0,4); }));
+    var curAnnAvg = curYrSet.size > 0 ? curCompleted.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0) / curYrSet.size : 0;
+    // If only current partial year exists, use all data for estimate
+    if (curAnnAvg === 0 && curRows.length) {
+      curAnnAvg = curRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0) / (curYrSet.size||1);
+    }
+
+    var prevYrSet = new Set(prevRows.map(function(r){ return (r[gpDateCol]||'').slice(0,4); }));
+    var prevAnnAvg = prevYrSet.size > 0 ? prevRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0) / prevYrSet.size : 0;
+
+    var pctChange = prevAnnAvg > 0 ? (curAnnAvg - prevAnnAvg) / prevAnnAvg * 100 : null;
+
+    // Prior rep
+    var prevRevMap = {};
+    prevRows.forEach(function(r){ var rp=(r[gpRepCol]||'').trim(); if(rp) prevRevMap[rp]=(prevRevMap[rp]||0)+(parseFloat(r[gpRevCol]||0)||0); });
+    var priorRepId = Object.keys(prevRevMap).sort(function(a,b){ return prevRevMap[b]-prevRevMap[a]; })[0]||'';
+    var priorRepName = _repNames[priorRepId]||priorRepId||'?';
+
+    return {name:target, accName:accMatches.length?accMatches[0].name:target, currentRepId:currentRepId, currentRepName:currentRepName, priorRepName:priorRepName, priorAnnAvg:prevAnnAvg, curAnnAvg:curAnnAvg, pctChange:pctChange, transferYear:transferYear, hasData:gpRows.length>0};
+  });
+
+  // ── Mini-cards ──────────────────────────────────────────────────────────────
+  var cardsHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:8px;margin-bottom:14px">' +
+    summaries.map(function(s) {
+      var up    = s.pctChange !== null && s.pctChange >= 5;
+      var down  = s.pctChange !== null && s.pctChange <= -5;
+      var flat  = s.pctChange !== null && !up && !down;
+      var arrow = up ? '↑' : down ? '↓' : (s.pctChange !== null ? '→' : '—');
+      var tColor= up ? '#22c55e' : down ? '#ef4444' : (flat ? '#f59e0b' : 'var(--text-3)');
+      var bColor= down ? 'rgba(239,68,68,0.12)' : up ? 'rgba(34,197,94,0.08)' : 'var(--s2)';
+      var bBord = down ? '1px solid rgba(239,68,68,0.3)' : up ? '1px solid rgba(34,197,94,0.25)' : '1px solid var(--border)';
+      var pctStr= s.pctChange !== null ? (s.pctChange>=0?'+':'')+s.pctChange.toFixed(0)+'%' : 'no data';
+      return '<div data-iname="' + escHtml(s.name) + '" onclick="mgrIntelLookup(this.dataset.iname)" ' +
+        'style="background:' + bColor + ';border:' + bBord + ';border-radius:var(--r2);padding:10px 12px;cursor:pointer" ' +
+        'onmouseover="this.style.borderColor=\'var(--blue-b)\'" onmouseout="this.style.borderColor=\'' + (down?'rgba(239,68,68,0.3)':up?'rgba(34,197,94,0.25)':'var(--border)') + '\'">' +
+        '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text);margin-bottom:5px">' + escHtml(s.name) + '</div>' +
+        '<div style="font-size:9px;color:var(--text-3);margin-bottom:2px">' + escHtml(s.currentRepName) + '</div>' +
+        (s.transferYear ? '<div style="font-size:9px;color:var(--text-3);margin-bottom:6px">since ' + s.transferYear + '</div>' : '<div style="margin-bottom:6px"></div>') +
+        (s.hasData
+          ? '<div style="font-size:9px;color:var(--text-3)">prev avg/yr: <span style="color:var(--text-2)">$' + formatNum(Math.round(s.priorAnnAvg)) + '</span></div>' +
+            '<div style="font-size:9px;color:var(--text-3);margin-bottom:5px">now avg/yr: <span style="color:var(--text-2)">$' + formatNum(Math.round(s.curAnnAvg)) + '</span></div>' +
+            '<div style="font-size:16px;font-weight:700;color:' + tColor + '">' + arrow + ' ' + pctStr + '</div>'
+          : '<div style="font-size:10px;color:var(--text-3);margin-top:4px">no data yet</div>'
+        ) +
+      '</div>';
+    }).join('') + '</div>';
+
+  out.innerHTML = cardsHtml +
+    '<div id="mgr-portfolio-ai"><div style="color:#a78bfa;font-family:var(--mono);font-size:11px">&#9203; AI is reading the data...</div></div>';
+
+  // ── Build AI context ────────────────────────────────────────────────────────
+  var ctxLines = summaries.map(function(s) {
+    var line = s.name + ': rep = ' + s.currentRepName + (s.transferYear ? ' (took over ' + s.transferYear + ')' : '') + ', prior rep = ' + s.priorRepName;
+    if (s.hasData) {
+      line += ', prior annual avg = $' + formatNum(Math.round(s.priorAnnAvg));
+      line += ', current annual avg = $' + formatNum(Math.round(s.curAnnAvg));
+      if (s.pctChange !== null) line += ', change = ' + (s.pctChange>=0?'+':'') + s.pctChange.toFixed(0) + '% vs prior rep';
+    } else {
+      line += ' — no revenue data available yet';
+    }
+    return line;
+  }).join('\n');
+
+  var aiPrompt = 'You are a sales manager coach for an industrial parts distributor. Karen Mancebo manages the MX team. Here are 6 accounts recently transferred to her team, with revenue performance comparing each current rep\'s annual average vs the prior rep\'s annual average:\n\n' + ctxLines + '\n\nGive Karen a concise, actionable review with these 4 sections:\n\n1. PORTFOLIO HEALTH (2-3 sentences — overall picture)\n2. ACCOUNTS NEEDING ATTENTION — list the 2-3 weakest accounts, name the rep, state the % decline, and give one specific coaching suggestion for each\n3. BRIGHT SPOTS — which accounts are growing and what that means\n4. THIS WEEK\'S ACTION ITEM — one specific thing Karen should do right now based on this data\n\nUse rep first names and account short names. Be direct and specific.';
+
+  try {
+    var result = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:700,
+      messages:[{role:'user', content: aiPrompt}]
+    });
+    var text = (result&&result.content&&result.content[0]) ? result.content[0].text : 'Could not generate.';
+    var aiDiv = document.getElementById('mgr-portfolio-ai');
+    if (aiDiv) {
+      aiDiv.innerHTML =
+        '<div style="background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.25);border-radius:var(--r2);padding:14px 16px;font-size:12px;line-height:1.75;color:var(--text-2)">' +
+          '<p>' + text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n\n/g,'</p><p style="margin-top:10px">').replace(/\n/g,'<br>') + '</p>' +
+        '</div>';
+    }
+  } catch(e) {
+    var aiDiv2 = document.getElementById('mgr-portfolio-ai');
+    if (aiDiv2) aiDiv2.innerHTML = '<span style="color:var(--red);font-size:11px">AI error: ' + escHtml(e.message) + '</span>';
   }
 }
 

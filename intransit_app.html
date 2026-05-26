@@ -11845,40 +11845,52 @@ function mgrIntelLookup(query) {
   var grandTotal = gpRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
   var maxRev = Math.max.apply(null, years.map(function(y){ return byYear[y].total; }))||1;
 
-  // Before / after MX team comparison
-  var mgrCfg2 = getManagerConfig();
-  var mxTeamReps = mgrCfg2 ? mgrCfg2.teamReps : ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor'];
-  var preRows = gpRows.filter(function(r){ return mxTeamReps.indexOf((r[gpRepCol]||'').trim()) === -1; });
-  var postRows = gpRows.filter(function(r){ return mxTeamReps.indexOf((r[gpRepCol]||'').trim()) !== -1; });
-  var preTotal = preRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
-  var postTotal = postRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
-  var preYears = Array.from(new Set(preRows.map(function(r){ return (r[gpDateCol]||'').slice(0,4); }).filter(function(y){ return y.match(/^\d{4}$/); }))).sort();
-  var postYears = Array.from(new Set(postRows.map(function(r){ return (r[gpDateCol]||'').slice(0,4); }).filter(function(y){ return y.match(/^\d{4}$/); }))).sort();
-  var preReps = Array.from(new Set(preRows.map(function(r){ return (r[gpRepCol]||'').trim(); }).filter(Boolean)));
+  // Rep transition analysis — identify current rep vs prior rep from actual invoice data
+  var _repNames = {CKaren:'Karen Mancebo',BillP:'Bill Pratt',PIan:'Ian Pitman',RMauricio:'Mauricio Rangel',LMancera:'Lizeth Mancera',bcastor:'Brandon Castor',Anolan:'Ana Nolan',Abraham:'Abraham',Arlin:'Arlin'};
+  // Current rep: prefer state.accounts match; fall back to most recent invoice
+  var currentRepId = accMatches && accMatches.length && accMatches[0].rep ? accMatches[0].rep : '';
+  if (!currentRepId && gpRows.length) {
+    var _latestGP = gpRows.reduce(function(a,b){ return ((a[gpDateCol]||'')>(b[gpDateCol]||''))?a:b; });
+    currentRepId = (_latestGP[gpRepCol]||'').trim();
+  }
+  var currentRepName = _repNames[currentRepId] || currentRepId || 'Current Rep';
+  var currentRepRows = gpRows.filter(function(r){ return (r[gpRepCol]||'').trim() === currentRepId; });
+  var priorRows      = gpRows.filter(function(r){ return (r[gpRepCol]||'').trim() !== currentRepId; });
+  // Primary prior rep: highest revenue among all non-current reps
+  var _priorRevMap = {};
+  priorRows.forEach(function(r){ var rp=(r[gpRepCol]||'').trim(); if(rp) _priorRevMap[rp]=(_priorRevMap[rp]||0)+(parseFloat(r[gpRevCol]||0)||0); });
+  var priorRepId   = Object.keys(_priorRevMap).sort(function(a,b){ return _priorRevMap[b]-_priorRevMap[a]; })[0] || '';
+  var priorRepName = _repNames[priorRepId] || priorRepId || 'Prior Rep';
+  var preTotal  = priorRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
+  var postTotal = currentRepRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
+  var preYears  = Array.from(new Set(priorRows.map(function(r){ return (r[gpDateCol]||'').slice(0,4); }).filter(function(y){ return y.match(/^\d{4}$/); }))).sort();
+  var postYears = Array.from(new Set(currentRepRows.map(function(r){ return (r[gpDateCol]||'').slice(0,4); }).filter(function(y){ return y.match(/^\d{4}$/); }))).sort();
   var comparisonHtml = '';
   if (preTotal > 0 || postTotal > 0) {
-    var trend = (preTotal > 0 && postTotal > 0) ? (postTotal >= preTotal ? '↑' : '↓') : '';
-    var trendColor = trend === '↑' ? 'var(--green)' : trend === '↓' ? 'var(--red)' : 'var(--text-3)';
-    var pctChange = preTotal > 0 && postTotal > 0 ? Math.round(((postTotal - preTotal) / preTotal) * 100) : null;
+    var _cTrend = (preTotal > 0 && postTotal > 0) ? (postTotal >= preTotal ? '↑' : '↓') : '';
+    var _cTrendColor = _cTrend === '↑' ? 'var(--green)' : _cTrend === '↓' ? 'var(--red)' : 'var(--text-3)';
+    var _cPct = preTotal > 0 && postTotal > 0 ? Math.round(((postTotal-preTotal)/preTotal)*100) : null;
+    var _prYr = preYears.length  ? (preYears[0]  + (preYears.length>1  ? '–'+preYears[preYears.length-1]   : '')) : '';
+    var _crYr = postYears.length ? (postYears[0] + (postYears.length>1 ? '–'+postYears[postYears.length-1] : '')) : '';
     comparisonHtml =
       '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
-      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">BEFORE / AFTER MX TEAM</div>' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">ACCOUNT REVENUE — REP COMPARISON</div>' +
       '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center">' +
         '<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:14px;text-align:center">' +
-          '<div style="font-size:9px;font-family:var(--mono);color:var(--text-3);margin-bottom:4px;letter-spacing:0.08em">BEFORE MX TEAM</div>' +
-          '<div style="font-size:20px;font-weight:700;color:var(--text)">' + (preTotal > 0 ? '$' + formatNum(preTotal) : '—') + '</div>' +
-          (preYears.length ? '<div style="font-size:10px;color:var(--text-3);margin-top:3px">' + (preYears[0]||'') + (preYears.length > 1 ? '–' + preYears[preYears.length-1] : '') + '</div>' : '') +
-          (preReps.length ? '<div style="font-size:9px;color:var(--text-3);margin-top:2px">' + escHtml(preReps.slice(0,3).join(', ')) + '</div>' : '<div style="font-size:9px;color:var(--text-3);margin-top:2px">no prior data</div>') +
+          '<div style="font-size:9px;font-family:var(--mono);color:var(--text-3);margin-bottom:4px;letter-spacing:0.06em">UNDER ' + escHtml(priorRepName.toUpperCase()) + '</div>' +
+          '<div style="font-size:20px;font-weight:700;color:var(--text)">' + (preTotal>0?'$'+formatNum(preTotal):'—') + '</div>' +
+          (_prYr ? '<div style="font-size:10px;color:var(--text-3);margin-top:3px">'+escHtml(_prYr)+'</div>' : '') +
+          '<div style="font-size:9px;color:var(--text-3);margin-top:2px">'+(preTotal>0?'total revenue':'no prior data')+'</div>' +
         '</div>' +
-        '<div style="text-align:center;font-size:26px;color:' + trendColor + ';font-weight:700;min-width:48px">' +
-          trend +
-          (pctChange !== null ? '<div style="font-size:11px;font-family:var(--mono);white-space:nowrap">' + (pctChange >= 0 ? '+' : '') + pctChange + '%</div>' : '') +
+        '<div style="text-align:center;font-size:26px;color:'+_cTrendColor+';font-weight:700;min-width:48px">' +
+          _cTrend +
+          (_cPct!==null?'<div style="font-size:11px;font-family:var(--mono);white-space:nowrap">'+(_cPct>=0?'+':'')+_cPct+'%</div>':'') +
         '</div>' +
         '<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.3);border-radius:var(--r2);padding:14px;text-align:center">' +
-          '<div style="font-size:9px;font-family:var(--mono);color:var(--blue-b);margin-bottom:4px;letter-spacing:0.08em">SINCE MX TEAM</div>' +
-          '<div style="font-size:20px;font-weight:700;color:var(--blue-b)">' + (postTotal > 0 ? '$' + formatNum(postTotal) : '—') + '</div>' +
-          (postYears.length ? '<div style="font-size:10px;color:var(--text-3);margin-top:3px">' + (postYears[0]||'') + (postYears.length > 1 ? '–' + postYears[postYears.length-1] : '') + '</div>' : '') +
-          (postTotal === 0 ? '<div style="font-size:9px;color:var(--text-3);margin-top:2px">no shipments yet</div>' : '') +
+          '<div style="font-size:9px;font-family:var(--mono);color:var(--blue-b);margin-bottom:4px;letter-spacing:0.06em">UNDER ' + escHtml(currentRepName.toUpperCase()) + '</div>' +
+          '<div style="font-size:20px;font-weight:700;color:var(--blue-b)">'+(postTotal>0?'$'+formatNum(postTotal):'—')+'</div>' +
+          (_crYr ? '<div style="font-size:10px;color:var(--text-3);margin-top:3px">'+escHtml(_crYr)+'</div>' : '') +
+          '<div style="font-size:9px;color:var(--text-3);margin-top:2px">'+(postTotal===0?'no shipments yet':'total revenue')+'</div>' +
         '</div>' +
       '</div>' +
       '</div>';
@@ -11989,9 +12001,9 @@ function mgrIntelLookup(query) {
       '</div>' +
     '</div>' +
     accCardsHtml +
-    _mgrCurrentRepPerfHtml(accMatches, postRows, gpRevCol, gpDateCol, gpRepCol) +
+    _mgrCurrentRepPerfHtml(accMatches, currentRepId, currentRepName, currentRepRows, priorRepId, priorRepName, gpRevCol, gpDateCol, gpRepCol) +
     comparisonHtml +
-    _mgrIntelTransferPartsHtml(query, accMatches) +
+    _mgrIntelTransferPartsHtml(query, accMatches, currentRepId) +
     (years.length > 0
       ? '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
           '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">REVENUE BY YEAR — ALL REPS (incl. pre-transfer)' + matchNote + '</div>' +
@@ -12015,30 +12027,21 @@ function mgrIntelLookup(query) {
     '</div>';
 }
 
-function _mgrCurrentRepPerfHtml(accMatches, postRows, gpRevCol, gpDateCol, gpRepCol) {
-  var repNames = {CKaren:'Karen Mancebo',BillP:'Bill Pratt',PIan:'Ian Pitman',RMauricio:'Mauricio Rangel',LMancera:'Lizeth Mancera',bcastor:'Brandon Castor',Anolan:'Ana Nolan'};
-  var gpGPCol = (postRows && postRows.length > 0) ? (Object.keys(postRows[0]).find(function(h){ return /^GP$/i.test(h); })||'GP') : 'GP';
+function _mgrCurrentRepPerfHtml(accMatches, currentRepId, currentRepName, currentRepRows, priorRepId, priorRepName, gpRevCol, gpDateCol, gpRepCol) {
+  var gpGPCol = (currentRepRows && currentRepRows.length > 0) ? (Object.keys(currentRepRows[0]).find(function(h){ return /^GP$/i.test(h); })||'GP') : 'GP';
+  var repInitials = (currentRepName||'?').split(' ').map(function(w){ return w[0]||''; }).join('').slice(0,2).toUpperCase();
+  var currentYear = new Date().getFullYear().toString();
 
-  if (!postRows || !postRows.length) {
+  if (!currentRepRows || !currentRepRows.length) {
     return '<div style="padding:14px 20px;border-bottom:1px solid var(--border)">' +
       '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:6px">CURRENT REP PERFORMANCE</div>' +
-      '<div style="font-size:11px;color:var(--text-3)">No shipments recorded under MX team for this account yet.</div>' +
+      '<div style="font-size:11px;color:var(--text-3)">No shipments on record for ' + escHtml(currentRepName||'current rep') + ' on this account yet.</div>' +
     '</div>';
   }
 
-  // Determine current rep: prefer state.accounts match, else highest GP rep in postRows
-  var currentRepId = accMatches && accMatches.length ? accMatches[0].rep : '';
-  if (!currentRepId) {
-    var repRevMap = {};
-    postRows.forEach(function(r){ var rep=(r[gpRepCol]||'').trim(); repRevMap[rep]=(repRevMap[rep]||0)+(parseFloat(r[gpRevCol]||0)||0); });
-    currentRepId = Object.keys(repRevMap).sort(function(a,b){ return repRevMap[b]-repRevMap[a]; })[0] || '';
-  }
-  var currentRepName = repNames[currentRepId] || currentRepId;
-  var repInitials = currentRepName.split(' ').map(function(w){ return w[0]||''; }).join('').slice(0,2).toUpperCase();
-
-  // Year-by-year revenue + GP under MX team
+  // Year-by-year revenue + GP under current rep
   var byYear = {};
-  postRows.forEach(function(r) {
+  currentRepRows.forEach(function(r) {
     var yr = (r[gpDateCol]||'').slice(0,4);
     if (!yr.match(/^\d{4}$/)) return;
     if (!byYear[yr]) byYear[yr] = {rev:0, gp:0};
@@ -12046,20 +12049,22 @@ function _mgrCurrentRepPerfHtml(accMatches, postRows, gpRevCol, gpDateCol, gpRep
     byYear[yr].gp  += parseFloat(r[gpGPCol]||0)||0;
   });
   var sortedYears = Object.keys(byYear).sort();
-  var currentYear = new Date().getFullYear().toString();
   var maxRev = Math.max.apply(null, sortedYears.map(function(y){ return byYear[y].rev; }))||1;
 
-  // Trend: latest complete year vs the one before it
+  // First year current rep had the account
+  var tookOverYear = sortedYears[0] || '';
+
+  // Trend: latest complete year vs the year before
   var fullYears = sortedYears.filter(function(y){ return y < currentYear; });
   var lastFull = fullYears[fullYears.length-1] || null;
   var prevFull = fullYears[fullYears.length-2] || null;
   var trendHtml = '';
   if (lastFull && prevFull && byYear[prevFull].rev > 0) {
-    var pct = Math.round(((byYear[lastFull].rev - byYear[prevFull].rev) / byYear[prevFull].rev) * 100);
-    trendHtml = '<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:' + (pct>=0?'var(--green)':'var(--red)') + '">' + (pct>=0?'↑ +':'↓ ') + pct + '% vs ' + prevFull + '</span>';
+    var tPct = Math.round(((byYear[lastFull].rev - byYear[prevFull].rev) / byYear[prevFull].rev) * 100);
+    trendHtml = '<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:' + (tPct>=0?'var(--green)':'var(--red)') + '">' + (tPct>=0?'↑ +':'↓ ') + tPct + '% vs ' + prevFull + '</span>';
   }
 
-  // YTD from state.accounts if available
+  // YTD: prefer state.accounts match
   var accMatch = accMatches && accMatches.length ? accMatches[0] : null;
   var ytd = accMatch && accMatch.revenue ? accMatch.revenue : (byYear[currentYear] ? byYear[currentYear].rev : 0);
 
@@ -12072,31 +12077,36 @@ function _mgrCurrentRepPerfHtml(accMatches, postRows, gpRevCol, gpDateCol, gpRep
     return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">' +
       '<div style="font-family:var(--mono);font-size:11px;font-weight:700;min-width:60px;color:' + (isCY?'var(--blue-b)':'var(--text)') + '">' + yr + (isCY?' YTD':'') + '</div>' +
       '<div style="flex:1;background:var(--s2);border-radius:3px;height:8px;overflow:hidden">' +
-        '<div style="width:'+barPct+'%;height:100%;background:' + (isCY?'var(--blue-b)':'var(--green)') + ';opacity:0.75;border-radius:3px"></div>' +
+        '<div style="width:'+barPct+'%;height:100%;background:'+(isCY?'var(--blue-b)':'var(--green)')+';opacity:0.75;border-radius:3px"></div>' +
       '</div>' +
       '<div style="font-family:var(--mono);font-size:12px;font-weight:700;min-width:85px;text-align:right">$'+formatNum(d.rev)+'</div>' +
-      (gpPct > 0 ? '<div style="font-family:var(--mono);font-size:10px;min-width:50px;text-align:right;color:'+gpColor+'">'+gpPct+'% GP</div>' : '<div style="min-width:50px"></div>') +
+      (gpPct > 0 ? '<div style="font-family:var(--mono);font-size:10px;min-width:52px;text-align:right;color:'+gpColor+'">'+gpPct+'% GP</div>' : '<div style="min-width:52px"></div>') +
     '</div>';
   }).join('');
 
+  var prevLine = priorRepId
+    ? '<div style="font-size:10px;color:var(--text-3);margin-top:2px">Previously: <span style="color:var(--text-2)">' + escHtml(priorRepName) + '</span> held this account</div>'
+    : '';
+
   return '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
-    '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">CURRENT REP PERFORMANCE SINCE TRANSFER</div>' +
+    '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">CURRENT REP — PERFORMANCE SINCE TAKING OVER</div>' +
     '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:12px 14px;background:var(--s2);border-radius:var(--r2);border:1px solid var(--border)">' +
       '<div style="width:38px;height:38px;border-radius:50%;background:var(--blue-b);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;font-weight:700;color:#fff;flex-shrink:0">' + escHtml(repInitials) + '</div>' +
       '<div style="flex:1">' +
         '<div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text)">' + escHtml(currentRepName) + '</div>' +
-        '<div style="font-size:10px;color:var(--text-3);margin-top:2px">Account owner &nbsp;·&nbsp; ' + sortedYears.length + ' year' + (sortedYears.length===1?'':'s') + ' of history</div>' +
+        '<div style="font-size:10px;color:var(--text-3);margin-top:2px">Has this account since ' + escHtml(tookOverYear) + ' &nbsp;·&nbsp; ' + sortedYears.length + ' year' + (sortedYears.length===1?'':'s') + ' of data</div>' +
+        prevLine +
       '</div>' +
       '<div style="text-align:right">' +
         (ytd > 0 ? '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--blue-b)">$'+formatNum(ytd)+'</div><div style="font-size:10px;color:var(--text-3)">'+currentYear+' YTD</div>' : '') +
-        (trendHtml ? '<div style="margin-top:4px">' + trendHtml + '</div>' : '') +
+        (trendHtml ? '<div style="margin-top:4px">'+trendHtml+'</div>' : '') +
       '</div>' +
     '</div>' +
     yearRowsHtml +
   '</div>';
 }
 
-function _mgrIntelTransferPartsHtml(query, accMatches) {
+function _mgrIntelTransferPartsHtml(query, accMatches, currentRepId) {
   var cache = state.transferHistoryCache;
   if (!cache) return '<div style="padding:12px 20px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text-3)">&#8987; Pre-transfer history loading...</div>';
   if (!Object.keys(cache).length) return '';
@@ -12127,13 +12137,14 @@ function _mgrIntelTransferPartsHtml(query, accMatches) {
 
   var lines = cache[matchedKey].lines;
   var displayName = cache[matchedKey].displayName;
-  var mxReps = ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor'];
-  var preLines = lines.filter(function(l){ return mxReps.indexOf(l.rep) === -1; });
-  var postLines = lines.filter(function(l){ return mxReps.indexOf(l.rep) !== -1; });
+  // Split by the actual current rep — not a hard-coded team list
+  var crId = currentRepId || '';
+  var postLines = crId ? lines.filter(function(l){ return l.rep === crId; }) : [];
+  var preLines  = crId ? lines.filter(function(l){ return l.rep !== crId; }) : lines;
 
-  // Find transfer year: earliest year an MX rep appears in the data
-  var mxYearNums = postLines.map(function(l){ return parseInt((l.date||'').slice(0,4)); }).filter(function(y){ return y > 2000; });
-  var transferYear = mxYearNums.length ? Math.min.apply(null, mxYearNums) : null;
+  // Find transfer year: earliest year current rep appears in the line-item data
+  var crYearNums = postLines.map(function(l){ return parseInt((l.date||'').slice(0,4)); }).filter(function(y){ return y > 2000; });
+  var transferYear = crYearNums.length ? Math.min.apply(null, crYearNums) : null;
   var priorYear = transferYear ? String(transferYear - 1) : null;
 
   // Filter to year prior; fall back to all pre-transfer if that year has no data
@@ -12191,7 +12202,7 @@ function _mgrIntelTransferPartsHtml(query, accMatches) {
   return '<div style="padding:16px 20px;border-bottom:1px solid var(--border);background:rgba(245,158,11,0.03)">' +
     '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">' +
       '<div>' +
-        '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.12em;color:#f59e0b;font-weight:700;margin-bottom:4px">★ OUTREACH LIST — WHAT THEY WERE BUYING BEFORE MX TEAM</div>' +
+        '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.12em;color:#f59e0b;font-weight:700;margin-bottom:4px">★ OUTREACH LIST — WHAT THEY WERE BUYING BEFORE ' + escHtml((currentRepId||'current rep').toUpperCase()) + ' TOOK OVER</div>' +
         '<div style="font-size:11px;color:var(--text-2);margin-bottom:2px">' + escHtml(yearLabel) + '</div>' +
         '<div style="font-size:10px;color:var(--text-3)">' + yearLines.length + ' line items &nbsp;·&nbsp; <strong style="color:var(--text-2)">$' + formatNum(totalRevThatYear) + '</strong> total revenue that year</div>' +
       '</div>' +

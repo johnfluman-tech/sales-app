@@ -11261,7 +11261,8 @@ function renderManagerHub() {
     {id:'collections',   label:'&#128181; Collections'},
     {id:'pipeline',      label:'&#128200; Pipeline'},
     {id:'aibrief',       label:'&#129302; AI Brief'},
-    {id:'playbook',      label:'&#128203; Playbook'}
+    {id:'playbook',      label:'&#128203; Playbook'},
+    {id:'intel',         label:'&#128269; Account Intel'}
   ].map(function(t){
     var active = tab === t.id;
     return '<button onclick="window._mgrHubTab=\'' + t.id + '\';renderManagerHub()" ' +
@@ -11278,6 +11279,7 @@ function renderManagerHub() {
   else if (tab === 'pipeline')      bodyHtml = _mgrPipelineHtml(teamReps);
   else if (tab === 'aibrief')       bodyHtml = _mgrAIBriefHtml(teamReps);
   else if (tab === 'playbook')      bodyHtml = _mgrPlaybookHtml(teamReps);
+  else if (tab === 'intel')         bodyHtml = _mgrIntelHtml(teamReps);
 
   content.innerHTML =
     '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden">' +
@@ -11739,6 +11741,210 @@ async function mgrAIBrief(type, repId) {
     content.innerHTML = '<p>' + html + '</p>';
   } catch(e) {
     content.innerHTML = '<span style="color:var(--red);font-family:var(--mono);font-size:11px">Could not generate report: ' + escHtml(e.message||'unknown error') + '</span>';
+  }
+}
+
+// ── MANAGER HUB — ACCOUNT INTEL TAB ─────────────────────────────────────
+var _MGR_INTEL_TARGETS = ['San Luis Metal','Siemens','Martinrea','Porta Systems','Navistar','Thyssenkrupp'];
+
+function _mgrIntelHtml(teamReps) {
+  var quickBtns = _MGR_INTEL_TARGETS.map(function(name) {
+    return '<button data-iname="' + escHtml(name) + '" onclick="mgrIntelLookup(this.dataset.iname)" ' +
+      'style="background:var(--s2);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r)" ' +
+      'onmouseover="this.style.borderColor=\'var(--blue-b)\'" onmouseout="this.style.borderColor=\'var(--border)\'">' + escHtml(name) + '</button>';
+  }).join('');
+  return '<div style="max-width:820px">' +
+    '<div style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:20px">Look up any account\'s complete purchase history — including years before account transfer. Shows revenue by year across all reps, top recurring parts, and AI-generated outreach strategy.</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:14px">' +
+      '<input id="mgr-intel-input" type="text" placeholder="Search any account name..." ' +
+        'onkeydown="if(event.key===\'Enter\')mgrIntelLookup(this.value)" ' +
+        'style="flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 12px;border-radius:var(--r)">' +
+      '<button onclick="mgrIntelLookup(document.getElementById(\'mgr-intel-input\').value)" ' +
+        'style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;padding:8px 18px;cursor:pointer;border-radius:var(--r)">SEARCH</button>' +
+    '</div>' +
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:8px">TRANSFERRED ACCOUNTS — QUICK ACCESS</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">' + quickBtns + '</div>' +
+    '</div>' +
+    '<div id="mgr-intel-result"></div>' +
+    '</div>';
+}
+
+function mgrIntelLookup(query) {
+  query = (query||'').trim();
+  if (!query) return;
+  var out = document.getElementById('mgr-intel-result');
+  if (!out) return;
+  out.innerHTML = '<div style="padding:16px 0;color:var(--text-3);font-family:var(--mono);font-size:11px">Searching ' + (state.gpCache||[]).length + ' GP records...</div>';
+
+  var gpHdrs = (state.gpCache && state.gpCache.length > 0) ? Object.keys(state.gpCache[0]) : [];
+  var gpRevCol  = gpHdrs.find(function(h){ return /EXTENDED_PRICE|INVOICE_TOTAL/i.test(h); }) || 'EXTENDED_PRICE';
+  var gpDateCol = gpHdrs.find(function(h){ return /INVOICE_DATE/i.test(h); }) || 'INVOICE_DATE';
+  var gpRepCol  = gpHdrs.find(function(h){ return /SALES_REP/i.test(h); }) || 'SALES_REP';
+  var gpBuyerCol= gpHdrs.find(function(h){ return /BUYER_NAME/i.test(h); }) || 'BUYER_NAME';
+
+  var norm = function(s){ return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim(); };
+  var qWords = norm(query).split(/\s+/).filter(function(w){ return w.length > 2; });
+  if (!qWords.length) qWords = [norm(query)];
+
+  var gpRows = (state.gpCache||[]).filter(function(r) {
+    var buyer = norm(r[gpBuyerCol]||'');
+    return qWords.every(function(w){ return buyer.indexOf(w) > -1; });
+  });
+
+  if (!gpRows.length) {
+    out.innerHTML = '<div style="padding:20px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);color:var(--text-3);font-family:var(--mono);font-size:11px">No GP records found for "' + escHtml(query) + '". Try a shorter keyword (e.g. "Siemens" not "Siemens Corporation").</div>';
+    return;
+  }
+
+  // Revenue by year
+  var byYear = {};
+  gpRows.forEach(function(r) {
+    var yr = (r[gpDateCol]||'').slice(0,4)||'?';
+    var rev = parseFloat(r[gpRevCol]||0)||0;
+    var rep = (r[gpRepCol]||'').trim()||'?';
+    if (!byYear[yr]) byYear[yr] = {total:0,reps:{}};
+    byYear[yr].total += rev;
+    byYear[yr].reps[rep] = (byYear[yr].reps[rep]||0) + rev;
+  });
+  var years = Object.keys(byYear).filter(function(y){ return y.match(/^\d{4}$/); }).sort(function(a,b){ return b.localeCompare(a); });
+  var grandTotal = gpRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
+  var maxRev = Math.max.apply(null, years.map(function(y){ return byYear[y].total; }))||1;
+
+  var yearRows = years.map(function(yr) {
+    var d = byYear[yr];
+    var pct = Math.round((d.total/maxRev)*100);
+    var repLine = Object.keys(d.reps).sort(function(a,b){ return d.reps[b]-d.reps[a]; }).map(function(rep) {
+      return '<span style="font-size:10px;color:var(--text-3)">' + escHtml(rep) + ' <span style="color:var(--text-2)">$' + formatNum(d.reps[rep]) + '</span></span>';
+    }).join(' &nbsp;·&nbsp; ');
+    return '<div style="padding:9px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:3px">' +
+        '<div style="font-family:var(--mono);font-size:12px;font-weight:700;min-width:48px;color:var(--text)">' + escHtml(yr) + '</div>' +
+        '<div style="flex:1;background:var(--s2);border-radius:3px;height:9px;overflow:hidden">' +
+          '<div style="width:' + pct + '%;height:100%;background:var(--blue-b);opacity:0.7;border-radius:3px"></div>' +
+        '</div>' +
+        '<div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);min-width:90px;text-align:right">$' + formatNum(d.total) + '</div>' +
+      '</div>' +
+      '<div style="margin-left:60px;display:flex;flex-wrap:wrap;gap:8px">' + repLine + '</div>' +
+    '</div>';
+  }).join('');
+
+  // Top parts from historyCache
+  var hKey = null;
+  var normQ = norm(query);
+  Object.keys(state.historyCache||{}).forEach(function(k) {
+    if (norm(k).indexOf(normQ) > -1 || normQ.split(' ').filter(function(w){ return w.length>3; }).every(function(w){ return norm(k).indexOf(w)>-1; })) {
+      if (!hKey || norm(k).length < norm(hKey).length) hKey = k;
+    }
+  });
+  var hData = hKey ? (state.historyCache[hKey]||{invoices:[]}) : {invoices:[]};
+  var partMap = {};
+  (hData.invoices||[]).forEach(function(inv) {
+    if (!inv.part) return;
+    if (!partMap[inv.part]) partMap[inv.part] = {count:0, desc:inv.desc||'', total:0, lastDate:''};
+    partMap[inv.part].count++;
+    partMap[inv.part].total += inv.lineTotal||0;
+    if (!partMap[inv.part].lastDate || inv.date > partMap[inv.part].lastDate) partMap[inv.part].lastDate = inv.date;
+  });
+  var topParts = Object.keys(partMap).sort(function(a,b){ return partMap[b].count-partMap[a].count; }).slice(0,12);
+
+  var partsHtml = topParts.length > 0
+    ? '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr>' +
+          '<th style="text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">PART NUMBER</th>' +
+          '<th style="text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">DESCRIPTION</th>' +
+          '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 8px;border-bottom:1px solid var(--border)">ORDERS</th>' +
+          '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">REVENUE</th>' +
+          '<th style="text-align:right;font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);padding:5px 0;border-bottom:1px solid var(--border)">LAST SOLD</th>' +
+        '</tr></thead><tbody>' +
+        topParts.map(function(p) {
+          var d = partMap[p];
+          return '<tr style="border-bottom:1px solid var(--border)">' +
+            '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;color:var(--blue-b);font-weight:600">' + escHtml(p) + '</td>' +
+            '<td style="font-size:11px;padding:7px 6px;color:var(--text-2)">' + escHtml((d.desc||'').slice(0,55)) + '</td>' +
+            '<td style="font-family:var(--mono);font-size:11px;padding:7px 8px;text-align:right;color:var(--text)">' + d.count + '</td>' +
+            '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;text-align:right;color:var(--text)">$' + formatNum(d.total) + '</td>' +
+            '<td style="font-family:var(--mono);font-size:11px;padding:7px 0;text-align:right;color:var(--text-3)">' + escHtml(d.lastDate||'—') + '</td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table>'
+    : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No line-item history found in Invoice History for this account. (Invoice History is limited to current rep assignments — pre-transfer line items may not be available here, but GP revenue above covers all years.)</div>';
+
+  // Matched buyer name variants
+  var matchedNames = {};
+  gpRows.forEach(function(r){ matchedNames[r[gpBuyerCol]||''] = true; });
+  var nameList = Object.keys(matchedNames).slice(0,4);
+
+  out.innerHTML =
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;margin-bottom:12px">' +
+    '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start">' +
+      '<div>' +
+        '<div style="font-family:var(--mono);font-size:14px;font-weight:700;margin-bottom:3px">' + escHtml(query.toUpperCase()) + '</div>' +
+        '<div style="font-size:10px;color:var(--text-3)">Matched as: ' + escHtml(nameList.join(' / ')) + (Object.keys(matchedNames).length>4?' +more':'') + '</div>' +
+      '</div>' +
+      '<div style="text-align:right">' +
+        '<div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--blue-b)">$' + formatNum(grandTotal) + '</div>' +
+        '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + gpRows.length + ' records &nbsp;·&nbsp; ' + years.length + ' years</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">REVENUE BY YEAR — ALL REPS (incl. pre-transfer)</div>' +
+      yearRows +
+    '</div>' +
+    '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:10px">TOP RECURRING PARTS</div>' +
+      partsHtml +
+    '</div>' +
+    '<div style="padding:16px 20px">' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:10px">AI OUTREACH STRATEGY</div>' +
+      '<button data-iq="' + escHtml(query) + '" onclick="mgrIntelAI(this.dataset.iq)" ' +
+        'style="background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.4);color:#a78bfa;font-family:var(--mono);font-size:10px;font-weight:700;padding:7px 16px;cursor:pointer;border-radius:var(--r)">🤖 BUILD OUTREACH STRATEGY</button>' +
+      '<div id="mgr-intel-ai-out" style="margin-top:12px"></div>' +
+    '</div>' +
+    '</div>';
+}
+
+async function mgrIntelAI(query) {
+  var out = document.getElementById('mgr-intel-ai-out');
+  if (!out) return;
+  out.innerHTML = '<div style="color:#a78bfa;font-family:var(--mono);font-size:11px">Building outreach strategy...</div>';
+
+  var gpHdrs = (state.gpCache && state.gpCache.length > 0) ? Object.keys(state.gpCache[0]) : [];
+  var gpRevCol  = gpHdrs.find(function(h){ return /EXTENDED_PRICE|INVOICE_TOTAL/i.test(h); }) || 'EXTENDED_PRICE';
+  var gpDateCol = gpHdrs.find(function(h){ return /INVOICE_DATE/i.test(h); }) || 'INVOICE_DATE';
+  var gpRepCol  = gpHdrs.find(function(h){ return /SALES_REP/i.test(h); }) || 'SALES_REP';
+  var gpBuyerCol= gpHdrs.find(function(h){ return /BUYER_NAME/i.test(h); }) || 'BUYER_NAME';
+  var norm = function(s){ return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim(); };
+  var qWords = norm(query).split(/\s+/).filter(function(w){ return w.length>2; });
+  var gpRows = (state.gpCache||[]).filter(function(r){ var b=norm(r[gpBuyerCol]||''); return qWords.every(function(w){ return b.indexOf(w)>-1; }); });
+
+  var byYear = {};
+  gpRows.forEach(function(r) {
+    var yr=(r[gpDateCol]||'').slice(0,4); var rev=parseFloat(r[gpRevCol]||0)||0; var rep=(r[gpRepCol]||'').trim();
+    if(!byYear[yr]) byYear[yr]={total:0,reps:{}};
+    byYear[yr].total+=rev; byYear[yr].reps[rep]=(byYear[yr].reps[rep]||0)+rev;
+  });
+  var yearSummary = Object.keys(byYear).sort().map(function(yr){ return yr+': $'+formatNum(byYear[yr].total)+' ('+Object.keys(byYear[yr].reps).join('/')+')'; }).join(', ');
+  var grandTotal = gpRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
+
+  var hKey = null;
+  Object.keys(state.historyCache||{}).forEach(function(k){ if(norm(k).indexOf(norm(query))>-1) hKey=k; });
+  var hData = hKey ? (state.historyCache[hKey]||{invoices:[]}) : {invoices:[]};
+  var partMap = {};
+  (hData.invoices||[]).forEach(function(inv){ if(!inv.part)return; if(!partMap[inv.part])partMap[inv.part]={count:0,desc:inv.desc||''}; partMap[inv.part].count++; });
+  var topPartsStr = Object.keys(partMap).sort(function(a,b){ return partMap[b].count-partMap[a].count; }).slice(0,6).map(function(p){ return p+(partMap[p].desc?' ('+partMap[p].desc+')':''); }).join(', ');
+
+  var ctx = 'Account: '+query+'\nTotal all-time revenue: $'+formatNum(grandTotal)+'\nRevenue by year: '+yearSummary+'\nTop recurring parts: '+(topPartsStr||'not available in line-item history')+'\nCompany: Intransit Technologies — industrial/electronic parts distributor. MX sales team recently took over this account from previous reps.';
+
+  try {
+    var result = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:750,
+      messages:[{role:'user', content:'You are a B2B sales coach for an industrial parts distributor. Based on this account\'s purchase history, write a practical re-engagement outreach plan. Include: (1) Best re-engagement angle based on buying history (2-3 sentences), (2) Suggested email subject line, (3) Opening paragraph for the outreach email (3-4 sentences, reference specific history), (4) Top 2-3 part numbers to lead with and why they are good conversation starters. Be specific and practical — the rep will use this directly.\n\n'+ctx}]
+    });
+    var text = result&&result.content&&result.content[0] ? result.content[0].text : 'Could not generate.';
+    out.innerHTML = '<div style="background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.25);border-radius:var(--r2);padding:14px 16px;font-size:12px;line-height:1.75;color:var(--text-2)">' +
+      '<p>' + text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n\n/g,'</p><p style="margin-top:10px">').replace(/\n/g,'<br>') + '</p></div>';
+  } catch(e) {
+    out.innerHTML = '<span style="color:var(--red);font-size:11px">AI error: '+escHtml(e.message)+'</span>';
   }
 }
 

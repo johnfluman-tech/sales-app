@@ -866,3 +866,38 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - `_mgrIntelTransferPartsHtml` shows top 15 parts from 2022 (year before Ian took over in 2023)
 - Header reads: "WHAT THEY WERE BUYING BEFORE IAN PITMAN TOOK OVER"
 - yearLabel: "2022 — year before Ian Pitman took over (2023)"
+
+### 2026-05-26 (session 27 — Task 4: Request Log + deny-with-note)
+
+**Features added (commit `9e49d5c`):**
+
+**New `_REQUEST_LOG` tab in History sheet:**
+- `writeRequestLog(type, account, repId, reason, status)` — appends PENDING row to `_REQUEST_LOG` in History sheet (columns: TIMESTAMP, TYPE, ACCOUNT, REP, REASON, STATUS, ADMIN_NOTE)
+- `resolveRequestLog(type, account, repId, status, adminNote)` — appends `TYPE_RESOLVED` row when admin approves or denies
+- Both functions are fire-and-forget (`.catch(function(){})`) — failure doesn't block the UI action
+
+**Wired into all request flows:**
+- `submitHideRequest()` — writes PENDING HIDE row to `_REQUEST_LOG` when rep submits
+- `apkDoRequestTransfer()` — writes PENDING TRANSFER row to `_REQUEST_LOG` when rep submits
+- `approveRemovalDirect()` — writes HIDE_RESOLVED / APPROVED after hiding account
+- `denyRemoval()` — writes HIDE_RESOLVED / DENIED with admin note after denying
+
+**Deny with admin note:**
+- `showDenyHideModal(accountName)` — modal with textarea for admin note; calls `denyRemoval(name, note)`
+- `denyRemoval(accountName, adminNote)` — updated signature; removes REMOVE_FLAG from sheet; writes DENIED to log; no longer uses `confirm()` dialog
+- `showDenyTransferModal(accName, repEmail)` — modal with textarea for admin note; calls `denyTransferRequest(name, email, note)`
+- `denyTransferRequest(accName, repEmail, adminNote)` — writes TRANSFER_DENIED to `_LOG` + DENIED to `_REQUEST_LOG`
+- Requests page `infoCard` for TRANSFER type now shows "✗ DENY" button → `showDenyTransferModal()`
+- Requests page `removeCard` DENY button now calls `showDenyHideModal()` (was calling `denyRemoval()` directly with no note)
+
+**New "My Requests" sidebar nav + view (all users):**
+- `nav-request-log` nav item in System section — visible to all logged-in users
+- `renderRequestLogView()` — reads `_REQUEST_LOG` from History sheet; shows KPI cards (PENDING/APPROVED/DENIED counts); status-colored cards showing account, type, rep, reason, admin note
+- Admin: sees all requests + inline APPROVE HIDE / DENY buttons (re-use existing approve/deny functions)
+- Rep: sees only own requests filtered by `state.repId`
+- DENIED cards show action buttons: "↩ RE-REQUEST TRANSFER" (goes to Attack Plan) or "↩ RE-REQUEST HIDE" / "🚫 REQUEST HIDE INSTEAD" (calls `showQuickHideRequest`)
+
+**New functions:** `writeRequestLog`, `resolveRequestLog`, `showDenyHideModal`, `showDenyTransferModal`, `denyTransferRequest`, `renderRequestLogView`
+**Modified functions:** `denyRemoval` (new adminNote param + modal flow), `approveRemovalDirect` (+ resolveRequestLog), `submitHideRequest` (+ writeRequestLog), `apkDoRequestTransfer` (+ writeRequestLog), `infoCard` in `_reqRenderPage` (+ deny button for TRANSFER), `removeCard` in `_reqRenderPage` (DENY now calls showDenyHideModal)
+
+**Setup required:** `_REQUEST_LOG` tab will auto-create in History sheet on first request submit (sheetsAppend creates the tab if it exists; if not, create tab manually with header: `TIMESTAMP, TYPE, ACCOUNT, REP, REASON, STATUS, ADMIN_NOTE`)

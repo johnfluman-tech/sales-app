@@ -932,3 +932,40 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **Bug fixed — JS syntax error crashing entire app (commit `11d251a`):**
 - `infoCard` deny button used `\'@intransittech.com\'` (backslash-escaped quote) in expression context — valid inside a JS string literal but a hard SyntaxError at expression level; caused the entire `<script>` block to fail parsing, making the app completely non-functional
 - Fix: switched to `data-rid` attribute (repId only, no email concatenation needed in template); `showDenyTransferModal(accName, repIdOrEmail)` now accepts either repId or full email — appends `@intransittech.com` if `@` is absent
+
+### 2026-05-26 (session 28 — Hidden Accounts view + Return Requests + manager canEdit + CRM pool fixes)
+
+**Features added (commit `c294fc5`):**
+
+**Hidden Accounts nav + view:**
+- New `nav-hidden-accounts` (🔒) in sidebar System section — visible to all logged-in users
+- `renderHiddenAccountsView()` — scopes to rep (own accounts), manager (teamReps accounts), admin (redirect to Requests & Approvals)
+- Badge shows count of hidden accounts in scope
+- Each card has **↩ REQUEST RETURN** button
+
+**Return Request flow:**
+- `showReturnRequestModal(accName)` — modal with reason textarea
+- `submitReturnRequest(accName, reason)` — calls `writeRequestLog('RETURN', ...)` to `_REQUEST_LOG`
+- `approveReturnRequest(accName, repId)` — calls `unhideAccount()` + `resolveRequestLog()` + re-renders Requests page
+- RETURN type wired throughout: `renderRequestLogView` shows orange ↩ tag with APPROVE RETURN (admin) / RE-REQUEST RETURN (rep) buttons
+- Admin Requests & Approvals: RETURN filter button added; orange `returnCard()` function; `renderRemovalsView` loads RETURN rows from `_REQUEST_LOG`
+
+**Manager canEdit fix:**
+- `renderNoteInput`: `canEdit` now includes managers for their team reps — `const mgrCfg = getManagerConfig(); const canEdit = state.isAdmin || acc.rep === state.repId || (!!mgrCfg && mgrCfg.teamReps && mgrCfg.teamReps.includes(acc.rep));`
+- Karen can now submit hide requests for PIan, RMauricio, LMancera, bcastor accounts
+
+**MX Team view fix (getViewAccounts CRM pool):**
+- `getViewAccounts()` now builds `hiddenNames` Set from `state.hiddenAccounts` and filters CRM pool to exclude them
+- Previously hidden accounts appeared as CRM-only stubs (📊 CRM badge) in __TEAM_ALL__ view — now correctly excluded
+
+**Attack Plan CRM pool fixes:**
+- CRM lastActivity `1753-01-01 00:00:00` (SQL Server min date) now filtered: `_crmAct` only shown if not starting with `'1753'`; also truncated to date-only (10 chars)
+- `apkOpenAccount()`: when clicked account is CRM-only (not in `state.accounts`), now sets filter to 'all' + shows info toast instead of "not found" error
+
+**Academy updates:**
+- t1-1 SVG sidebar diagram: expanded from 280→360px height; added Prospects 🎯, My Requests 📋, Hidden Accounts 🔒 nav items with callout lines
+- t3-5 lesson: completely rewritten — now covers hide request flow (Notes tab → REQUEST HIDE), My Requests tracking, Hidden Accounts view, Request to Return flow; uses `acadSteps()` with 5 numbered steps
+
+**New functions:** `renderHiddenAccountsView`, `showReturnRequestModal`, `submitReturnRequest`, `approveReturnRequest`
+**New nav:** `nav-hidden-accounts` (🔒 Hidden Accounts)
+**Modified functions:** `renderNoteInput`, `getViewAccounts`, `renderRemovalsView`, `_reqRenderPage`, `renderRequestLogView`, `apkCardHtml` (CRM date fix), `apkOpenAccount` (CRM click fix)

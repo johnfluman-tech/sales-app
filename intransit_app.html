@@ -5710,323 +5710,287 @@ async function renderRemovalsView() {
     return;
   }
   const el = document.getElementById('main-content');
-  el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div style="font-family:var(--mono);letter-spacing:0.15em">LOADING REQUESTS...</div></div>';
+  el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div style="font-family:var(--mono);letter-spacing:0.15em">LOADING...</div></div>';
 
-  // ── 1. REMOVAL REQUESTS from state.accounts ───────────────────────────────
   const pendingRemovals = state.accounts.filter(a =>
     a.removeFlag && a.removeFlag.trim() &&
     a.removeFlag.toUpperCase() !== 'YES' &&
-    a.johnApproval?.toUpperCase() !== 'YES'
+    (a.johnApproval||'').toUpperCase() !== 'YES'
   );
 
-  // ── 2. LOG-BASED REQUESTS (hold, transfer) ───────────────────────────────
-  let holdReqs = [], transferReqs = [], hideReqs = [], globalRemoveReqs = [], logError = '';
+  let holdReqs = [], transferReqs = [], hideReqs = [], globalRemoveReqs = [];
   try {
     const logRows = await sheetsGet("'_LOG'!A1:E2000");
     holdReqs     = logRows.filter((r,i) => i>0 && (r[2]||'')==='HOLD_REQUEST').slice().reverse().slice(0,30);
     transferReqs = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_REQUEST').slice().reverse().slice(0,30);
-    hideReqs        = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_HIDE_REQUEST').slice().reverse().slice(0,50);
+    hideReqs     = logRows.filter((r,i) => i>0 && (r[2]||'')==='TRANSFER_HIDE_REQUEST').slice().reverse().slice(0,50);
     globalRemoveReqs = logRows.filter((r,i) => i>0 && (r[2]||'')==='POOL_GLOBAL_REMOVE_REQUEST').slice().reverse().slice(0,50);
-  } catch(e) {
-    logError = e.message;
-  }
+  } catch(e) {}
 
-  // ── 3. NDA LOG ─────────────────────────────────────────────────────────────
   let ndaRows = [];
   try {
     const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_NDA_LOG'!A1:L2000");
-    ndaRows = (raw||[]).filter(r => r[7] === 'ACCEPTED' || r[7] === 'DECLINED').slice().reverse();
-    window._ndaRowsCache = ndaRows; // cache for exportNDALog()
-  } catch(e) { /* ignore */ }
+    state._ndaLogRows = raw || [];
+    ndaRows = (raw||[]).filter(r => r[7]==='ACCEPTED'||r[7]==='DECLINED').slice().reverse();
+    window._ndaRowsCache = ndaRows;
+  } catch(e) {}
 
-  const totalPending = pendingRemovals.length + holdReqs.length + transferReqs.length;
+  window._reqData = { pendingRemovals, holdReqs, transferReqs, hideReqs, globalRemoveReqs, ndaRows };
   const badge = document.getElementById('badge-removals');
   if (badge) badge.textContent = pendingRemovals.length || '';
-
-  const fmt = (ts) => {
-    if (!ts) return '—';
-    try { return new Date(ts).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}); }
-    catch { return ts; }
-  };
-
-  el.innerHTML = `
-    <div style="flex:1;overflow-y:auto;padding:24px;max-width:900px">
-
-      <!-- Page header -->
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-        <div>
-          <div style="font-size:20px;font-weight:700;margin-bottom:3px">🗑 Requests & Approvals</div>
-          <div style="font-size:12px;color:var(--text-3)">${totalPending} pending · Only John can approve</div>
-        </div>
-        
-      </div>
-
-      <!-- Diagnostic panel --><!-- How reps submit requests -->
-      <div style="background:rgba(52,152,219,0.07);border:1px solid rgba(52,152,219,0.25);border-radius:var(--r2);padding:12px 16px;margin-bottom:24px;font-size:12px">
-        <div style="font-weight:600;margin-bottom:4px">ℹ How reps submit requests</div>
-        <div style="color:var(--text-2);line-height:1.7">
-          Reps go to <strong>My Accounts → click any account → Notes tab → scroll to the bottom</strong>.
-          There they can submit: 🗑 Removal · 🔒 Hold · ⇄ Transfer requests. John reviews them here.
-        </div>
-      </div>
-
-      <!-- ① REMOVAL REQUESTS ────────────────────────────────────────── -->
-      <div style="margin-bottom:28px">
-        <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
-          🗑 Removal Requests
-          <span style="background:${pendingRemovals.length?'var(--red)':'var(--s2)'};color:${pendingRemovals.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${pendingRemovals.length}</span>
-        </div>
-        ${pendingRemovals.length ? `
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${pendingRemovals.map(acc => `
-            <div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--red);border-radius:var(--r2);padding:14px 18px;display:flex;align-items:flex-start;gap:16px">
-              <div style="flex:1">
-                <div style="font-size:14px;font-weight:600;margin-bottom:4px;cursor:pointer;color:var(--blue-b);text-decoration:underline"
-                  onclick="switchView('accounts');setTimeout(()=>{const a=state.accounts.find(x=>x.name==='${escHtml(acc.name)}');if(a)selectAccount(a);},300)">
-                  ${escHtml(acc.name)}
-                </div>
-                <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">Rep: ${escHtml(acc.rep)} · Status: ${escHtml((acc.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim())} · $${formatNum(acc.total||0)} lifetime</div>
-                <div style="font-size:12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px;color:var(--text-2)">
-                  <span style="font-family:var(--mono);font-size:9px;color:var(--red);letter-spacing:0.1em;display:block;margin-bottom:3px">REP'S REASON:</span>
-                  ${escHtml(acc.removeFlag)}
-                </div>
-              </div>
-              <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0;min-width:130px">
-                <button onclick="approveRemovalDirect('${escHtml(acc.name)}')"
-                  style="background:var(--red);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:7px 14px;cursor:pointer;border-radius:var(--r);font-weight:700">
-                  ✓ APPROVE
-                </button>
-                <button onclick="denyRemoval('${escHtml(acc.name)}')"
-                  style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:7px 14px;cursor:pointer;border-radius:var(--r)">
-                  ✗ DENY / KEEP
-                </button>
-              </div>
-            </div>`).join('')}
-        </div>` : `
-        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:28px;text-align:center;color:var(--text-3)">
-          <div style="font-size:22px;margin-bottom:8px">✓</div>
-          <div style="font-family:var(--mono);font-size:11px">No pending removal requests</div>
-        </div>`}
-      </div>
-
-      <!-- ② HOLD REQUESTS ──────────────────────────────────────────── -->
-      <div style="margin-bottom:28px">
-        <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
-          🔒 Credit Hold Requests
-          <span style="background:${holdReqs.length?'var(--orange)':'var(--s2)'};color:${holdReqs.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${holdReqs.length}</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Approve these in CRM → Accounts → Credit Hold (not in this app)</div>
-        ${holdReqs.length ? `
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${holdReqs.map(r => {
-            const msg = r[3]||'';
-            const rep = (r[1]||'').replace('@intransittech.com','');
-            const accMatch = msg.match(/hold for: (.+?)\. Reason:/);
-            const reasonMatch = msg.match(/Reason: (.+)$/);
-            return `<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:12px 16px">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-                <div style="font-size:13px;font-weight:600">${escHtml(accMatch?.[1]||msg.slice(0,40))}</div>
-                <div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-left:12px;white-space:nowrap">${fmt(r[0])}</div>
-              </div>
-              <div style="font-size:11px;color:var(--blue-b);margin-bottom:4px">From: ${escHtml(rep)}</div>
-              ${reasonMatch?.[1]?`<div style="font-size:12px;color:var(--text-2);background:var(--s2);padding:6px 10px;border-radius:var(--r)">${escHtml(reasonMatch[1])}</div>`:''}
-              <div style="margin-top:8px;font-size:10px;color:var(--text-3);font-family:var(--mono)">→ Action required in CRM: Accounts → find account → Credit Hold toggle</div>
-            </div>`;
-          }).join('')}
-        </div>` : `
-        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)">
-          <div style="font-size:22px;margin-bottom:8px">✓</div>
-          <div style="font-family:var(--mono);font-size:11px">No hold requests</div>
-        </div>`}
-      </div>
-
-      <!-- ③ TRANSFER REQUESTS ──────────────────────────────────────── -->
-      <div style="margin-bottom:28px">
-        <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
-          ⇄ Territory Transfer Requests
-          <span style="background:${transferReqs.length?'var(--blue-b)':'var(--s2)'};color:${transferReqs.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${transferReqs.length}</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Approve these in CRM → reassign the account's rep, then re-run the Python script</div>
-        ${transferReqs.length ? `
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${transferReqs.map(r => {
-            const msg = r[3]||'';
-            const rep = (r[1]||'').replace('@intransittech.com','');
-            const accMatch = msg.match(/requests: (.+?)\. Note:/);
-            const noteMatch = msg.match(/Note: (.+)$/);
-            return `<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--blue-b);border-radius:var(--r2);padding:12px 16px">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-                <div style="font-size:13px;font-weight:600">${escHtml(accMatch?.[1]||msg.slice(0,40))}</div>
-                <div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-left:12px;white-space:nowrap">${fmt(r[0])}</div>
-              </div>
-              <div style="font-size:11px;color:var(--blue-b);margin-bottom:4px">Requested by: ${escHtml(rep)}</div>
-              ${noteMatch?.[1]&&noteMatch[1]!=='none'?`<div style="font-size:12px;color:var(--text-2);background:var(--s2);padding:6px 10px;border-radius:var(--r)">${escHtml(noteMatch[1])}</div>`:''}
-              <div style="margin-top:8px;font-size:10px;color:var(--text-3);font-family:var(--mono)">→ Approve in CRM: change account's rep, then re-run sales_report.py</div>
-            </div>`;
-          }).join('')}
-        </div>` : `
-        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)">
-          <div style="font-size:22px;margin-bottom:8px">✓</div>
-          <div style="font-family:var(--mono);font-size:11px">No transfer requests</div>
-        </div>`}
-      </div>
-
-      <!-- ④ TRANSFER HIDE REQUESTS ──────────────────────────────────── -->
-      <div style="margin-bottom:28px">
-        <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
-          ✕ Transfer List — Hide Requests
-          <span style="background:${hideReqs.length?'var(--orange)':'var(--s2)'};color:${hideReqs.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${hideReqs.length}</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Reps have asked to permanently hide these accounts from their transfer list. No action needed — they are already hidden locally. This is for your visibility only.</div>
-        ${hideReqs.length ? `
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${hideReqs.map(r => {
-            const msg = r[3]||'';
-            const rep = (r[1]||'').replace('@intransittech.com','');
-            const accMatch = msg.match(/hide from transfer list: (.+)$/);
-            const accName = accMatch?.[1] || msg.slice(0,60);
-            return `<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-              <div>
-                <div style="font-size:13px;font-weight:600">${escHtml(accName)}</div>
-                <div style="font-size:11px;color:var(--text-3);margin-top:3px">Hidden by: <span style="color:var(--orange)">${escHtml(rep)}</span> · <span style="font-family:var(--mono)">${fmt(r[0])}</span></div>
-              </div>
-              <div style="font-size:10px;color:var(--text-3);font-family:var(--mono);text-align:right">No action needed —<br>hidden in their browser</div>
-            </div>`;
-          }).join('')}
-        </div>` : `
-        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)">
-          <div style="font-size:22px;margin-bottom:8px">✓</div>
-          <div style="font-family:var(--mono);font-size:11px">No hide requests</div>
-        </div>`}
-      </div>
-
-      <!-- GLOBAL POOL REMOVE REQUESTS -->
-      <div style="margin-bottom:28px" id="section-global-remove-reqs">
-        <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
-          🚫 Global Pool Removal Requests
-          <span style="background:${globalRemoveReqs.length?'var(--red)':'var(--s2)'};color:${globalRemoveReqs.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${globalRemoveReqs.length}</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Reps requesting an account be removed from everyone's inactive pool. Approve to permanently hide it for all users.</div>
-        ${globalRemoveReqs.length ? ('<div style="display:flex;flex-direction:column;gap:8px">' +
-          globalRemoveReqs.map(r => {
-            const msg = r[3]||'';
-            const rep = (r[1]||'').replace('@intransittech.com','');
-            const accMatch = msg.match(/requests global pool removal: (.+?)\. Reason:/);
-            const reasonMatch = msg.match(/Reason: (.+)$/);
-            const accName = accMatch?.[1] || msg.slice(0,60);
-            const reason = reasonMatch?.[1] || '—';
-            const alreadyRemoved = state.globallyRemovedFromPool?.has(accName);
-            return '<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--red);border-radius:var(--r2);padding:12px 16px">' +
-              '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">' +
-                '<div style="font-size:13px;font-weight:600">' + escHtml(accName) + '</div>' +
-                '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-left:12px;white-space:nowrap">' + fmt(r[0]) + '</div>' +
-              '</div>' +
-              '<div style="font-size:11px;color:var(--red);margin-bottom:4px">Requested by: ' + escHtml(rep) + '</div>' +
-              '<div style="font-size:12px;color:var(--text-2);background:var(--s2);padding:6px 10px;border-radius:var(--r);margin-bottom:8px">Reason: ' + escHtml(reason) + '</div>' +
-              (alreadyRemoved
-                ? '<div style="font-size:11px;color:var(--green);font-family:var(--mono)">✓ Already globally removed</div>'
-                : '<button onclick="apkApproveGlobalRemoveById(this)"' +
-                  ' data-name="' + escHtml(accName).replace(/"/g,'&quot;') + '"' +
-                  ' data-reason="' + escHtml(reason).replace(/"/g,'&quot;') + '"' +
-                  ' data-rep="' + escHtml(rep).replace(/"/g,'&quot;') + '"' +
-                  ' style="padding:6px 16px;background:rgba(220,38,38,0.15);border:1px solid var(--red);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700">' +
-                  '🚫 APPROVE — REMOVE FROM ALL POOLS</button>'
-              ) +
-            '</div>';
-          }).join('') + '</div>'
-        ) : '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)"><div style="font-size:22px;margin-bottom:8px">✓</div><div style="font-family:var(--mono);font-size:11px">No global removal requests</div></div>'}
-      </div>
-
-      <!-- ALL GLOBALLY REMOVED ACCOUNTS -->
-      <div style="margin-bottom:28px" id="section-global-removed">
-        <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
-          🗄 All Globally Removed Accounts
-          <span style="background:var(--s2);color:var(--text-3);font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${state.globallyRemovedFromPool?.size||0}</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Accounts you've approved to remove from all users' inactive pools. You can restore any of them.</div>
-        <div id="global-removed-list">
-          ${(state.globallyRemovedFromPool?.size > 0) ? ('<div style="display:flex;flex-direction:column;gap:6px">' +
-            Array.from(state.globallyRemovedFromPool).map(name => {
-              const acc = state.accounts.find(a => a.name === name);
-              return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;display:flex;justify-content:space-between;align-items:center">' +
-                '<div>' +
-                  '<div style="font-size:13px;font-weight:500">' + escHtml(name) + '</div>' +
-                  (acc ? '<div style="font-size:11px;color:var(--text-3);font-family:var(--mono)">Rep: ' + escHtml(acc.rep) + ' · $' + formatNum(acc.total||0) + '</div>' : '') +
-                '</div>' +
-                '<button onclick="apkRestoreGlobalRemoved(' + "'" + escHtml(name) + "')" +
-                  '" style="font-size:10px;padding:5px 12px;background:rgba(59,130,246,0.12);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-weight:700">' +
-                  '↩ RESTORE TO ALL POOLS</button>' +
-              '</div>';
-            }).join('') + '</div>'
-          ) : '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)"><div style="font-size:22px;margin-bottom:8px">✓</div><div style="font-family:var(--mono);font-size:11px">No accounts globally removed</div></div>'}
-        </div>
-      </div>
-
-      <!-- ⑤ HIDDEN ACCOUNTS (approved removals) ──────────────────── -->
-      <div style="margin-bottom:28px">
-        <div style="font-size:16px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:10px">
-          👁 Hidden Accounts
-          <span style="background:${state.hiddenAccounts.length?'var(--orange)':'var(--s2)'};color:${state.hiddenAccounts.length?'#fff':'var(--text-3)'};font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${state.hiddenAccounts.length}</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:12px">Accounts you have approved to hide — invisible in all rep views. Click UNHIDE to restore.</div>
-        ${state.hiddenAccounts.length ? `
-        <div style="display:flex;flex-direction:column;gap:6px">
-          ${state.hiddenAccounts.map(acc => `
-            <div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px">
-              <div style="flex:1">
-                <div style="font-size:13px;font-weight:600;margin-bottom:3px">${escHtml(acc.name)}</div>
-                <div style="font-size:11px;color:var(--text-3)">Rep: ${escHtml(acc.rep)} · $${formatNum(acc.total||0)} lifetime</div>
-                ${acc.removeFlag ? `<div style="font-size:10px;color:var(--text-muted);margin-top:3px;font-family:var(--mono)">Reason: "${escHtml(acc.removeFlag)}"</div>` : ''}
-              </div>
-              <button data-n="${escHtml(acc.name)}" onclick="unhideAccount(this.dataset.n)"
-                style="padding:7px 14px;background:rgba(59,130,246,0.12);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">
-                ↩ UNHIDE
-              </button>
-            </div>`).join('')}
-        </div>` : `
-        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)">
-          <div style="font-size:22px;margin-bottom:8px">✓</div>
-          <div style="font-family:var(--mono);font-size:11px">No hidden accounts</div>
-        </div>`}
-      </div>
-
-      <!-- NDA LOG  ─────────────────────────────────────────────────── -->
-      <div>
-        <div style="font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
-          🔒 NDA Acceptance Log
-          <span style="background:var(--s2);color:var(--text-3);font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px">${ndaRows.length}</span>
-          <button onclick="exportNDALog()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 10px;cursor:pointer;border-radius:var(--r);margin-left:auto">⬇ EXPORT CSV</button>
-        </div>
-        ${ndaRows.length ? `
-        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">
-          <div style="display:grid;grid-template-columns:130px 1fr 70px 60px 70px 90px 60px;background:var(--s2);border-bottom:1px solid var(--border);padding:8px 14px;font-family:var(--mono);font-size:9px;color:var(--text-3)">
-            <div>TIMESTAMP</div><div>EMAIL</div><div>REP</div><div>LANG</div><div>ACTION</div><div>SESSION ID</div><div>NDA VER</div>
-          </div>
-          <div style="max-height:360px;overflow-y:auto">
-            ${ndaRows.slice(0,50).map(r => `
-              <div style="display:grid;grid-template-columns:130px 1fr 70px 60px 70px 90px 60px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:11px"
-                onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
-                <div style="font-family:var(--mono);font-size:10px;color:var(--text-3)">${escHtml(r[0]?.slice(0,16)||'')}</div>
-                <div style="color:var(--blue-b);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r[2]||'')}</div>
-                <div style="font-size:10px;color:var(--text-2)">${escHtml(r[4]||'')}</div>
-                <div style="font-size:10px;color:var(--text-3)">${escHtml(r[5]||'')}</div>
-                <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:${(r[7]||'')==='ACCEPTED'?'var(--green)':'var(--red)'}">${escHtml(r[7]||'')}</div>
-                <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis">${escHtml((r[12]||'').slice(0,12))}</div>
-                <div style="font-size:10px;color:var(--text-muted)">${escHtml(r[6]||'')}
-                  ${r[13] ? '<button data-key="' + escHtml(r[13]) + '" onclick="viewNDARecord(this.dataset.key)" style="display:block;margin-top:3px;padding:2px 6px;background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--mono);font-size:8px;cursor:pointer">📄 VIEW</button>' : ''}
-                </div>
-              </div>`).join('')}
-          </div>
-        </div>` : `
-        <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;text-align:center;color:var(--text-3)">
-          <div style="font-family:var(--mono);font-size:11px">No NDA records yet — log populates when users accept at login</div>
-        </div>`}
-      </div>
-
-    </div>`;
+  if (!window._reqActiveTab) window._reqActiveTab = 'pending';
+  _reqRenderPage();
 }
 
+function _reqRenderPage() {
+  const el = document.getElementById('main-content');
+  if (!el || !window._reqData) return;
+  const { pendingRemovals, holdReqs, transferReqs, hideReqs, globalRemoveReqs, ndaRows } = window._reqData;
+  const tab = window._reqActiveTab || 'pending';
+  const filter = window._reqFilter || 'ALL';
 
+  const timeAgo = (ts) => {
+    if (!ts) return '';
+    try {
+      const d = Date.now() - new Date(ts).getTime();
+      const m = Math.floor(d / 60000);
+      if (m < 60) return m + 'm ago';
+      const h = Math.floor(m / 60);
+      if (h < 24) return h + 'h ago';
+      return Math.floor(h / 24) + 'd ago';
+    } catch(e) { return ''; }
+  };
+
+  const ini = (rep) => (rep || '?').slice(0, 2).toUpperCase();
+
+  // ── Collect all pending items ──────────────────────────────────────────────
+  let allItems = [];
+  pendingRemovals.forEach(acc => allItems.push({ type: 'REMOVE', acc }));
+  holdReqs.forEach(r => {
+    const msg = r[3] || '';
+    allItems.push({ type: 'HOLD', ts: r[0], rep: (r[1] || '').replace('@intransittech.com', ''),
+      accName: (msg.match(/hold for: (.+?)\. Reason:/) || [])[1] || msg.slice(0, 40),
+      reason:  (msg.match(/Reason: (.+)$/) || [])[1] || '' });
+  });
+  transferReqs.forEach(r => {
+    const msg = r[3] || '';
+    allItems.push({ type: 'TRANSFER', ts: r[0], rep: (r[1] || '').replace('@intransittech.com', ''),
+      accName: (msg.match(/requests: (.+?)\. Note:/) || [])[1] || msg.slice(0, 40),
+      reason:  (msg.match(/Note: (.+)$/) || [])[1] || '' });
+  });
+  if (filter !== 'ALL') allItems = allItems.filter(i => i.type === filter);
+
+  const pendingActionCount = pendingRemovals.length;
+  const infoCount = holdReqs.length + transferReqs.length;
+  const hiddenTotal = state.hiddenAccounts.length + (state.globallyRemovedFromPool ? state.globallyRemovedFromPool.size : 0);
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const kpi = (n, lbl, col, bg) =>
+    '<div style="background:' + bg + ';border:1px solid ' + col + ';border-radius:var(--r2);padding:14px 20px;flex:1;min-width:110px">' +
+      '<div style="font-size:28px;font-weight:700;color:' + col + ';line-height:1">' + n + '</div>' +
+      '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono);margin-top:5px;letter-spacing:0.1em">' + lbl + '</div>' +
+    '</div>';
+
+  const tBtn = (id, label, n, col) => {
+    const a = tab === id;
+    return '<button onclick="reqSwitchTab(\'' + id + '\')" style="padding:9px 22px;background:' + (a ? 'var(--s2)' : 'transparent') + ';border:none;border-bottom:' + (a ? '2px solid ' + col : '2px solid transparent') + ';color:' + (a ? 'var(--text-1)' : 'var(--text-3)') + ';font-family:var(--mono);font-size:11px;font-weight:' + (a ? '700' : '400') + ';letter-spacing:0.08em;cursor:pointer;white-space:nowrap">' +
+      label + (n ? ' <span style="background:' + col + ';color:#fff;font-size:9px;padding:1px 8px;border-radius:10px;margin-left:4px">' + n + '</span>' : '') +
+    '</button>';
+  };
+
+  const empty = (msg) =>
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:40px;text-align:center;color:var(--text-3)">' +
+      '<div style="font-size:28px;margin-bottom:10px">✓</div>' +
+      '<div style="font-family:var(--mono);font-size:11px">' + msg + '</div>' +
+    '</div>';
+
+  const removeCard = (acc) => {
+    const sc = (acc.status || '').includes('🔴') ? 'var(--red)' : (acc.status || '').includes('🟠') ? 'var(--orange)' : 'var(--text-3)';
+    const statusText = (acc.status || '').replace(/[🔴🟠⚫🟡]/gu, '').trim();
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--red);border-radius:var(--r2);padding:16px 18px">' +
+      '<div style="display:flex;align-items:flex-start;gap:14px">' +
+        '<div style="width:38px;height:38px;border-radius:50%;background:rgba(220,38,38,0.18);color:var(--red);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;font-weight:700;flex-shrink:0">' + ini(acc.rep) + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">' +
+            '<span style="background:rgba(220,38,38,0.12);color:var(--red);font-family:var(--mono);font-size:9px;padding:2px 9px;border-radius:var(--r);letter-spacing:0.1em;font-weight:700">🚫 HIDE REQUEST</span>' +
+            '<span style="font-size:11px;color:var(--text-3);font-family:var(--mono)">' + escHtml(acc.rep) + '</span>' +
+          '</div>' +
+          '<div style="font-size:15px;font-weight:700;cursor:pointer;color:var(--blue-b);text-decoration:underline" data-n="' + escHtml(acc.name) + '" onclick="switchView(\'accounts\');setTimeout(()=>{const a=state.accounts.find(x=>x.name===this.dataset.n);if(a)selectAccount(a);},300)">' + escHtml(acc.name) + '</div>' +
+          '<div style="display:flex;gap:16px;margin-top:5px;font-size:11px;color:var(--text-3)">' +
+            '<span>$' + formatNum(acc.total || 0) + ' lifetime</span>' +
+            '<span style="color:' + sc + '">' + escHtml(statusText) + '</span>' +
+          '</div>' +
+          (acc.removeFlag ? '<div style="margin-top:10px;background:var(--s2);border-left:3px solid var(--red);padding:8px 12px;border-radius:0 var(--r) var(--r) 0"><div style="font-family:var(--mono);font-size:9px;color:var(--red);letter-spacing:0.1em;margin-bottom:3px">REP\'S REASON</div><div style="font-size:12px;color:var(--text-2)">' + escHtml(acc.removeFlag) + '</div></div>' : '') +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:7px;flex-shrink:0">' +
+          '<button data-n="' + escHtml(acc.name) + '" onclick="approveRemovalDirect(this.dataset.n)" style="padding:8px 18px;background:rgba(220,38,38,0.85);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r)">✓ APPROVE HIDE</button>' +
+          '<button data-n="' + escHtml(acc.name) + '" onclick="denyRemoval(this.dataset.n)" style="padding:8px 18px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">✗ DENY / KEEP</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  };
+
+  const infoCard = (item) => {
+    const isHold = item.type === 'HOLD';
+    const col = isHold ? 'var(--orange)' : 'var(--blue-b)';
+    const bgCircle = isHold ? 'rgba(249,115,22,0.18)' : 'rgba(59,130,246,0.18)';
+    const bgLight = isHold ? 'rgba(249,115,22,0.12)' : 'rgba(59,130,246,0.12)';
+    const tag = isHold ? '🔒 HOLD REQUEST' : '⇄ TRANSFER REQUEST';
+    const action = isHold ? '→ Action in CRM<br>Accounts → Credit Hold' : '→ Reassign in CRM<br>then re-run script';
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid ' + col + ';border-radius:var(--r2);padding:16px 18px">' +
+      '<div style="display:flex;align-items:flex-start;gap:14px">' +
+        '<div style="width:38px;height:38px;border-radius:50%;background:' + bgCircle + ';color:' + col + ';display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;font-weight:700;flex-shrink:0">' + ini(item.rep) + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">' +
+            '<span style="background:' + bgLight + ';color:' + col + ';font-family:var(--mono);font-size:9px;padding:2px 9px;border-radius:var(--r);letter-spacing:0.1em;font-weight:700">' + tag + '</span>' +
+            '<span style="font-size:11px;color:var(--text-3);font-family:var(--mono)">' + escHtml(item.rep) + '</span>' +
+            (item.ts ? '<span style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + timeAgo(item.ts) + '</span>' : '') +
+          '</div>' +
+          '<div style="font-size:15px;font-weight:700">' + escHtml(item.accName) + '</div>' +
+          (item.reason && item.reason !== 'none' ? '<div style="margin-top:8px;background:var(--s2);border-left:3px solid ' + col + ';padding:7px 12px;border-radius:0 var(--r) var(--r) 0;font-size:12px;color:var(--text-2)">' + escHtml(item.reason) + '</div>' : '') +
+        '</div>' +
+        '<div style="flex-shrink:0;background:' + bgLight + ';border:1px solid ' + col + ';color:' + col + ';font-family:var(--mono);font-size:9px;padding:8px 12px;border-radius:var(--r);max-width:140px;line-height:1.6;letter-spacing:0.05em;text-align:center">' + action + '</div>' +
+      '</div>' +
+    '</div>';
+  };
+
+  // ── PENDING tab ─────────────────────────────────────────────────────────────
+  let tabContent = '';
+  if (tab === 'pending') {
+    const filterMap = { ALL: 'All Types', REMOVE: '🚫 Hide', HOLD: '🔒 Hold', TRANSFER: '⇄ Transfer' };
+    const fBtns = ['ALL','REMOVE','HOLD','TRANSFER'].map(f => {
+      const a = filter === f;
+      return '<button onclick="reqSetFilter(\'' + f + '\')" style="padding:5px 16px;background:' + (a ? 'var(--s2)' : 'transparent') + ';border:1px solid ' + (a ? 'var(--border-hi)' : 'var(--border)') + ';color:' + (a ? 'var(--text-1)' : 'var(--text-3)') + ';font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">' + filterMap[f] + '</button>';
+    }).join('');
+
+    const cards = allItems.map(item => item.type === 'REMOVE' ? removeCard(item.acc) : infoCard(item)).join('');
+
+    tabContent =
+      '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">' + fBtns + '</div>' +
+      '<div style="background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.18);border-radius:var(--r2);padding:10px 16px;margin-bottom:20px;font-size:11px;color:var(--text-2);line-height:1.6">' +
+        '<strong>How reps submit requests:</strong> My Accounts → open any account → Notes tab (scroll to bottom). ' +
+        'Attack Plan → account card menu → Request to Hide From App.' +
+      '</div>' +
+      (allItems.length ? '<div style="display:flex;flex-direction:column;gap:10px">' + cards + '</div>' : empty('No pending requests — all clear'));
+  }
+
+  // ── APPROVED / HIDDEN tab ────────────────────────────────────────────────────
+  if (tab === 'hidden') {
+    const hidCards = state.hiddenAccounts.length
+      ? state.hiddenAccounts.map(acc =>
+          '<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:12px 18px;display:flex;align-items:center;gap:16px">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="font-size:13px;font-weight:700">' + escHtml(acc.name) + '</div>' +
+              '<div style="font-size:11px;color:var(--text-3);margin-top:2px">Rep: <strong>' + escHtml(acc.rep) + '</strong> · $' + formatNum(acc.total || 0) + ' lifetime</div>' +
+              (acc.removeFlag ? '<div style="font-size:10px;color:var(--text-3);margin-top:3px;font-style:italic">"' + escHtml(acc.removeFlag) + '"</div>' : '') +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">' +
+              '<span style="background:rgba(249,115,22,0.15);color:var(--orange);font-family:var(--mono);font-size:9px;padding:3px 9px;border-radius:var(--r);font-weight:700">HIDDEN</span>' +
+              '<button data-n="' + escHtml(acc.name) + '" onclick="unhideAccount(this.dataset.n)" style="padding:6px 14px;background:rgba(59,130,246,0.1);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700">↩ UNHIDE</button>' +
+            '</div>' +
+          '</div>'
+        ).join('')
+      : empty('No hidden accounts');
+
+    const poolSize = state.globallyRemovedFromPool ? state.globallyRemovedFromPool.size : 0;
+    const gCards = poolSize > 0
+      ? Array.from(state.globallyRemovedFromPool).map(name => {
+          const acc = state.accounts.find(a => a.name === name);
+          return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px">' +
+            '<div>' +
+              '<div style="font-size:13px;font-weight:600">' + escHtml(name) + '</div>' +
+              (acc ? '<div style="font-size:11px;color:var(--text-3)">Rep: ' + escHtml(acc.rep) + ' · $' + formatNum(acc.total || 0) + '</div>' : '') +
+            '</div>' +
+            '<button data-n="' + escHtml(name) + '" onclick="apkRestoreGlobalRemoved(this.dataset.n)" style="padding:6px 14px;background:rgba(59,130,246,0.1);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700">↩ RESTORE TO POOLS</button>' +
+          '</div>';
+        }).join('')
+      : empty('No accounts globally removed from pools');
+
+    tabContent =
+      '<div style="margin-bottom:28px">' +
+        '<div style="font-size:15px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:10px">Hidden Accounts ' +
+          '<span style="background:' + (state.hiddenAccounts.length ? 'var(--orange)' : 'var(--s2)') + ';color:' + (state.hiddenAccounts.length ? '#fff' : 'var(--text-3)') + ';font-size:10px;font-family:var(--mono);padding:2px 9px;border-radius:10px">' + state.hiddenAccounts.length + '</span>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">Accounts you approved to hide — invisible in all rep views. Click UNHIDE to restore to their account list.</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px">' + hidCards + '</div>' +
+      '</div>' +
+      '<div style="margin-bottom:28px">' +
+        '<div style="font-size:15px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:10px">Globally Removed from Attack Plan Pool ' +
+          '<span style="background:var(--s2);color:var(--text-3);font-size:10px;font-family:var(--mono);padding:2px 9px;border-radius:10px">' + poolSize + '</span>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">Accounts removed from everyone\'s Transfer Candidates section. Click RESTORE to re-enable.</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px">' + gCards + '</div>' +
+      '</div>';
+  }
+
+  // ── NDA LOG tab ──────────────────────────────────────────────────────────────
+  if (tab === 'nda') {
+    if (ndaRows.length) {
+      const rowsHtml = ndaRows.slice(0, 100).map(r =>
+        '<div style="display:grid;grid-template-columns:130px 1fr 70px 60px 80px 90px 55px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:11px;cursor:default" onmouseover="this.style.background=\'var(--s2)\'" onmouseout="this.style.background=\'\'">' +
+          '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3)">' + escHtml((r[0] || '').slice(0, 16)) + '</div>' +
+          '<div style="color:var(--blue-b);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(r[2] || '') + '">' + escHtml(r[2] || '') + '</div>' +
+          '<div style="font-size:10px;color:var(--text-2)">' + escHtml(r[4] || '') + '</div>' +
+          '<div style="font-size:10px;color:var(--text-3)">' + escHtml(r[5] || '') + '</div>' +
+          '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:' + ((r[7] || '') === 'ACCEPTED' ? 'var(--green)' : 'var(--red)') + '">' + escHtml(r[7] || '') + '</div>' +
+          '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis" title="' + escHtml(r[12] || '') + '">' + escHtml((r[12] || '').slice(0, 12)) + '</div>' +
+          '<div style="font-size:10px;color:var(--text-muted)">' + escHtml(r[6] || '') +
+            (r[13] ? '<br><button data-key="' + escHtml(r[13]) + '" onclick="viewNDARecord(this.dataset.key)" style="margin-top:2px;padding:2px 5px;background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--mono);font-size:8px;cursor:pointer">📄 VIEW</button>' : '') +
+          '</div>' +
+        '</div>'
+      ).join('');
+      tabContent =
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-size:12px;color:var(--text-3);font-family:var(--mono)">' + ndaRows.length + ' records' + (ndaRows.length > 100 ? ' · showing latest 100' : '') + '</div>' +
+          '<button onclick="exportNDALog()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;padding:5px 14px;cursor:pointer;border-radius:var(--r)">⬇ EXPORT CSV</button>' +
+        '</div>' +
+        '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">' +
+          '<div style="display:grid;grid-template-columns:130px 1fr 70px 60px 80px 90px 55px;background:var(--s2);border-bottom:1px solid var(--border);padding:8px 14px;font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.08em">' +
+            '<div>TIMESTAMP</div><div>EMAIL</div><div>REP</div><div>LANG</div><div>ACTION</div><div>SESSION</div><div>VER</div>' +
+          '</div>' +
+          '<div style="max-height:540px;overflow-y:auto">' + rowsHtml + '</div>' +
+        '</div>';
+    } else {
+      tabContent = empty('No NDA records yet — log populates when users accept at login');
+    }
+  }
+
+  // ── Full page render ─────────────────────────────────────────────────────────
+  el.innerHTML =
+    '<div style="flex:1;overflow-y:auto;padding:24px 28px;max-width:1000px">' +
+
+    '<div style="margin-bottom:22px">' +
+      '<div style="font-size:22px;font-weight:700;margin-bottom:3px">🗂 Requests &amp; Approvals</div>' +
+      '<div style="font-size:12px;color:var(--text-3)">Admin only · Review and approve requests from reps</div>' +
+    '</div>' +
+
+    '<div style="display:flex;gap:12px;margin-bottom:26px;flex-wrap:wrap">' +
+      kpi(pendingActionCount, 'NEEDS APPROVAL', pendingActionCount > 0 ? 'var(--red)' : 'var(--green)', pendingActionCount > 0 ? 'rgba(220,38,38,0.07)' : 'rgba(34,197,94,0.06)') +
+      kpi(infoCount, 'INFO / CRM ACTION', infoCount > 0 ? 'var(--orange)' : 'var(--text-3)', infoCount > 0 ? 'rgba(249,115,22,0.07)' : 'var(--s1)') +
+      kpi(state.hiddenAccounts.length, 'ACCOUNTS HIDDEN', 'var(--orange)', 'rgba(249,115,22,0.05)') +
+      kpi(ndaRows.length, 'NDA RECORDS', 'var(--text-3)', 'var(--s1)') +
+    '</div>' +
+
+    '<div style="border-bottom:1px solid var(--border);display:flex;gap:0;margin-bottom:24px">' +
+      tBtn('pending', 'PENDING REVIEW', pendingActionCount + infoCount || '', pendingActionCount > 0 ? 'var(--red)' : 'var(--text-3)') +
+      tBtn('hidden', 'APPROVED / HIDDEN', hiddenTotal || '', 'var(--orange)') +
+      tBtn('nda', 'NDA LOG', ndaRows.length || '', 'var(--blue-b)') +
+    '</div>' +
+
+    tabContent +
+
+    '</div>';
+}
+
+function reqSwitchTab(tab) {
+  window._reqActiveTab = tab;
+  _reqRenderPage();
+}
+
+function reqSetFilter(f) {
+  window._reqFilter = f;
+  _reqRenderPage();
+}
 
 
 function viewNDARecord(key) {
@@ -12994,10 +12958,10 @@ function apkShowTransferActionModal(name) {
           ✕ REMOVE FROM MY LIST
           <span style="display:block;font-size:10px;font-weight:400;opacity:0.7;margin-top:2px">Hide from your pool only — no approval needed, restore anytime from MY HIDDEN</span>
         </button>
-        <button onclick="apkDoRequestGlobalRemove('${escHtml(name)}')"
+        <button data-n="${escHtml(name)}" onclick="document.getElementById('apk-action-modal-overlay').remove();showQuickHideRequest(this.dataset.n)"
           style="width:100%;padding:10px 16px;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.4);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;text-align:left">
-          🚫 REQUEST REMOVE FROM POOL
-          <span style="display:block;font-size:10px;font-weight:400;opacity:0.8;margin-top:2px">Ask John to hide from everyone's Transfer Candidates — requires approval. The owning rep keeps full access.</span>
+          🚫 REQUEST TO HIDE FROM APP
+          <span style="display:block;font-size:10px;font-weight:400;opacity:0.8;margin-top:2px">Ask John to remove this account from your view — routes through Requests &amp; Approvals for admin approval.</span>
         </button>
         <button onclick="document.getElementById('apk-action-modal-overlay').remove()"
           style="width:100%;padding:7px 16px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">

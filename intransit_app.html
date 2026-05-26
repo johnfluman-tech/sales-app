@@ -1496,17 +1496,17 @@ function showChangelog() {
 const MANAGER_CONFIG = {
   'CKaren': {
     teamName: 'MX Team',
-    teamReps: ['CKaren','PIan','RMauricio','LMancera','bcastor'],
+    teamReps: ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor'],
     sharedWith: []
   },
   'CMancilla': {
     teamName: 'CM Team',
-    teamReps: ['CKaren','PIan','RMauricio','LMancera','bcastor'],
+    teamReps: ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor'],
     sharedWith: ['carlos.mancilla@intransittech.com']
   },
   'MPerezfreye': {
     teamName: 'MP Team',
-    teamReps: ['CKaren','PIan','RMauricio','LMancera','bcastor'],
+    teamReps: ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor'],
     sharedWith: ['manuel.perezfreyre@intransittech.com']
   }
 };
@@ -11254,8 +11254,8 @@ async function apkAcceptAIPicks() {
 function renderManagerHub() {
   if (!isManager() && !isAdmin()) { switchView('accounts'); return; }
   var mgrCfg = getManagerConfig();
-  // Admin with no managerRole: show all active reps
-  var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan']);
+  // Admin with no managerRole: show all sales reps (exclude FJohn/admin)
+  var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan']).filter(function(r){ return r !== 'FJohn'; });
   var teamName = mgrCfg ? mgrCfg.teamName : 'All Reps';
   var tab = window._mgrHubTab || 'scoreboard';
   var content = document.getElementById('main-content');

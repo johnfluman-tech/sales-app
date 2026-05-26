@@ -11510,14 +11510,14 @@ async function mgrGenerateCoachReport() {
 function _mgrCollectionsHtml(teamReps) {
   var teamAccNames = new Set(
     state.accounts.filter(function(a){ return teamReps.indexOf(a.rep) !== -1; })
-      .map(function(a){ return a.name.trim(); })
+      .map(function(a){ return a.name.trim().toLowerCase(); })
   );
   var collEntries = [];
   Object.keys(state.collectionsCache).forEach(function(name) {
     var c = state.collectionsCache[name];
-    if (!teamAccNames.has(name.trim())) return;
+    if (!teamAccNames.has(name.trim().toLowerCase())) return;
     if (!c || c.balance <= 0) return;
-    var acc = state.accounts.find(function(a){ return a.name.trim() === name.trim(); });
+    var acc = state.accounts.find(function(a){ return a.name.trim().toLowerCase() === name.trim().toLowerCase(); });
     collEntries.push({ name: name, balance: c.balance||0, daysPastDue: c.daysPastDue||0, risk: c.risk||'', terms: c.terms||'', appHold: c.appHold||'', rep: acc ? acc.rep : '' });
   });
   collEntries.sort(function(a,b){ return b.balance - a.balance; });

@@ -5940,7 +5940,7 @@ function _reqRenderPage() {
         '</div>' +
         '<div style="flex-shrink:0;text-align:center">' +
           '<div style="background:' + bgLight + ';border:1px solid ' + col + ';color:' + col + ';font-family:var(--mono);font-size:9px;padding:8px 12px;border-radius:var(--r);max-width:140px;line-height:1.6;letter-spacing:0.05em;text-align:center">' + action + '</div>' +
-          (isHold ? '' : '<button data-n="' + escHtml(item.accName) + '" data-rep="' + escHtml((item.rep||'') + \'@intransittech.com\') + '" onclick="showDenyTransferModal(this.dataset.n, this.dataset.rep)" style="margin-top:8px;padding:6px 14px;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.4);color:var(--red);font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r);display:block;width:100%;text-align:center">&#x2717; DENY</button>') +
+          (isHold ? '' : '<button data-n="' + escHtml(item.accName) + '" data-rid="' + escHtml(item.rep||'') + '" onclick="showDenyTransferModal(this.dataset.n, this.dataset.rid)" style="margin-top:8px;padding:6px 14px;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.4);color:var(--red);font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r);display:block;width:100%;text-align:center">&#x2717; DENY</button>') +
         '</div>' +
       '</div>' +
     '</div>';
@@ -6328,13 +6328,14 @@ function showDenyHideModal(accountName) {
   document.body.appendChild(overlay);
 }
 
-function showDenyTransferModal(accName, repEmail) {
+function showDenyTransferModal(accName, repIdOrEmail) {
+  var repEmail = (repIdOrEmail||'').indexOf('@') >= 0 ? repIdOrEmail : (repIdOrEmail||'') + '@intransittech.com';
   var ex = document.getElementById('deny-transfer-overlay');
   if (ex) ex.remove();
   var overlay = document.createElement('div');
   overlay.id = 'deny-transfer-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9000;display:flex;align-items:center;justify-content:center';
-  var shortRep = (repEmail || '').replace('@intransittech.com', '');
+  var shortRep = repEmail.replace('@intransittech.com', '');
   overlay.innerHTML =
     '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:28px 32px;max-width:440px;width:90%">' +
       '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Deny Transfer Request</div>' +

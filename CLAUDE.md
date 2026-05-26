@@ -836,3 +836,33 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **New functions:** `_mgrCurrentRepPerfHtml`, `copyTransferPartsList`, `_updateCRMSyncDisplay`
 **Modified functions:** `mgrIntelLookup` (rep transition analysis, GP search fallback), `_mgrIntelTransferPartsHtml` (currentRepId param), `loadLastRunTime` (intervals added)
 **Commits:** `aba3717` (CRM sync), `94f8ff1` (outreach list), `891f299` (current rep perf), `29131d0` (rep transition), `7aef58b` (GP fallback)
+
+### 2026-05-26 (session 26 — Account Intel synthetic gpRows + text label fixes)
+
+**Bug fixed — Account Intel blank for accounts not in gpCache BUYER_NAME (commit `babe8d7`):**
+- **Root cause:** For accounts like Siemens, gpCache BUYER_NAME stores a different legal entity name (e.g., "SIEMENS SA DE CV") than the search query or account name in `state.accounts`. All three gpCache fallbacks (AND-match, OR-match, extra-names via transferHistoryCache displayName) returned empty rows. This caused:
+  1. "CURRENT REP PERFORMANCE — No shipments on record for Ian Pitman on this account yet."
+  2. "No GP revenue records matched this account name." in the comparison card
+  3. Revenue-by-year chart showing nothing
+- **Fix:** Added 4th fallback in `mgrIntelLookup` — when `gpRows` is still empty after all gpCache attempts, searches `state.transferHistoryCache` by normalized query + accMatch names, then **synthesizes gpRows** from `_TRANSFER_HISTORY` lines (each line → a gpRow with rep, date, revenue). Since `_TRANSFER_HISTORY` contains ALL years ALL reps for the 6 target accounts (Abraham/Arlin pre-transfer + Ian/MX post-transfer), all downstream sections now work: year-by-year bars for Ian, Abraham vs Ian comparison, revenue chart.
+- Console log: `[INTEL] Synthesized N gpRows from _TRANSFER_HISTORY for: [account]`
+
+**Bug fixed — "WHAT THEY WERE BUYING BEFORE PIAN TOOK OVER" (commit `babe8d7`):**
+- `_mgrIntelTransferPartsHtml` header label used `(currentRepId||'current rep').toUpperCase()` → produced "PIAN" not "IAN PITMAN"
+- Added `_repNames` map to `_mgrIntelTransferPartsHtml` scope; label now uses `_repNames[currentRepId]` → "IAN PITMAN"
+
+**Bug fixed — "year before MX team took over" in yearLabel (commit `babe8d7`):**
+- yearLabel string hardcoded "MX team" — now uses actual rep name: `'year before Ian Pitman took over (2023)'`
+- `copyTransferPartsList()` subtitle also fixed from "before MX team took over in 2023" → "before Ian Pitman took over in 2023"
+- `window._intelTransferParts` now stores `currentRepId` and `currentRepName` so copy function can use them
+
+**How the 6 target accounts now work end-to-end:**
+- Karen clicks "Siemens" → `mgrIntelLookup('Siemens')`
+- `state.accounts` finds "Siemens, S.A. de C.V." → `currentRepId = 'PIan'`
+- gpCache returns 0 rows (BUYER_NAME mismatch) → 4th fallback kicks in, synthesizes 800+ gpRows from `_TRANSFER_HISTORY`
+- `currentRepRows` = Ian's rows (2023–2026), `priorRows` = Abraham's rows (2019–2022)
+- `_mgrCurrentRepPerfHtml` renders Ian's year-by-year bars with GP% and trend vs prior year
+- `comparisonHtml` shows "UNDER ABRAHAM" vs "UNDER IAN PITMAN" with % change
+- `_mgrIntelTransferPartsHtml` shows top 15 parts from 2022 (year before Ian took over in 2023)
+- Header reads: "WHAT THEY WERE BUYING BEFORE IAN PITMAN TOOK OVER"
+- yearLabel: "2022 — year before Ian Pitman took over (2023)"

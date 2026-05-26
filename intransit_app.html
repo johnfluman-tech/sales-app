@@ -11814,6 +11814,26 @@ function mgrIntelLookup(query) {
   var usedAnyGP = false;
   if (!gpRows.length) { gpRows = (state.gpCache||[]).filter(function(r){ return matchAny(r[gpBuyerCol]||''); }); usedAnyGP = true; }
 
+  // If still empty: try exact names from accMatches + transferHistoryCache displayName
+  // (gpCache BUYER_NAME may differ from the search query — e.g. full legal name vs short name)
+  if (!gpRows.length) {
+    var _extraSearchKeys = (accMatches||[]).slice(0,4).map(function(a){ return norm(a.name||''); });
+    if (state.transferHistoryCache) {
+      Object.keys(state.transferHistoryCache).forEach(function(k) {
+        if (qWords.some(function(w){ return k.indexOf(w) > -1; })) {
+          _extraSearchKeys.push(norm(state.transferHistoryCache[k].displayName || k));
+        }
+      });
+    }
+    _extraSearchKeys.filter(function(k,i){ return k && _extraSearchKeys.indexOf(k) === i; }).some(function(ek) {
+      var ew = ek.split(/\s+/).filter(function(w){ return w.length > 2; });
+      if (!ew.length) return false;
+      var found = (state.gpCache||[]).filter(function(r){ var b=norm(r[gpBuyerCol]||''); return ew.some(function(w){ return b.indexOf(w)>-1; }); });
+      if (found.length) { gpRows = found; usedAnyGP = true; return true; }
+      return false;
+    });
+  }
+
   // Nothing found — show "Did you mean?" suggestions from state.accounts
   if (!accMatches.length && !gpRows.length) {
     var suggestions = allAccs.map(function(a){ return {a:a,score:scoreFn(a.name||'')}; })
@@ -12009,7 +12029,7 @@ function mgrIntelLookup(query) {
           '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">REVENUE BY YEAR — ALL REPS (incl. pre-transfer)' + matchNote + '</div>' +
           yearRows +
         '</div>'
-      : '<div style="padding:16px 20px;border-bottom:1px solid var(--border);color:var(--text-3);font-size:11px;font-family:var(--mono)">No GP revenue history found. The buyer name in CRM may differ — try the exact name from the account card above.</div>'
+      : '<div style="padding:16px 20px;border-bottom:1px solid var(--border);color:var(--text-3);font-size:11px;font-family:var(--mono)">No GP revenue records matched this account name. The account\'s CRM buyer name may differ — try searching by the exact name shown in the account card above, or ask John to check what name this account uses in the _GP tab.</div>'
     ) +
     (topParts.length > 0
       ? '<div style="padding:14px 20px;border-bottom:1px solid var(--border)">' +

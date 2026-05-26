@@ -1169,6 +1169,12 @@ body::before {
           <span class="nav-badge" id="badge-request-log" style="background:var(--blue-b)"></span>
         </div>
       </div>
+      <div class="nav-item" id="nav-hidden-accounts" data-view="hiddenAccounts" onclick="switchView('hiddenAccounts')">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#128274;</span> Hidden Accounts
+          <span class="nav-badge" id="badge-hidden-accounts" style="background:var(--orange)"></span>
+        </div>
+      </div>
       <!-- Admin-only: Removal/Hold/Transfer Requests -->
       <div class="nav-item" id="nav-removals" data-view="removals" onclick="switchView('removals')"
            style="display:none;border-left:2px solid var(--red)">
@@ -3862,6 +3868,9 @@ function switchView(view) {
   } else if (view === 'requestLog') {
     renderRequestLogView();
     setTimeout(restoreSplitPositions, 30);
+  } else if (view === 'hiddenAccounts') {
+    renderHiddenAccountsView();
+    setTimeout(restoreSplitPositions, 30);
   } else if (view === 'access') {
     renderAccessLog();
     setTimeout(restoreSplitPositions, 30);
@@ -3925,11 +3934,12 @@ function getViewAccounts() {
     // Merge CRM directory accounts not yet in the shipped list
     if (state.customerDirectory && state.customerDirectory.length) {
       const shippedNames = new Set(accs.map(a => a.name.toLowerCase().trim()));
+      const hiddenNames = new Set((state.hiddenAccounts||[]).map(a => a.name.toLowerCase().trim()));
       let crmPool = state.customerDirectory;
       if (_repList)   crmPool = crmPool.filter(c => _repList.includes(c.rep));
       else if (_repFilter) crmPool = crmPool.filter(c => c.rep === _repFilter);
       const crmOnly = crmPool
-        .filter(c => !shippedNames.has(c.name.toLowerCase().trim()))
+        .filter(c => !shippedNames.has(c.name.toLowerCase().trim()) && !hiddenNames.has(c.name.toLowerCase().trim()))
         .map(c => ({
           name: c.name, rep: c.rep, city: c.city || '', state: c.state || '',
           lastActivity: c.lastActivity || '', _crmOnly: true,
@@ -4351,7 +4361,7 @@ function renderNotesTab(acc) {
 }
 
 function renderNoteInput(acc) {
-  const canEdit = state.isAdmin || acc.rep === state.repId;
+  const mgrCfg = getManagerConfig(); const canEdit = state.isAdmin || acc.rep === state.repId || (!!mgrCfg && mgrCfg.teamReps && mgrCfg.teamReps.includes(acc.rep));
   if (!canEdit) return '';
 
   const hasRemoveRequest = acc.removeFlag && acc.removeFlag.toUpperCase() !== 'YES' && acc.removeFlag.trim();
@@ -5824,7 +5834,14 @@ async function renderRemovalsView() {
     window._ndaRowsCache = ndaRows;
   } catch(e) {}
 
-  window._reqData = { pendingRemovals, holdReqs, transferReqs, hideReqs, globalRemoveReqs, ndaRows };
+  let returnReqs = [];
+  try {
+    const rlRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_REQUEST_LOG'!A1:H500");
+    returnReqs = (rlRows || []).filter(function(r, i) {
+      return i > 0 && (r[1]||'') === 'RETURN' && (!(r[5]||'') || (r[5]||'').toUpperCase() === 'PENDING');
+    }).slice().reverse().slice(0, 30);
+  } catch(e) {}
+  window._reqData = { pendingRemovals, holdReqs, transferReqs, hideReqs, globalRemoveReqs, ndaRows, returnReqs };
   const badge = document.getElementById('badge-removals');
   if (badge) badge.textContent = pendingRemovals.length || '';
   if (!window._reqActiveTab) window._reqActiveTab = 'pending';
@@ -5834,7 +5851,7 @@ async function renderRemovalsView() {
 function _reqRenderPage() {
   const el = document.getElementById('main-content');
   if (!el || !window._reqData) return;
-  const { pendingRemovals, holdReqs, transferReqs, hideReqs, globalRemoveReqs, ndaRows } = window._reqData;
+  const { pendingRemovals, holdReqs, transferReqs, hideReqs, globalRemoveReqs, ndaRows, returnReqs = [] } = window._reqData;
   const tab = window._reqActiveTab || 'pending';
   const filter = window._reqFilter || 'ALL';
 
@@ -5852,6 +5869,28 @@ function _reqRenderPage() {
 
   const ini = (rep) => (rep || '?').slice(0, 2).toUpperCase();
 
+  // ── Return request card ──────────────────────────────────────────────────────────────────────────────
+  const returnCard = function(item) {
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:16px 18px">' +
+      '<div style="display:flex;align-items:flex-start;gap:14px">' +
+        '<div style="width:38px;height:38px;border-radius:50%;background:rgba(249,115,22,0.18);color:var(--orange);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;font-weight:700;flex-shrink:0">' + ini(item.rep) + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">' +
+            '<span style="background:rgba(249,115,22,0.12);color:var(--orange);font-family:var(--mono);font-size:9px;padding:2px 9px;border-radius:var(--r);letter-spacing:0.1em;font-weight:700">&#x21A9; RETURN REQUEST</span>' +
+            '<span style="font-size:11px;color:var(--text-3);font-family:var(--mono)">' + escHtml(item.rep) + '</span>' +
+            (item.ts ? '<span style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + timeAgo(item.ts) + '</span>' : '') +
+          '</div>' +
+          '<div style="font-size:15px;font-weight:700">' + escHtml(item.accName) + '</div>' +
+          (item.reason ? '<div style="margin-top:8px;background:var(--s2);border-left:3px solid var(--orange);padding:7px 12px;border-radius:0 var(--r) var(--r) 0;font-size:12px;color:var(--text-2)">' + escHtml(item.reason) + '</div>' : '') +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:7px;flex-shrink:0">' +
+          '<button data-n="' + escHtml(item.accName) + '" data-rid="' + escHtml(item.rep) + '" onclick="approveReturnRequest(this.dataset.n, this.dataset.rid)" style="padding:8px 18px;background:rgba(249,115,22,0.85);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r)">&#x2713; APPROVE RETURN</button>' +
+          '<button data-n="' + escHtml(item.accName) + '" onclick="showDenyHideModal(this.dataset.n)" style="padding:8px 18px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">&#x2717; DENY</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  };
+
   // ── Collect all pending items ──────────────────────────────────────────────
   let allItems = [];
   pendingRemovals.forEach(acc => allItems.push({ type: 'REMOVE', acc }));
@@ -5866,6 +5905,9 @@ function _reqRenderPage() {
     allItems.push({ type: 'TRANSFER', ts: r[0], rep: (r[1] || '').replace('@intransittech.com', ''),
       accName: (msg.match(/requests: (.+?)\. Note:/) || [])[1] || msg.slice(0, 40),
       reason:  (msg.match(/Note: (.+)$/) || [])[1] || '' });
+  });
+  (returnReqs || []).forEach(function(r) {
+    allItems.push({ type: 'RETURN', ts: r[0], rep: (r[3]||''), accName: r[2]||'', reason: r[4]||'' });
   });
   if (filter !== 'ALL') allItems = allItems.filter(i => i.type === filter);
 
@@ -5949,13 +5991,13 @@ function _reqRenderPage() {
   // ── PENDING tab ─────────────────────────────────────────────────────────────
   let tabContent = '';
   if (tab === 'pending') {
-    const filterMap = { ALL: 'All Types', REMOVE: '🚫 Hide', HOLD: '🔒 Hold', TRANSFER: '⇄ Transfer' };
-    const fBtns = ['ALL','REMOVE','HOLD','TRANSFER'].map(f => {
+    const filterMap = { ALL: 'All Types', REMOVE: '🚫 Hide', HOLD: '🔒 Hold', TRANSFER: '⇄ Transfer', RETURN: '↩ Return' };
+    const fBtns = ['ALL','REMOVE','HOLD','TRANSFER','RETURN'].map(f => {
       const a = filter === f;
       return '<button onclick="reqSetFilter(\'' + f + '\')" style="padding:5px 16px;background:' + (a ? 'var(--s2)' : 'transparent') + ';border:1px solid ' + (a ? 'var(--border-hi)' : 'var(--border)') + ';color:' + (a ? 'var(--text-1)' : 'var(--text-3)') + ';font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">' + filterMap[f] + '</button>';
     }).join('');
 
-    const cards = allItems.map(item => item.type === 'REMOVE' ? removeCard(item.acc) : infoCard(item)).join('');
+    const cards = allItems.map(item => item.type === 'REMOVE' ? removeCard(item.acc) : item.type === 'RETURN' ? returnCard(item) : infoCard(item)).join('');
 
     tabContent =
       '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">' + fBtns + '</div>' +
@@ -6418,9 +6460,10 @@ async function renderRequestLogView() {
     const status    = res ? (res[5]||'PENDING') : 'PENDING';
     const adminNote = res ? (res[6]||'') : '';
     const isTrans   = type === 'TRANSFER';
-    const col       = isTrans ? 'var(--blue-b)' : 'var(--red)';
-    const colBg     = isTrans ? 'rgba(59,130,246,0.12)' : 'rgba(220,38,38,0.12)';
-    const tag       = isTrans ? '&#x21C4; TRANSFER REQUEST' : '&#x1F6AB; HIDE REQUEST';
+    const isReturn  = type === 'RETURN';
+    const col       = isTrans ? 'var(--blue-b)' : isReturn ? 'var(--orange)' : 'var(--red)';
+    const colBg     = isTrans ? 'rgba(59,130,246,0.12)' : isReturn ? 'rgba(249,115,22,0.12)' : 'rgba(220,38,38,0.12)';
+    const tag       = isTrans ? '&#x21C4; TRANSFER REQUEST' : isReturn ? '&#x21A9; RETURN REQUEST' : '&#x1F6AB; HIDE REQUEST';
     const sc        = status === 'APPROVED' ? 'var(--green)' : status === 'DENIED' ? 'var(--red)' : 'var(--gold)';
     const scBg      = status === 'APPROVED' ? 'rgba(34,197,94,0.15)' : status === 'DENIED' ? 'rgba(220,38,38,0.15)' : 'rgba(234,179,8,0.15)';
     const isOwn     = rep.toLowerCase() === (state.repId||'').toLowerCase();
@@ -6431,6 +6474,11 @@ async function renderRequestLogView() {
         actionHtml = '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
           '<button data-n="' + escHtml(account) + '" data-rep="' + escHtml(rep + '@intransittech.com') + '" onclick="showDenyTransferModal(this.dataset.n,this.dataset.rep)" style="padding:6px 14px;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.4);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700">&#x2717; DENY</button>' +
           '<span style="font-size:10px;color:var(--text-3);align-self:center">Reassign in CRM + re-run script to approve</span>' +
+        '</div>';
+      } else if (isReturn) {
+        actionHtml = '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button data-n="' + escHtml(account) + '" data-rid="' + escHtml(rep) + '" onclick="approveReturnRequest(this.dataset.n, this.dataset.rid)" style="padding:6px 14px;background:rgba(249,115,22,0.85);border:none;color:#fff;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700">&#x2713; APPROVE RETURN</button>' +
+          '<button data-n="' + escHtml(account) + '" onclick="showDenyHideModal(this.dataset.n)" style="padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">&#x2717; DENY</button>' +
         '</div>';
       } else {
         actionHtml = '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
@@ -6443,6 +6491,10 @@ async function renderRequestLogView() {
         actionHtml = '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
           '<button onclick="switchView(\'attack\')" style="padding:6px 14px;background:rgba(59,130,246,0.1);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">&#x21A9; RE-REQUEST TRANSFER</button>' +
           '<button data-n="' + escHtml(account) + '" onclick="showQuickHideRequest(this.dataset.n)" style="padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">&#x1F6AB; REQUEST HIDE INSTEAD</button>' +
+        '</div>';
+      } else if (isReturn) {
+        actionHtml = '<div style="margin-top:10px">' +
+          '<button data-n="' + escHtml(account) + '" onclick="showReturnRequestModal(this.dataset.n)" style="padding:6px 14px;background:rgba(249,115,22,0.1);border:1px solid var(--orange);color:var(--orange);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">&#x21A9; RE-REQUEST RETURN</button>' +
         '</div>';
       } else {
         actionHtml = '<div style="margin-top:10px">' +
@@ -6494,6 +6546,92 @@ async function renderRequestLogView() {
             '<div style="font-family:var(--mono);font-size:11px">' + (isAdm ? 'No requests yet.' : 'You haven\'t submitted any requests yet.') + '</div>' +
           '</div>') +
     '</div>';
+}
+
+function renderHiddenAccountsView() {
+  const el = document.getElementById('main-content');
+  if (!el) return;
+  const mgrCfg = getManagerConfig();
+  let myHidden;
+  if (state.isAdmin && !state.viewAsRep) {
+    el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)">' +
+      '<div style="font-size:32px;margin-bottom:16px">&#128274;</div>' +
+      '<div style="font-family:var(--mono);font-size:12px;margin-bottom:8px">As admin, manage hidden accounts from Requests &amp; Approvals.</div>' +
+      '<div style="font-size:11px;color:var(--text-3);margin-bottom:20px">Hidden accounts for all reps are shown in the <strong>Approved / Hidden</strong> tab there.</div>' +
+      '<button onclick="switchView('removals')" style="padding:10px 24px;background:var(--blue-b);border:none;color:#fff;border-radius:var(--r2);font-family:var(--mono);font-size:11px;cursor:pointer;font-weight:700">GO TO REQUESTS &amp; APPROVALS</button>' +
+    '</div>';
+    return;
+  }
+  if (mgrCfg && mgrCfg.teamReps) {
+    myHidden = (state.hiddenAccounts||[]).filter(function(a){ return mgrCfg.teamReps.indexOf(a.rep) !== -1; });
+  } else {
+    myHidden = (state.hiddenAccounts||[]).filter(function(a){ return a.rep === state.repId; });
+  }
+  const badge = document.getElementById('badge-hidden-accounts');
+  if (badge) badge.textContent = myHidden.length || '';
+  const empty = '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:40px;text-align:center;color:var(--text-3)">' +
+    '<div style="font-size:28px;margin-bottom:10px">&#128274;</div>' +
+    '<div style="font-family:var(--mono);font-size:11px">No hidden accounts</div>' +
+    '</div>';
+  const cards = myHidden.length ? myHidden.map(function(acc) {
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:var(--r2);padding:16px 18px;display:flex;align-items:center;gap:16px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:15px;font-weight:700;margin-bottom:4px">' + escHtml(acc.name) + '</div>' +
+        '<div style="font-size:11px;color:var(--text-3)">Rep: <strong>' + escHtml(acc.rep) + '</strong> &middot; $' + formatNum(acc.total||0) + ' lifetime</div>' +
+        (acc.removeFlag ? '<div style="font-size:10px;color:var(--text-3);margin-top:4px;font-style:italic">&ldquo;' + escHtml(acc.removeFlag) + '&rdquo;</div>' : '') +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">' +
+        '<span style="background:rgba(249,115,22,0.15);color:var(--orange);font-family:var(--mono);font-size:9px;padding:3px 9px;border-radius:var(--r);font-weight:700">HIDDEN</span>' +
+        '<button data-n="' + escHtml(acc.name) + '" onclick="showReturnRequestModal(this.dataset.n)" style="padding:7px 16px;background:rgba(59,130,246,0.1);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700">&#x21A9; REQUEST RETURN</button>' +
+      '</div>' +
+    '</div>';
+  }).join('') : empty;
+  el.innerHTML =
+    '<div style="padding:28px 32px;max-width:900px">' +
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">' +
+        '<div style="font-size:18px;font-weight:700">&#128274; Hidden Accounts</div>' +
+        '<span style="background:' + (myHidden.length ? 'var(--orange)' : 'var(--s2)') + ';color:' + (myHidden.length ? '#fff' : 'var(--text-3)') + ';font-size:10px;font-family:var(--mono);padding:2px 10px;border-radius:10px">' + myHidden.length + '</span>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--text-3);margin-bottom:24px">Accounts hidden from your app view by admin approval. To request one be restored, click REQUEST RETURN and explain why. Admin reviews all return requests.</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px">' + cards + '</div>' +
+    '</div>';
+}
+
+function showReturnRequestModal(accName) {
+  var ex = document.getElementById('return-request-modal');
+  if (ex) ex.remove();
+  var modal = document.createElement('div');
+  modal.id = 'return-request-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML =
+    '<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r2);padding:28px 32px;max-width:480px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.4)">' +
+      '<div style="font-family:var(--mono);font-size:11px;color:var(--orange);letter-spacing:0.12em;margin-bottom:12px">&#x21A9; REQUEST ACCOUNT RETURN</div>' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:16px">' + escHtml(accName) + '</div>' +
+      '<div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Why should this account be restored to your app view? Be specific &#x2014; admin reviews all return requests.</div>' +
+      '<textarea id="return-req-reason" placeholder="e.g. New buyer contact established, situation changed..." style="width:100%;height:90px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text-1);font-size:12px;padding:10px 12px;resize:vertical;font-family:var(--sans);box-sizing:border-box"></textarea>' +
+      '<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">' +
+        '<button onclick="document.getElementById('return-request-modal').remove()" style="padding:9px 20px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">CANCEL</button>' +
+        '<button data-n="' + escHtml(accName) + '" onclick="submitReturnRequest(this.dataset.n, document.getElementById('return-req-reason').value)" style="padding:9px 20px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r)">SUBMIT REQUEST</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+}
+
+async function submitReturnRequest(accName, reason) {
+  if (!reason || !reason.trim()) { showToast('Please explain why the account should be returned.', 'error'); return; }
+  var m = document.getElementById('return-request-modal');
+  if (m) m.remove();
+  showToast('Submitting return request...', 'info');
+  await writeRequestLog('RETURN', accName, state.repId, reason.trim(), 'PENDING');
+  showToast('Return request submitted &#x2014; admin will review it.', 'success');
+}
+
+async function approveReturnRequest(accName, repId) {
+  if (!confirm('Restore "' + accName + '" to ' + repId + ''s app view?')) return;
+  await unhideAccount(accName);
+  await resolveRequestLog('RETURN', accName, repId, 'APPROVED', '');
+  showToast('Account restored to app view.', 'success');
+  renderRemovalsView();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -13057,7 +13195,8 @@ function apkCardHtml(name, zone) {
       : '';
     const _crmBadge = _isCRMOnly ? '<div style="font-family:var(--mono);font-size:8px;color:var(--blue-b);margin-bottom:2px;letter-spacing:0.03em">&#128202; CRM</div>' : '';
     const _crmCrm = (window.apkCRMAccs || []).find(function(c){ return c.name === name; });
-    const _crmMeta = _isCRMOnly && _crmCrm ? escHtml((_crmCrm.city||'') + (_crmCrm.state ? ', '+_crmCrm.state : '') + (_crmCrm.lastActivity ? ' · ' + _crmCrm.lastActivity : '')) : '';
+    const _crmAct = _crmCrm && _crmCrm.lastActivity && !_crmCrm.lastActivity.startsWith('1753') ? _crmCrm.lastActivity.slice(0, 10) : '';
+    const _crmMeta = _isCRMOnly && _crmCrm ? escHtml((_crmCrm.city||'') + (_crmCrm.state ? ', '+_crmCrm.state : '') + (_crmAct ? ' · ' + _crmAct : '')) : '';
     return '<div style="background:var(--s2);border:1px solid var(--border);border-left:3px solid ' + poolDotColor + ';border-radius:var(--r);padding:4px 7px;width:150px;flex-shrink:0;min-height:0">' +
       '<div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;cursor:default" data-poolname="' + escHtml(name).toLowerCase() + '" title="' + escHtml(name) + '">' +
         '<span onclick="apkOpenAccount(\'' + escHtml(name) + '\')" style="cursor:pointer" onmouseover="this.style.color=\'var(--blue-b)\'" onmouseout="this.style.color=\'\'">' + escHtml(name) + '</span>' +
@@ -13833,7 +13972,14 @@ function apkOpenAccount(name) {
         }
       });
     } else {
-      showToast('Account not found in current view', 'error');
+      // CRM-only account — switch to ALL filter so it appears as a stub
+      const crmEntry = state.customerDirectory && state.customerDirectory.find(function(c){ return c.name === name; });
+      if (crmEntry) {
+        if (state.activeFilter !== 'all') { state.activeFilter = 'all'; renderAccountList(); }
+        showToast('\U0001f4ca CRM account — shipped history not available', 'info');
+      } else {
+        showToast('Account not found in current view', 'error');
+      }
     }
   }, 300);
 }
@@ -14417,31 +14563,34 @@ function academyGetLessonContent(lessonId, progress) {
 't1-1': function() {
   return acadLessonWrap('App Overview', 't1-1', progress,
     // SVG: Sidebar diagram
-    '<svg width="100%" viewBox="0 0 500 280" style="max-width:500px;margin:0 auto 20px;display:block">' +
-      '<rect x="0" y="0" width="160" height="280" rx="4" fill="#1e2d4d" stroke="#3b5280" stroke-width="1"/>' +
+    '<svg width="100%" viewBox="0 0 500 360" style="max-width:500px;margin:0 auto 20px;display:block">' +
+      '<rect x="0" y="0" width="160" height="360" rx="4" fill="#1e2d4d" stroke="#3b5280" stroke-width="1"/>' +
       '<text x="80" y="22" font-size="9" fill="#d4af37" text-anchor="middle" font-family="monospace" font-weight="bold">INTRANSIT</text>' +
-      // Section labels
       '<text x="10" y="44" font-size="8" fill="#5a7ab0" font-family="monospace" font-weight="bold">INTELLIGENCE</text>' +
-      // Nav items
       '<rect x="6" y="48" width="148" height="20" rx="3" fill="#2d4a7a"/>' +
       '<text x="18" y="62" font-size="10" fill="#fff" font-family="sans-serif">◈ My Accounts</text>' +
       '<rect x="6" y="70" width="148" height="20" rx="3" fill="transparent"/>' +
       '<text x="18" y="84" font-size="10" fill="#a0aec0" font-family="sans-serif">📅 Daily Mission</text>' +
       '<rect x="6" y="92" width="148" height="20" rx="3" fill="transparent"/>' +
       '<text x="18" y="106" font-size="10" fill="#a0aec0" font-family="sans-serif">▦ Dashboard</text>' +
-      '<text x="10" y="128" font-size="8" fill="#5a7ab0" font-family="monospace" font-weight="bold">WORKFLOW</text>' +
-      '<rect x="6" y="132" width="148" height="20" rx="3" fill="transparent"/>' +
-      '<text x="18" y="146" font-size="10" fill="#a0aec0" font-family="sans-serif">$ Collections</text>' +
-      '<rect x="6" y="154" width="148" height="20" rx="3" fill="transparent"/>' +
-      '<text x="18" y="168" font-size="10" fill="#a0aec0" font-family="sans-serif">◉ Contacts</text>' +
-      '<rect x="6" y="176" width="148" height="20" rx="3" fill="transparent"/>' +
-      '<text x="18" y="190" font-size="10" fill="#a0aec0" font-family="sans-serif">⊹ Attack Plan</text>' +
-      '<text x="10" y="212" font-size="8" fill="#5a7ab0" font-family="monospace" font-weight="bold">SYSTEM</text>' +
-      '<rect x="6" y="216" width="148" height="20" rx="3" fill="transparent"/>' +
-      '<text x="18" y="230" font-size="10" fill="#a0aec0" font-family="sans-serif">🎓 Academy</text>' +
-      '<rect x="6" y="238" width="148" height="20" rx="3" fill="transparent"/>' +
-      '<text x="18" y="252" font-size="10" fill="#a0aec0" font-family="sans-serif">◧ Settings</text>' +
-      // Callout lines
+      '<text x="10" y="124" font-size="8" fill="#5a7ab0" font-family="monospace" font-weight="bold">WORKFLOW</text>' +
+      '<rect x="6" y="128" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="142" font-size="10" fill="#a0aec0" font-family="sans-serif">$ Collections</text>' +
+      '<rect x="6" y="150" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="164" font-size="10" fill="#a0aec0" font-family="sans-serif">◉ Contacts</text>' +
+      '<rect x="6" y="172" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="186" font-size="10" fill="#a0aec0" font-family="sans-serif">🎯 Prospects</text>' +
+      '<rect x="6" y="194" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="208" font-size="10" fill="#a0aec0" font-family="sans-serif">⊹ Attack Plan</text>' +
+      '<text x="10" y="228" font-size="8" fill="#5a7ab0" font-family="monospace" font-weight="bold">SYSTEM</text>' +
+      '<rect x="6" y="232" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="246" font-size="10" fill="#a0aec0" font-family="sans-serif">📋 My Requests</text>' +
+      '<rect x="6" y="254" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="268" font-size="10" fill="#a0aec0" font-family="sans-serif">🔒 Hidden Accts</text>' +
+      '<rect x="6" y="276" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="290" font-size="10" fill="#a0aec0" font-family="sans-serif">🎓 Academy</text>' +
+      '<rect x="6" y="298" width="148" height="20" rx="3" fill="transparent"/>' +
+      '<text x="18" y="312" font-size="10" fill="#a0aec0" font-family="sans-serif">◧ Settings</text>' +
       '<line x1="160" y1="58" x2="200" y2="58" stroke="#2563eb" stroke-width="1" stroke-dasharray="3,3"/>' +
       '<text x="205" y="62" font-size="10" fill="#a0c4ff" font-family="sans-serif">Your account database</text>' +
       '<line x1="160" y1="80" x2="200" y2="80" stroke="#f59e0b" stroke-width="1" stroke-dasharray="3,3"/>' +
@@ -14449,7 +14598,13 @@ function academyGetLessonContent(lessonId, progress) {
       '<line x1="160" y1="142" x2="200" y2="142" stroke="#ef4444" stroke-width="1" stroke-dasharray="3,3"/>' +
       '<text x="205" y="146" font-size="10" fill="#fca5a5" font-family="sans-serif">Unpaid AR management</text>' +
       '<line x1="160" y1="186" x2="200" y2="186" stroke="#10b981" stroke-width="1" stroke-dasharray="3,3"/>' +
-      '<text x="205" y="190" font-size="10" fill="#6ee7b7" font-family="sans-serif">Territory planning</text>' +
+      '<text x="205" y="190" font-size="10" fill="#a7f3d0" font-family="sans-serif">New accounts to pursue</text>' +
+      '<line x1="160" y1="208" x2="200" y2="208" stroke="#10b981" stroke-width="1" stroke-dasharray="3,3"/>' +
+      '<text x="205" y="212" font-size="10" fill="#6ee7b7" font-family="sans-serif">Territory planning</text>' +
+      '<line x1="160" y1="246" x2="200" y2="246" stroke="#9ca3af" stroke-width="1" stroke-dasharray="3,3"/>' +
+      '<text x="205" y="250" font-size="10" fill="#d1d5db" font-family="sans-serif">Track hide/transfer requests</text>' +
+      '<line x1="160" y1="268" x2="200" y2="268" stroke="#f59e0b" stroke-width="1" stroke-dasharray="3,3"/>' +
+      '<text x="205" y="272" font-size="10" fill="#fbd38d" font-family="sans-serif">Admin-approved hidden accts</text>' +
     '</svg>' +
 
     acadTipCards([
@@ -15097,28 +15252,38 @@ function academyGetLessonContent(lessonId, progress) {
 },
 
 't3-5': function() {
-  return acadLessonWrap('Requesting Account Removal', 't3-5', progress,
-    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:16px">Sometimes an account in your territory shouldn\'t be there — a competitor\'s house account, a closed business, or a geographic mismatch. Here\'s how to handle it correctly.</p>' +
+  return acadLessonWrap('Hiding & Returning Accounts', 't3-5', progress,
+    '<p style="font-size:13px;line-height:1.7;color:var(--text-2);margin-bottom:16px">Sometimes an account shouldn\'t be in your active view — a closed business, competitor house account, or a territory mismatch. Instead of deleting it, you can request it be <strong>hidden</strong> from your app. Here\'s the complete flow.</p>' +
 
-    '<div style="margin-bottom:20px">' +
-      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:10px">VALID REASONS TO REQUEST REMOVAL</div>' +
+    acadSteps([
+      { n: 1, title: 'Find the account', body: 'Open My Accounts, click any account to open its detail panel, then go to the <strong>Notes</strong> tab. Scroll to the bottom to see the request options.' },
+      { n: 2, title: 'Submit a Hide Request', body: 'Click <strong>REQUEST HIDE FROM APP</strong>. Enter a reason — be specific (e.g., "Out of business, confirmed closed March 2026"). This logs the request to admin for approval.' },
+      { n: 3, title: 'Track in My Requests', body: 'After submitting, check <strong>📋 My Requests</strong> in the sidebar. Your request appears with PENDING status. You\'ll see it update to APPROVED or DENIED.' },
+      { n: 4, title: 'Admin reviews', body: 'Admin reviews your request in the Requests & Approvals page. They can approve (account disappears from your view) or deny with a note explaining why.' },
+      { n: 5, title: 'If denied', body: 'You\'ll see the admin\'s note in My Requests. You can re-request or choose a different action (like setting the status to "Dead" instead).' },
+    ]) +
+
+    '<div style="margin:20px 0">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:10px">VALID REASONS TO HIDE AN ACCOUNT</div>' +
       '<div style="display:flex;flex-direction:column;gap:6px">' +
-        acadOutcomeRow('Wrong territory', 'var(--text-3)', 'Account is geographically outside your region') +
-        acadOutcomeRow('Already transferred', 'var(--text-3)', 'Account moved to another rep but still showing in your list') +
         acadOutcomeRow('Out of business', 'var(--red)', 'Company is closed, bankrupt, or no longer purchasing') +
         acadOutcomeRow('Competitor house account', 'var(--text-3)', 'Buying exclusively from a competitor with no path to win') +
-        acadOutcomeRow('Duplicate entry', 'var(--text-3)', 'Same account appears under two different names or numbers') +
+        acadOutcomeRow('Wrong territory', 'var(--text-3)', 'Account geographically outside your region') +
+        acadOutcomeRow('Duplicate entry', 'var(--text-3)', 'Same account appears under two different names') +
       '</div>' +
     '</div>' +
 
-    acadSection('How to request removal', 'Contact john.fluman@intransittech.com with the account name, account number if known, and the reason. Add a note to the account so there\'s a record of the request while you wait for processing.') +
-    acadSection('What to do in the meantime', 'Set REP_STATUS to "Dead" in the Overview tab. This removes the account from your Daily Mission AI picks immediately — no need to wait for admin processing.') +
+    acadSection('Viewing your hidden accounts', 'Go to <strong>🔒 Hidden Accounts</strong> in the sidebar (System section). You\'ll see all accounts hidden from your view. Each one has a REQUEST RETURN button.') +
+
+    acadSection('Requesting a return', 'If an account was hidden but the situation changed (new contact, reopened, etc.), click <strong>REQUEST RETURN</strong> on the Hidden Accounts page. Write a brief explanation. Admin will review and either restore it or explain why not.') +
 
     acadTipCards([
-      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Always leave a note before requesting removal. "Dead — competitor house account, no path to win" gives context that survives the handoff.' },
-      { color: 'var(--gold)', label: 'Pro Tip', text: 'Before requesting removal, check the Revenue tab. A dormant account with $80K+ lifetime is worth one re-engagement attempt before writing it off.' },
-      { color: 'var(--text-3)', label: 'Process', text: 'Admin processes removal requests weekly. REP_STATUS = Dead is effective immediately in the app.' },
+      { color: 'var(--blue-b)', label: 'Best Practice', text: 'Always write a clear reason when requesting. "Dead — competitor house account, verified closed" is much more useful than "not active." A clear reason gets faster approval.' },
+      { color: 'var(--gold)', label: 'Pro Tip', text: 'Before hiding, check the Revenue tab. An account with $50K+ lifetime revenue deserves one final re-engagement attempt first. Use the AI email generator to reach out.' },
+      { color: 'var(--orange)', label: 'In the Meantime', text: 'While waiting for admin approval, set the account status to "Dead" in the Notes tab. This removes it from your Daily Mission AI picks immediately — no need to wait.' },
     ]) +
+
+    acadKeyTakeaway('Use My Requests (📋) to track every hide and return request you submit. Admin always leaves a note when denying — check there if you\'re unsure why a request was declined.', 'See your requests now', 'requestLog') +
 
     acadCompleteBtn('t3-5')
   );

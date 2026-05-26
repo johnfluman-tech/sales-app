@@ -672,3 +672,40 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 
 **Bug fixed — location modal (HOME / OFFICE / TRAVEL) skipped for known IPs (commit `ad0da08`):**
 - See session 18 entry above
+
+### 2026-05-26 (session 20 — Access Log v2, Manager Hub Intel, CRM sync indicator)
+
+**Access Log v2 — 7 improvements (commit `b0159ed`):**
+- **Date range filter:** 7D / 30D / 90D / ALL TIME toggle — scopes all stats and table to selected window
+- **Rep filter dropdown:** filter the entire log to one rep
+- **Search box:** live search across email, IP, city, org, location
+- **Per-rep summary cards:** one card per rep showing last login date+location, sessions this month, usual location, LOW/MEDIUM/HIGH risk badge (HIGH = any suspicious flag, MEDIUM = 3+ anomalies, LOW = clean)
+- **30-day activity chart:** SVG bar chart — blue = normal days, amber = anomaly days, red = suspicious days
+- **Enhanced anomaly tagging:** every row gets auto-tagged: `🌙 AFTER HRS` (before 6am/after 10pm), `📅 WEEKEND`, `📱 NEW DEVICE` (first time rep used this device+browser combo), `🌍 MULTI-LOC` (same rep, two cities on same day). Tags shown as color-coded badges on each row.
+- **AI Security Brief:** purple button → AI reads last 30 days of filtered logs, returns plain-English summary: overall posture, per-rep patterns, action recommendations (claude-haiku-4-5-20251001)
+- **AI Row Explainer:** 🤖 button on every row → AI explains risk level (Low/Medium/High), whether anomaly flags are concerning, and recommended action
+- **Pagination:** 50 rows per page with page navigation; "Showing X–Y of Z records" counter
+- **New filter buttons:** AFTER HRS / WEEKEND / NEW DEVICE / MULTI-LOC / ⚡ ANY ANOMALY added alongside existing location filters
+- **6th KPI card:** Anomalies count added alongside Total, Today, Unique Users, Unique IPs, Suspicious
+- **Functions added/replaced:** `renderAccessLog`, `_alTagAnomalies`, `_alBuildView`, `_alRepCards`, `_alBuildChartData`, `_alActivityChart`, `_alApplyFilters`, `_alRenderTable`, `accessLogDateRange`, `accessLogRepFilter`, `accessLogSearch`, `accessLogLocFilter`, `accessLogSetPage`, `accessLogAIBrief`, `accessLogAIRow`, `filterAccessLog` (shim), `exportAccessLog`
+
+**Manager Hub — Account Intel tab (commit `4d23ac5`):**
+- New **🔍 Account Intel** tab added to Manager Hub tab bar
+- Designed for Karen (MX Team manager) to look up pre-transfer account history
+- **Quick Access buttons** for 6 transferred accounts: San Luis Metal, Siemens, Martinrea, Porta Systems, Navistar, Thyssenkrupp
+- **Search box** — type any account name to look up
+- **Revenue by Year (All Reps):** searches all 22K `gpCache` records by BUYER_NAME fuzzy match; groups by year with horizontal bar chart; shows per-rep revenue breakdown — includes pre-transfer years under Abraham/Arlin alongside MX team years
+- **Top Recurring Parts:** searches `historyCache` for matching account; shows part number, description, order count, total revenue, last sold date (top 12)
+- **🤖 Build Outreach Strategy:** AI generates re-engagement plan for that account — best angle, email subject line, opening paragraph referencing actual purchase history, top 2-3 parts to lead with (claude-haiku-4-5-20251001)
+- **Note:** `historyCache` line items cover current-rep assignments only (1,969 records); pre-transfer line items not available unless `sales_report.py` SQL is expanded. GP revenue by year covers all history.
+- **New functions:** `_mgrIntelHtml`, `mgrIntelLookup`, `mgrIntelAI`
+- **Constant added:** `_MGR_INTEL_TARGETS` = list of Karen's transferred target accounts
+
+**CRM last sync indicator in sidebar (commit `5cb1e97`):**
+- All users see "CRM DATA / [timestamp]" at the bottom of the sidebar nav, just above Sign Out
+- Reads `_LOG!A1:F500` from Main sheet; finds most recent row where col B is numeric (Python script log format: `RUN_DATE, TOTAL_ACCOUNTS, INACTIVE, AT_RISK, ACTIVE, NOTE`)
+- Timestamp formatted as human-friendly: "May 26, 2:30 PM"
+- Color-coded freshness: white = fresh (<2 hrs), amber = stale (2–8 hrs), red = very stale (>8 hrs — possible scheduler issue)
+- Loads non-blocking after login alongside `loadCustomerDirectory`
+- `state._lastCRMSync` stores the parsed run data for use elsewhere
+- **New function:** `loadLastRunTime()`

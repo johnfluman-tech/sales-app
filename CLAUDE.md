@@ -790,3 +790,49 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - Center column: trend arrow (↑ green / ↓ red) + % change — only appears if both sides have data
 - "No prior data" label when no pre-MX history; "no shipments yet" when MX team hasn't shipped yet
 - New computed variables: `mxTeamReps`, `preRows`, `postRows`, `preTotal`, `postTotal`, `preYears`, `postYears`, `preReps`, `comparisonHtml`
+
+### 2026-05-26 (session 25 — Account Intel full rebuild + CRM sync indicator)
+
+**Feature: CRM sync indicator — relative time + auto-refresh (commit `aba3717`):**
+- Sidebar label changed from "CRM DATA" to "DATA LAST UPDATED", font 12px bold
+- Shows relative time: "30 min ago", "2 hrs ago", "just now" instead of absolute timestamp
+- `_updateCRMSyncDisplay()` — recalculates age every 60s via `window._crmDisplayTimer` (no re-fetch needed)
+- `loadLastRunTime()` re-fetches from Sheets every 15 min via `window._crmFetchTimer` to catch new script runs
+- Colors: green (<1 hr), amber (1–8 hrs), red (>8 hrs = scheduler issue)
+
+**Feature: Account Intel — pre-transfer outreach list with year-prior filter (commit `94f8ff1`):**
+- `_mgrIntelTransferPartsHtml()`: identifies transfer year by finding earliest year current rep appears in `_TRANSFER_HISTORY` line items; filters parts to **year prior** to transfer only (falls back to all pre-transfer if no data for that year)
+- Numbered rank table (#1–15), top 3 rows highlighted, part numbers in gold amber, orders shown as "Nx"
+- **📋 COPY LIST button** → `copyTransferPartsList()` writes formatted plaintext to clipboard with header, year label, export date — Karen can paste directly into email or spreadsheet
+- Section reordered to appear FIRST (hero section) before revenue chart
+- Current rep top parts section hidden when empty (irrelevant for transferred accounts)
+
+**Feature: Account Intel — rep transition analysis (commits `891f299`, `29131d0`):**
+- `_mgrCurrentRepPerfHtml(accMatches, currentRepId, currentRepName, currentRepRows, priorRepId, priorRepName, gpRevCol, gpDateCol, gpRepCol)` — new function showing current rep performance since taking over
+- Rep badge: initials circle, name, "Has this account since [year]", "Previously: [prior rep] held this account"
+- Year-by-year bar chart of current rep's revenue + GP% (green ≥20%, amber ≥12%, red below); current year shown in blue
+- Trend: % change vs prior full year (↑ green / ↓ red)
+- Comparison card replaced: no longer says "BEFORE MX TEAM / SINCE MX TEAM" — now says "UNDER [PRIOR REP]" vs "UNDER [CURRENT REP]" based on actual invoice data
+- `currentRepId` derived from `state.accounts` match or most recent GP invoice (whoever is invoicing NOW)
+- `priorRepId` = rep with highest total revenue before current rep took over (e.g. Abraham, Arlin)
+- `_mgrIntelTransferPartsHtml` updated to use `currentRepId` instead of hard-coded MX rep list for pre/post split
+- Outreach list label: "WHAT THEY WERE BUYING BEFORE [CURRENT REP] TOOK OVER"
+
+**Bug fixed — Account Intel GP search failing for some accounts (commit `7aef58b`):**
+- When gpCache BUYER_NAME AND/OR-match returns empty, now tries a third fallback: exact account names from `accMatches` + `displayName` from matching `transferHistoryCache` entry, using OR-word matching
+- Catches cases where account's legal CRM name (e.g., "NAVISTAR DE MEXICO S.A.") differs from the short search query ("Navistar")
+- "No GP records" message updated to explain mismatch and suggest asking John to check the _GP tab buyer name
+
+**Section order in Account Intel after these changes:**
+1. Header (account name, total all-time revenue)
+2. Matching account cards (OPEN ACCOUNT button)
+3. CURRENT REP PERFORMANCE SINCE TAKING OVER (rep badge + year-by-year bars)
+4. ACCOUNT REVENUE — REP COMPARISON (prior rep vs current rep aggregate)
+5. ★ OUTREACH LIST — WHAT THEY WERE BUYING BEFORE [REP] TOOK OVER (📋 COPY LIST)
+6. REVENUE BY YEAR — ALL REPS chart
+7. TOP PARTS — CURRENT REP (hidden if empty)
+8. AI OUTREACH STRATEGY button
+
+**New functions:** `_mgrCurrentRepPerfHtml`, `copyTransferPartsList`, `_updateCRMSyncDisplay`
+**Modified functions:** `mgrIntelLookup` (rep transition analysis, GP search fallback), `_mgrIntelTransferPartsHtml` (currentRepId param), `loadLastRunTime` (intervals added)
+**Commits:** `aba3717` (CRM sync), `94f8ff1` (outreach list), `891f299` (current rep perf), `29131d0` (rep transition), `7aef58b` (GP fallback)

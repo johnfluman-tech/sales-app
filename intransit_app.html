@@ -11989,6 +11989,7 @@ function mgrIntelLookup(query) {
       '</div>' +
     '</div>' +
     accCardsHtml +
+    _mgrCurrentRepPerfHtml(accMatches, postRows, gpRevCol, gpDateCol, gpRepCol) +
     comparisonHtml +
     _mgrIntelTransferPartsHtml(query, accMatches) +
     (years.length > 0
@@ -12012,6 +12013,87 @@ function mgrIntelLookup(query) {
       '<div id="mgr-intel-ai-out" style="margin-top:12px"></div>' +
     '</div>' +
     '</div>';
+}
+
+function _mgrCurrentRepPerfHtml(accMatches, postRows, gpRevCol, gpDateCol, gpRepCol) {
+  var repNames = {CKaren:'Karen Mancebo',BillP:'Bill Pratt',PIan:'Ian Pitman',RMauricio:'Mauricio Rangel',LMancera:'Lizeth Mancera',bcastor:'Brandon Castor',Anolan:'Ana Nolan'};
+  var gpGPCol = (postRows && postRows.length > 0) ? (Object.keys(postRows[0]).find(function(h){ return /^GP$/i.test(h); })||'GP') : 'GP';
+
+  if (!postRows || !postRows.length) {
+    return '<div style="padding:14px 20px;border-bottom:1px solid var(--border)">' +
+      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:6px">CURRENT REP PERFORMANCE</div>' +
+      '<div style="font-size:11px;color:var(--text-3)">No shipments recorded under MX team for this account yet.</div>' +
+    '</div>';
+  }
+
+  // Determine current rep: prefer state.accounts match, else highest GP rep in postRows
+  var currentRepId = accMatches && accMatches.length ? accMatches[0].rep : '';
+  if (!currentRepId) {
+    var repRevMap = {};
+    postRows.forEach(function(r){ var rep=(r[gpRepCol]||'').trim(); repRevMap[rep]=(repRevMap[rep]||0)+(parseFloat(r[gpRevCol]||0)||0); });
+    currentRepId = Object.keys(repRevMap).sort(function(a,b){ return repRevMap[b]-repRevMap[a]; })[0] || '';
+  }
+  var currentRepName = repNames[currentRepId] || currentRepId;
+  var repInitials = currentRepName.split(' ').map(function(w){ return w[0]||''; }).join('').slice(0,2).toUpperCase();
+
+  // Year-by-year revenue + GP under MX team
+  var byYear = {};
+  postRows.forEach(function(r) {
+    var yr = (r[gpDateCol]||'').slice(0,4);
+    if (!yr.match(/^\d{4}$/)) return;
+    if (!byYear[yr]) byYear[yr] = {rev:0, gp:0};
+    byYear[yr].rev += parseFloat(r[gpRevCol]||0)||0;
+    byYear[yr].gp  += parseFloat(r[gpGPCol]||0)||0;
+  });
+  var sortedYears = Object.keys(byYear).sort();
+  var currentYear = new Date().getFullYear().toString();
+  var maxRev = Math.max.apply(null, sortedYears.map(function(y){ return byYear[y].rev; }))||1;
+
+  // Trend: latest complete year vs the one before it
+  var fullYears = sortedYears.filter(function(y){ return y < currentYear; });
+  var lastFull = fullYears[fullYears.length-1] || null;
+  var prevFull = fullYears[fullYears.length-2] || null;
+  var trendHtml = '';
+  if (lastFull && prevFull && byYear[prevFull].rev > 0) {
+    var pct = Math.round(((byYear[lastFull].rev - byYear[prevFull].rev) / byYear[prevFull].rev) * 100);
+    trendHtml = '<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:' + (pct>=0?'var(--green)':'var(--red)') + '">' + (pct>=0?'↑ +':'↓ ') + pct + '% vs ' + prevFull + '</span>';
+  }
+
+  // YTD from state.accounts if available
+  var accMatch = accMatches && accMatches.length ? accMatches[0] : null;
+  var ytd = accMatch && accMatch.revenue ? accMatch.revenue : (byYear[currentYear] ? byYear[currentYear].rev : 0);
+
+  var yearRowsHtml = sortedYears.map(function(yr) {
+    var d = byYear[yr];
+    var barPct = Math.round((d.rev/maxRev)*100);
+    var gpPct = d.rev > 0 ? Math.round((d.gp/d.rev)*100) : 0;
+    var isCY = yr === currentYear;
+    var gpColor = gpPct >= 20 ? 'var(--green)' : gpPct >= 12 ? '#f59e0b' : 'var(--red)';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="font-family:var(--mono);font-size:11px;font-weight:700;min-width:60px;color:' + (isCY?'var(--blue-b)':'var(--text)') + '">' + yr + (isCY?' YTD':'') + '</div>' +
+      '<div style="flex:1;background:var(--s2);border-radius:3px;height:8px;overflow:hidden">' +
+        '<div style="width:'+barPct+'%;height:100%;background:' + (isCY?'var(--blue-b)':'var(--green)') + ';opacity:0.75;border-radius:3px"></div>' +
+      '</div>' +
+      '<div style="font-family:var(--mono);font-size:12px;font-weight:700;min-width:85px;text-align:right">$'+formatNum(d.rev)+'</div>' +
+      (gpPct > 0 ? '<div style="font-family:var(--mono);font-size:10px;min-width:50px;text-align:right;color:'+gpColor+'">'+gpPct+'% GP</div>' : '<div style="min-width:50px"></div>') +
+    '</div>';
+  }).join('');
+
+  return '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">' +
+    '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:12px">CURRENT REP PERFORMANCE SINCE TRANSFER</div>' +
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:12px 14px;background:var(--s2);border-radius:var(--r2);border:1px solid var(--border)">' +
+      '<div style="width:38px;height:38px;border-radius:50%;background:var(--blue-b);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;font-weight:700;color:#fff;flex-shrink:0">' + escHtml(repInitials) + '</div>' +
+      '<div style="flex:1">' +
+        '<div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text)">' + escHtml(currentRepName) + '</div>' +
+        '<div style="font-size:10px;color:var(--text-3);margin-top:2px">Account owner &nbsp;·&nbsp; ' + sortedYears.length + ' year' + (sortedYears.length===1?'':'s') + ' of history</div>' +
+      '</div>' +
+      '<div style="text-align:right">' +
+        (ytd > 0 ? '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--blue-b)">$'+formatNum(ytd)+'</div><div style="font-size:10px;color:var(--text-3)">'+currentYear+' YTD</div>' : '') +
+        (trendHtml ? '<div style="margin-top:4px">' + trendHtml + '</div>' : '') +
+      '</div>' +
+    '</div>' +
+    yearRowsHtml +
+  '</div>';
 }
 
 function _mgrIntelTransferPartsHtml(query, accMatches) {

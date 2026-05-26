@@ -731,4 +731,17 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **`sales_report.py` scheduling note:**
 - Script runs on INTRANSIT-RDS02; last run was May 26 at 8:08 AM (visible in sidebar CRM DATA indicator)
 - To automate: on INTRANSIT-RDS02, create a Windows Task Scheduler task running `python C:\scripts\sales_report.py` every 30 minutes, logging to `C:\scripts\logs\sales_report.log`
-- This is still a pending manual setup item
+- Claude Code installed on INTRANSIT-RDS02 (PS7 installed via MSI, `claude` runs in pwsh) — can be used to work with SQL and task scheduler directly on the server
+- Scheduled task setup attempted via Claude Code on RDS02 (session 21)
+
+### 2026-05-26 (session 22 — BillP added to MX Team + FJohn pipeline fix)
+
+**Bug fixed — FJohn accounts appearing in Manager Hub Pipeline (commit `d5dae50`):**
+- **Root cause:** Admin Manager Hub fallback (`mgrCfg` null → no active manager simulation) used `CONFIG.REPS` which includes `'FJohn'`. FJohn is admin, not a sales rep, so he appeared in Pipeline/Scoreboard/Collections when admin viewed Manager Hub without a manager simulation active.
+- **Fix:** Added `.filter(function(r){ return r !== 'FJohn'; })` to the admin fallback in `renderManagerHub()` — FJohn is now excluded from all Manager Hub tabs regardless of view mode.
+
+**BillP added to MX Team (commit `d5dae50`):**
+- `MANAGER_CONFIG` updated — BillP added to `teamReps` for all three manager roles: `CKaren`, `CMancilla`, `MPerezfreye`
+- Previous teamReps: `['CKaren','PIan','RMauricio','LMancera','bcastor']`
+- New teamReps: `['CKaren','BillP','PIan','RMauricio','LMancera','bcastor']`
+- BillP now appears in Manager Hub Scoreboard, Pipeline, Collections, AI Brief, and Coaching tabs for all manager views

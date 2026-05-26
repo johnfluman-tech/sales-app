@@ -4275,14 +4275,6 @@ function renderNoteInput(acc) {
       <button class="approve-btn" onclick="approveRemoval()">APPROVE REMOVAL</button>
     </div>` : '';
 
-  const johnPoolHtml = state.isAdmin ? (
-    '<div style="margin-top:10px;padding:10px 14px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r)">'
-    + '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:8px">POOL VISIBILITY — ADMIN</div>'
-    + (acc.hideFromPool === 'YES'
-      ? '<button data-n="' + escHtml(acc.name) + '" onclick="adminSetPoolHide(this.dataset.n, false)" style="width:100%;padding:7px 12px;background:transparent;border:1px solid rgba(34,197,94,0.5);color:var(--green);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700;text-align:left">&#8629; RESTORE TO TRANSFER POOL<span style=\'display:block;font-size:9px;font-weight:400;opacity:0.7;margin-top:1px\'>Re-enable in Transfer Candidates for all reps</span></button>'
-      : '<button data-n="' + escHtml(acc.name) + '" onclick="adminSetPoolHide(this.dataset.n, true)" style="width:100%;padding:7px 12px;background:transparent;border:1px solid rgba(220,38,38,0.4);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700;text-align:left">&#128065; HIDE FROM TRANSFER POOL<span style=\'display:block;font-size:9px;font-weight:400;opacity:0.7;margin-top:1px\'>Hides from all reps\' Transfer Candidates. Owner keeps full access.</span></button>')
-    + '</div>'
-  ) : '';
   // Rep requests section — shown to reps and admin
   const repRequestsHtml = `
     <div style="margin-top:16px;padding:14px 16px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r2)">
@@ -4352,7 +4344,6 @@ function renderNoteInput(acc) {
         <button onclick="openScheduleModal('${escJs(acc.name)}','','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
       </div>
       ${johnApproveHtml}
-      ${johnPoolHtml}
       ${repRequestsHtml}
     </div>`;
 }

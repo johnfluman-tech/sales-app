@@ -745,3 +745,34 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - Previous teamReps: `['CKaren','PIan','RMauricio','LMancera','bcastor']`
 - New teamReps: `['CKaren','BillP','PIan','RMauricio','LMancera','bcastor']`
 - BillP now appears in Manager Hub Scoreboard, Pipeline, Collections, AI Brief, and Coaching tabs for all manager views
+
+### 2026-05-26 (session 23 — RDS02 Claude setup + scripts_CLAUDE.md + Karen transfer history plan)
+
+**Claude Code installed on INTRANSIT-RDS02:**
+- PowerShell 7 installed via MSI (`C:\temp\pwsh7.msi`) — required because Claude Code needs PS7 or Git bash; Windows Server doesn't have winget so installed via `(New-Object Net.WebClient).DownloadFile(...)`
+- Claude Code installed via `npm install -g @anthropic-ai/claude-code` in original PS5 window; runs in `pwsh` (PS7)
+- Logged in as John Fluman (Intransittech Claude Team plan)
+
+**`scripts_CLAUDE.md` created and deployed:**
+- File: `C:\Users\fluma\sales-app\scripts_CLAUDE.md` in repo (commit `3b16adc`)
+- Downloaded to RDS02 at `C:\scripts\CLAUDE.md` via `(New-Object Net.WebClient).DownloadFile("https://raw.githubusercontent.com/johnfluman-tech/sales-app/main/scripts_CLAUDE.md","C:\scripts\CLAUDE.md")`
+- Contains: SQL schema, key table/column rules, rep mappings, Google Sheets IDs and tab structure, sales_report.py overview, scheduler config, pending _TRANSFER_HISTORY task with suggested SQL
+- Claude on RDS02 confirmed it read the file successfully
+- **Sync workflow:** When Claude on RDS02 learns something new → update `C:\scripts\CLAUDE.md` there → tell Claude here → commit to GitHub to keep both in sync
+
+**Memory system clarification:**
+- Claude on RDS02 has its own local memory at `C:\Users\managerman\.claude\projects\...` — only visible to RDS02 sessions
+- Claude here has memory at `C:\Users\fluma\.claude\projects\...` — only visible here
+- `C:\scripts\CLAUDE.md` is the shared bridge — source of truth for both instances
+
+**Karen's pre-transfer history — plan confirmed:**
+- Karen needs: revenue + top recurring part numbers for 6 transferred accounts (San Luis Metal, Siemens, Martinrea, Porta Systems, Navistar, Thyssenkrupp) from BEFORE MX team took them over (Abraham/Arlin era)
+- Gap: `_INVOICE_HISTORY` only covers current-rep accounts — pre-transfer line items (part numbers) are missing
+- Plan: add `push_transfer_history_tab()` to `sales_report.py` using suggested SQL in `scripts_CLAUDE.md`; writes `_TRANSFER_HISTORY` tab to History sheet
+- Claude on RDS02 has been asked to run the SQL query to verify row counts before modifying sales_report.py
+- Account Intel tab in Manager Hub will be updated to read `_TRANSFER_HISTORY` once populated
+
+**Account Intel search fix (commit `88a3a33`):**
+- `mgrIntelLookup` now searches `state.accounts` by name first, then `gpCache` by BUYER_NAME
+- OR-word fallback when AND-match finds nothing; "Did you mean?" suggestions from state.accounts
+- OPEN ACCOUNT button on each matched account card → calls `selectAccountByName()`

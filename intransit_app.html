@@ -1163,6 +1163,12 @@ body::before {
         </div>
       </div>
       <div class="nav-section-label">System</div>
+      <div class="nav-item" id="nav-request-log" data-view="requestLog" onclick="switchView('requestLog')">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#128203;</span> My Requests
+          <span class="nav-badge" id="badge-request-log" style="background:var(--blue-b)"></span>
+        </div>
+      </div>
       <!-- Admin-only: Removal/Hold/Transfer Requests -->
       <div class="nav-item" id="nav-removals" data-view="removals" onclick="switchView('removals')"
            style="display:none;border-left:2px solid var(--red)">
@@ -2541,6 +2547,7 @@ function applyLanguage() {
     'nav-attack':     'attackPlan',
     'nav-settings':   'settings',
     'nav-removals':   'removalRequests',
+    'nav-request-log':'myRequests',
   };
   Object.entries(navMap).forEach(([id, key]) => {
     const el = document.getElementById(id);
@@ -3851,6 +3858,9 @@ function switchView(view) {
     setTimeout(restoreSplitPositions, 30);
   } else if (view === 'removals') {
     renderRemovalsView();
+    setTimeout(restoreSplitPositions, 30);
+  } else if (view === 'requestLog') {
+    renderRequestLogView();
     setTimeout(restoreSplitPositions, 30);
   } else if (view === 'access') {
     renderAccessLog();
@@ -5903,7 +5913,7 @@ function _reqRenderPage() {
         '</div>' +
         '<div style="display:flex;flex-direction:column;gap:7px;flex-shrink:0">' +
           '<button data-n="' + escHtml(acc.name) + '" onclick="approveRemovalDirect(this.dataset.n)" style="padding:8px 18px;background:rgba(220,38,38,0.85);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r)">✓ APPROVE HIDE</button>' +
-          '<button data-n="' + escHtml(acc.name) + '" onclick="denyRemoval(this.dataset.n)" style="padding:8px 18px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">✗ DENY / KEEP</button>' +
+          '<button data-n="' + escHtml(acc.name) + '" onclick="showDenyHideModal(this.dataset.n)" style="padding:8px 18px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">✗ DENY / KEEP</button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -5928,7 +5938,10 @@ function _reqRenderPage() {
           '<div style="font-size:15px;font-weight:700">' + escHtml(item.accName) + '</div>' +
           (item.reason && item.reason !== 'none' ? '<div style="margin-top:8px;background:var(--s2);border-left:3px solid ' + col + ';padding:7px 12px;border-radius:0 var(--r) var(--r) 0;font-size:12px;color:var(--text-2)">' + escHtml(item.reason) + '</div>' : '') +
         '</div>' +
-        '<div style="flex-shrink:0;background:' + bgLight + ';border:1px solid ' + col + ';color:' + col + ';font-family:var(--mono);font-size:9px;padding:8px 12px;border-radius:var(--r);max-width:140px;line-height:1.6;letter-spacing:0.05em;text-align:center">' + action + '</div>' +
+        '<div style="flex-shrink:0;text-align:center">' +
+          '<div style="background:' + bgLight + ';border:1px solid ' + col + ';color:' + col + ';font-family:var(--mono);font-size:9px;padding:8px 12px;border-radius:var(--r);max-width:140px;line-height:1.6;letter-spacing:0.05em;text-align:center">' + action + '</div>' +
+          (isHold ? '' : '<button data-n="' + escHtml(item.accName) + '" data-rep="' + escHtml((item.rep||'') + \'@intransittech.com\') + '" onclick="showDenyTransferModal(this.dataset.n, this.dataset.rep)" style="margin-top:8px;padding:6px 14px;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.4);color:var(--red);font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r);display:block;width:100%;text-align:center">&#x2717; DENY</button>') +
+        '</div>' +
       '</div>' +
     '</div>';
   };
@@ -6167,6 +6180,7 @@ async function submitHideRequest(accName, reason) {
     newRow[iRemove] = reason;
     await sheetsUpdate(range, [newRow]);
     acc.removeFlag = reason;
+    writeRequestLog('HIDE', accName, state.repId || '', reason, 'PENDING').catch(function(){});
     showToast('Hide request sent to John for review ✓', 'success');
     if (state.selectedAccount && state.selectedAccount.name === accName) renderDetail(acc);
     const cnt = state.accounts.filter(function(a){ return a.removeFlag && a.removeFlag.trim() && a.removeFlag.toUpperCase()!=='YES' && (a.johnApproval||'').toUpperCase()!=='YES'; }).length;
@@ -6219,6 +6233,7 @@ async function approveRemovalDirect(accountName) {
     state.accounts = state.accounts.filter(function(a){ return a.name !== accountName; });
     state.hiddenAccounts.push(acc);
     if (state.selectedAccount && state.selectedAccount.name === accountName) state.selectedAccount = null;
+    resolveRequestLog('HIDE', accountName, acc.rep || '', 'APPROVED', '').catch(function(){});
     showToast(accountName + ' hidden from ' + acc.rep + "'s view ✓", 'success');
     renderRemovalsView();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
@@ -6248,12 +6263,12 @@ async function adminSetPoolHide(accName, hide) {
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
-async function denyRemoval(accountName) {
-  if (!confirm(`Deny removal request for "${accountName}" and clear the flag?`)) return;
-  const acc = state.accounts.find(a => a.name === accountName);
+async function denyRemoval(accountName, adminNote) {
+  document.getElementById('deny-hide-overlay')?.remove();
+  const acc = state.accounts.find(function(a){ return a.name === accountName; });
   if (!acc) return;
   try {
-    const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
+    const range = "'" + acc.tabName + "'!A" + (acc.rowIndex + 1) + ":Z" + (acc.rowIndex + 1);
     const rows = await sheetsGet(range);
     const row = rows[0] || [];
     const newRow = [...row];
@@ -6262,11 +6277,223 @@ async function denyRemoval(accountName) {
     if (iRemove >= 0) newRow[iRemove] = '';
     await sheetsUpdate(range, [newRow]);
     acc.removeFlag = '';
-    showToast(`Removal request denied for ${accountName} ✓`, 'success');
+    resolveRequestLog('HIDE', accountName, acc.rep || '', 'DENIED', adminNote || '').catch(function(){});
+    showToast('Hide request denied for ' + accountName + ' ✓', 'success');
     renderRemovalsView();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
+
+// ══════════════════════════════════════════════════════════
+//  REQUEST LOG  —  _REQUEST_LOG tab in History sheet
+// ══════════════════════════════════════════════════════════
+
+async function writeRequestLog(type, account, repId, reason, status) {
+  try {
+    await sheetsAppend("'_REQUEST_LOG'!A1", [[
+      new Date().toISOString(), type, account, repId || '', reason || '', status || 'PENDING', ''
+    ]], CONFIG.HISTORY_SPREADSHEET_ID);
+  } catch(e) {
+    console.warn('[REQ_LOG] Write failed:', e.message);
+  }
+}
+
+async function resolveRequestLog(type, account, repId, status, adminNote) {
+  try {
+    await sheetsAppend("'_REQUEST_LOG'!A1", [[
+      new Date().toISOString(), type + '_RESOLVED', account, repId || '', '', status || 'RESOLVED', adminNote || ''
+    ]], CONFIG.HISTORY_SPREADSHEET_ID);
+  } catch(e) {
+    console.warn('[REQ_LOG] Resolve write failed:', e.message);
+  }
+}
+
+function showDenyHideModal(accountName) {
+  var ex = document.getElementById('deny-hide-overlay');
+  if (ex) ex.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'deny-hide-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9000;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML =
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:28px 32px;max-width:440px;width:90%">' +
+      '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Deny Hide Request</div>' +
+      '<div style="font-size:12px;color:var(--text-3);margin-bottom:16px">Keep <strong>' + escHtml(accountName) + '</strong> visible in the rep\'s list? Leave a note explaining why.</div>' +
+      '<textarea id="deny-hide-note" placeholder="Reason for denial (e.g., Account is still active, worth pursuing...)" style="width:100%;height:80px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-family:var(--mono);font-size:12px;padding:10px;border-radius:var(--r);box-sizing:border-box;resize:vertical"></textarea>' +
+      '<div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">' +
+        '<button onclick="document.getElementById(\'deny-hide-overlay\').remove()" style="padding:9px 22px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px">CANCEL</button>' +
+        '<button data-n="' + escHtml(accountName) + '" onclick="denyRemoval(this.dataset.n,document.getElementById(\'deny-hide-note\').value.trim())" style="padding:9px 22px;background:rgba(220,38,38,0.85);border:none;color:#fff;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700">✗ CONFIRM DENY</button>' +
+      '</div>' +
+    '</div>';
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function showDenyTransferModal(accName, repEmail) {
+  var ex = document.getElementById('deny-transfer-overlay');
+  if (ex) ex.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'deny-transfer-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9000;display:flex;align-items:center;justify-content:center';
+  var shortRep = (repEmail || '').replace('@intransittech.com', '');
+  overlay.innerHTML =
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:28px 32px;max-width:440px;width:90%">' +
+      '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Deny Transfer Request</div>' +
+      '<div style="font-size:12px;color:var(--text-3);margin-bottom:16px"><strong>' + escHtml(accName) + '</strong> — leave a note for ' + escHtml(shortRep) + ' explaining why.</div>' +
+      '<textarea id="deny-transfer-note" placeholder="Reason for denial (e.g., Account is already being worked by another rep...)" style="width:100%;height:90px;background:var(--s2);border:1px solid var(--border);color:var(--text-1);font-family:var(--mono);font-size:12px;padding:10px;border-radius:var(--r);box-sizing:border-box;resize:vertical"></textarea>' +
+      '<div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">' +
+        '<button onclick="document.getElementById(\'deny-transfer-overlay\').remove()" style="padding:9px 22px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px">CANCEL</button>' +
+        '<button data-n="' + escHtml(accName) + '" data-rep="' + escHtml(repEmail || '') + '" onclick="denyTransferRequest(this.dataset.n,this.dataset.rep,document.getElementById(\'deny-transfer-note\').value.trim())" style="padding:9px 22px;background:rgba(220,38,38,0.85);border:none;color:#fff;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:11px;font-weight:700">✗ CONFIRM DENY</button>' +
+      '</div>' +
+    '</div>';
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+async function denyTransferRequest(accName, repEmail, adminNote) {
+  document.getElementById('deny-transfer-overlay')?.remove();
+  try {
+    const repId = (repEmail || '').replace('@intransittech.com', '');
+    await sheetsAppend("'_LOG'!A1", [[
+      new Date().toISOString(), repEmail || state.user?.email, 'TRANSFER_DENIED',
+      'Admin denied transfer of: ' + accName + '. Note: ' + (adminNote || 'none')
+    ]]);
+    await resolveRequestLog('TRANSFER', accName, repId, 'DENIED', adminNote);
+    showToast('Transfer denied: ' + accName.slice(0, 22) + ' ✓', 'success');
+    renderRemovalsView();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function renderRequestLogView() {
+  const el = document.getElementById('main-content');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div style="font-size:24px;margin-bottom:8px">&#128203;</div>Loading...</div>';
+  let allRows = [];
+  try {
+    allRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_REQUEST_LOG'!A1:H500");
+  } catch(_e) { allRows = []; }
+
+  const isAdm = isAdmin() && !state.viewAsRep;
+
+  if (!allRows || allRows.length < 2) {
+    el.innerHTML = '<div style="padding:40px;color:var(--text-3);text-align:center">' +
+      '<div style="font-size:28px;margin-bottom:10px">&#128203;</div>' +
+      '<div style="font-family:var(--mono);font-size:11px">No requests logged yet. When you submit hide or transfer requests they will appear here.</div>' +
+    '</div>';
+    return;
+  }
+
+  // Originals: rows that are not _RESOLVED
+  let dataRows = allRows.slice(1).filter(function(r){ return !(r[1]||'').endsWith('_RESOLVED'); });
+  if (!isAdm) {
+    dataRows = dataRows.filter(function(r){ return (r[3]||'').toLowerCase() === (state.repId||'').toLowerCase(); });
+  }
+
+  // Build resolution map: "account|type" -> latest resolution row
+  const resMap = {};
+  allRows.slice(1).filter(function(r){ return (r[1]||'').endsWith('_RESOLVED'); }).forEach(function(r) {
+    const k = (r[2]||'') + '|' + (r[1]||'').replace('_RESOLVED','');
+    resMap[k] = r;
+  });
+
+  const timeAgo = function(ts) {
+    if (!ts) return '';
+    try {
+      const ms = Date.now() - new Date(ts).getTime();
+      const m = Math.floor(ms / 60000);
+      if (m < 60) return m + 'm ago';
+      const h = Math.floor(m / 60);
+      if (h < 24) return h + 'h ago';
+      return Math.floor(h / 24) + 'd ago';
+    } catch(_e2) { return ''; }
+  };
+
+  const pendingCount  = dataRows.filter(function(r){ const res = resMap[(r[2]||'')+'|'+(r[1]||'')]; return !res || !(res[5]||''); }).length;
+  const approvedCount = dataRows.filter(function(r){ const res = resMap[(r[2]||'')+'|'+(r[1]||'')]; return res && (res[5]||'')==='APPROVED'; }).length;
+  const deniedCount   = dataRows.filter(function(r){ const res = resMap[(r[2]||'')+'|'+(r[1]||'')]; return res && (res[5]||'')==='DENIED'; }).length;
+
+  const cardHtml = dataRows.map(function(r) {
+    const ts = r[0]||'', type = r[1]||'', account = r[2]||'', rep = r[3]||'', reason = r[4]||'';
+    const res = resMap[account + '|' + type];
+    const status    = res ? (res[5]||'PENDING') : 'PENDING';
+    const adminNote = res ? (res[6]||'') : '';
+    const isTrans   = type === 'TRANSFER';
+    const col       = isTrans ? 'var(--blue-b)' : 'var(--red)';
+    const colBg     = isTrans ? 'rgba(59,130,246,0.12)' : 'rgba(220,38,38,0.12)';
+    const tag       = isTrans ? '&#x21C4; TRANSFER REQUEST' : '&#x1F6AB; HIDE REQUEST';
+    const sc        = status === 'APPROVED' ? 'var(--green)' : status === 'DENIED' ? 'var(--red)' : 'var(--gold)';
+    const scBg      = status === 'APPROVED' ? 'rgba(34,197,94,0.15)' : status === 'DENIED' ? 'rgba(220,38,38,0.15)' : 'rgba(234,179,8,0.15)';
+    const isOwn     = rep.toLowerCase() === (state.repId||'').toLowerCase();
+
+    let actionHtml = '';
+    if (status === 'PENDING' && isAdm) {
+      if (isTrans) {
+        actionHtml = '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button data-n="' + escHtml(account) + '" data-rep="' + escHtml(rep + '@intransittech.com') + '" onclick="showDenyTransferModal(this.dataset.n,this.dataset.rep)" style="padding:6px 14px;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.4);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700">&#x2717; DENY</button>' +
+          '<span style="font-size:10px;color:var(--text-3);align-self:center">Reassign in CRM + re-run script to approve</span>' +
+        '</div>';
+      } else {
+        actionHtml = '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button data-n="' + escHtml(account) + '" onclick="approveRemovalDirect(this.dataset.n)" style="padding:6px 14px;background:rgba(220,38,38,0.85);border:none;color:#fff;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700">&#x2713; APPROVE HIDE</button>' +
+          '<button data-n="' + escHtml(account) + '" onclick="showDenyHideModal(this.dataset.n)" style="padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">&#x2717; DENY</button>' +
+        '</div>';
+      }
+    } else if (status === 'DENIED' && isOwn) {
+      if (isTrans) {
+        actionHtml = '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button onclick="switchView(\'attack\')" style="padding:6px 14px;background:rgba(59,130,246,0.1);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">&#x21A9; RE-REQUEST TRANSFER</button>' +
+          '<button data-n="' + escHtml(account) + '" onclick="showQuickHideRequest(this.dataset.n)" style="padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">&#x1F6AB; REQUEST HIDE INSTEAD</button>' +
+        '</div>';
+      } else {
+        actionHtml = '<div style="margin-top:10px">' +
+          '<button data-n="' + escHtml(account) + '" onclick="showQuickHideRequest(this.dataset.n)" style="padding:6px 14px;background:rgba(59,130,246,0.1);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px">&#x21A9; RE-REQUEST HIDE</button>' +
+        '</div>';
+      }
+    }
+
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid ' + col + ';border-radius:var(--r2);padding:16px 18px">' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">' +
+            '<span style="background:' + colBg + ';color:' + col + ';font-family:var(--mono);font-size:9px;padding:2px 9px;border-radius:var(--r);letter-spacing:0.1em;font-weight:700">' + tag + '</span>' +
+            (isAdm ? '<span style="font-size:10px;color:var(--text-3);font-family:var(--mono)">by ' + escHtml(rep) + '</span>' : '') +
+            (ts ? '<span style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + timeAgo(ts) + '</span>' : '') +
+          '</div>' +
+          '<div style="font-size:15px;font-weight:700;margin-bottom:4px">' + escHtml(account || '—') + '</div>' +
+          (reason && reason !== 'none' ? '<div style="font-size:11px;color:var(--text-2);background:var(--s2);border-left:3px solid ' + col + ';padding:6px 10px;border-radius:0 var(--r) var(--r) 0;margin-top:5px"><em>' + escHtml(reason) + '</em></div>' : '') +
+          (adminNote ? '<div style="font-size:11px;color:var(--text-2);background:rgba(249,115,22,0.08);border-left:3px solid var(--orange);padding:6px 10px;border-radius:0 var(--r) var(--r) 0;margin-top:5px"><strong>Admin note:</strong> ' + escHtml(adminNote) + '</div>' : '') +
+          actionHtml +
+        '</div>' +
+        '<span style="background:' + scBg + ';color:' + sc + ';font-family:var(--mono);font-size:10px;padding:4px 12px;border-radius:var(--r);font-weight:700;flex-shrink:0;align-self:flex-start">' + status + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  el.innerHTML =
+    '<div style="max-width:820px;margin:0 auto;padding:28px 20px">' +
+      '<div style="font-size:20px;font-weight:800;letter-spacing:-0.02em;margin-bottom:4px">&#128203; ' + (isAdm ? 'All Requests' : 'My Requests') + '</div>' +
+      '<div style="font-size:11px;color:var(--text-3);margin-bottom:20px;font-family:var(--mono)">' + (isAdm ? 'All submitted requests from your team — approve, deny, and leave notes' : 'Track your hide and transfer requests — re-request if denied') + '</div>' +
+      '<div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap">' +
+        '<div style="background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:var(--r2);padding:12px 20px;flex:1;min-width:80px">' +
+          '<div style="font-size:22px;font-weight:700;color:var(--gold)">' + pendingCount + '</div>' +
+          '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono);letter-spacing:0.1em;margin-top:3px">PENDING</div>' +
+        '</div>' +
+        '<div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:var(--r2);padding:12px 20px;flex:1;min-width:80px">' +
+          '<div style="font-size:22px;font-weight:700;color:var(--green)">' + approvedCount + '</div>' +
+          '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono);letter-spacing:0.1em;margin-top:3px">APPROVED</div>' +
+        '</div>' +
+        '<div style="background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.3);border-radius:var(--r2);padding:12px 20px;flex:1;min-width:80px">' +
+          '<div style="font-size:22px;font-weight:700;color:var(--red)">' + deniedCount + '</div>' +
+          '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono);letter-spacing:0.1em;margin-top:3px">DENIED</div>' +
+        '</div>' +
+      '</div>' +
+      (cardHtml.trim()
+        ? '<div style="display:flex;flex-direction:column;gap:10px">' + cardHtml + '</div>'
+        : '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:40px;text-align:center;color:var(--text-3)">' +
+            '<div style="font-size:28px;margin-bottom:10px">&#128203;</div>' +
+            '<div style="font-family:var(--mono);font-size:11px">' + (isAdm ? 'No requests yet.' : 'You haven\'t submitted any requests yet.') + '</div>' +
+          '</div>') +
+    '</div>';
+}
 
 // ══════════════════════════════════════════════════════════
 //  FOLLOW-UP COMMAND CENTER
@@ -13086,11 +13313,14 @@ async function apkDoAssignToMe(name) {
 function apkDoRequestTransfer(name) {
   const note = document.getElementById('apk-action-note')?.value.trim() || 'none';
   document.getElementById('apk-action-modal-overlay')?.remove();
+  const repId = window.apkRep || state.repId || '';
   sheetsAppend("'_LOG'!A1", [[
-    new Date().toISOString(), state.user?.email || window.apkRep, 'TRANSFER_REQUEST',
-    'Rep ' + (window.apkRep || '') + ' requests: ' + name + '. Note: ' + note
-  ]]).then(() => showToast('Transfer request sent to John ✓', 'success'))
-    .catch(e => showToast('Error: ' + e.message, 'error'));
+    new Date().toISOString(), state.user?.email || repId, 'TRANSFER_REQUEST',
+    'Rep ' + repId + ' requests: ' + name + '. Note: ' + note
+  ]]).then(function() {
+    writeRequestLog('TRANSFER', name, repId, note, 'PENDING').catch(function(){});
+    showToast('Transfer request sent to John ✓', 'success');
+  }).catch(function(e) { showToast('Error: ' + e.message, 'error'); });
 }
 
 function apkDoRemoveFromPool(name) {

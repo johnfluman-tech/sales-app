@@ -1242,6 +1242,10 @@ body::before {
       </div>
     </div>
         <div class="sidebar-footer">
+      <div id="crm-last-update" style="padding:5px 0 8px;margin-bottom:6px;border-bottom:1px solid var(--border)">
+        <div style="font-size:9px;color:var(--text-3);font-family:var(--mono);letter-spacing:0.1em;margin-bottom:2px">CRM DATA</div>
+        <div id="crm-update-time" style="font-size:10px;color:var(--text-3);font-family:var(--mono)">Loading...</div>
+      </div>
       <button class="signout-btn" onclick="handleSignout()">Sign Out</button>
       <button id="force-logout-btn" onclick="confirmForceLogoutAll()" style="display:none;margin-top:6px;width:100%;padding:8px;background:transparent;border:1px solid rgba(239,68,68,0.5);color:var(--red);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.06em">⏏ LOG OUT ALL</button>
     </div>
@@ -1779,6 +1783,7 @@ async function loadSupplementalData() {
     // Load customer directory and prospects (non-blocking)
     loadCustomerDirectory().catch(e => console.warn('Customer directory load failed:', e));
     loadProspects().catch(e => console.warn('Prospects load failed:', e));
+    loadLastRunTime().catch(e => console.warn('Last run time load failed:', e));
 
     // Auto-render Daily Mission now that all core data is ready
     if (state.activeView === 'followup') {
@@ -16152,6 +16157,60 @@ function _updateProspectsBadge() {
   if (!badge) return;
   const count = (state.prospectCache || []).filter(function(p){ return p.STATUS === 'Active'; }).length;
   badge.textContent = count > 0 ? count : '';
+}
+
+async function loadLastRunTime() {
+  try {
+    var raw = await sheetsGetFrom(CONFIG.SPREADSHEET_ID, "'_LOG'!A1:F500");
+    if (!raw || raw.length < 2) return;
+    // Python script rows have a number in col B (TOTAL_ACCOUNTS); security event rows have a string (LOGIN, etc.)
+    var lastRun = null;
+    for (var i = raw.length - 1; i >= 1; i--) {
+      var row = raw[i];
+      var colB = String(row[1] || '').trim();
+      var asNum = parseInt(colB);
+      if (!isNaN(asNum) && asNum > 0 && colB === String(asNum)) {
+        lastRun = {
+          date:     (row[0] || '').trim(),
+          total:    asNum,
+          inactive: parseInt(row[2] || 0) || 0,
+          atRisk:   parseInt(row[3] || 0) || 0,
+          active:   parseInt(row[4] || 0) || 0
+        };
+        break;
+      }
+    }
+    if (!lastRun) return;
+    state._lastCRMSync = lastRun;
+    // Update sidebar indicator
+    var el = document.getElementById('crm-update-time');
+    if (el) {
+      // Parse date string "2026-05-26 14:30" and make it friendly
+      var parts = (lastRun.date || '').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
+      var friendly = lastRun.date;
+      if (parts) {
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        var h = parseInt(parts[4]);
+        var ampm = h >= 12 ? 'PM' : 'AM';
+        var h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+        friendly = months[parseInt(parts[2])-1] + ' ' + parseInt(parts[3]) + ', ' + h12 + ':' + parts[5] + ' ' + ampm;
+      }
+      el.textContent = friendly;
+      el.style.color = 'var(--text-2)';
+      // Check if stale (>2 hours old)
+      if (parts) {
+        var runDate = new Date(parseInt(parts[1]), parseInt(parts[2])-1, parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
+        var ageHrs = (Date.now() - runDate.getTime()) / 3600000;
+        if (ageHrs > 2) el.style.color = '#f59e0b'; // amber = stale
+        if (ageHrs > 8) el.style.color = 'var(--red)'; // red = very stale
+      }
+    }
+    console.log('[DATA] Last CRM sync:', lastRun.date, '— ' + lastRun.total + ' accounts');
+  } catch(e) {
+    console.warn('[DATA] Could not load last run time:', e.message);
+    var el = document.getElementById('crm-update-time');
+    if (el) el.textContent = 'Unknown';
+  }
 }
 
 async function loadCustomerDirectory(force) {

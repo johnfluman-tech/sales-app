@@ -659,3 +659,16 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - **Intended behavior:** The modal should appear on **every** login so reps can claim HOME / OFFICE / TRAVEL / Other. The known-IP check should only suppress the red "This is a new location" security warning banner, not the modal itself
 - **Fix:** Removed the auto-proceed branch from `checkIPAndProceed()`; now always calls `showLocationModal(isNewIP)` where `isNewIP` is `false` for known IPs (no red banner) and `true` for new IPs (red banner shown)
 - **Commit:** `ad0da08`
+
+### 2026-05-26 (session 19 — Supabase keep-alive + location modal)
+
+**Supabase keep-alive cron (Cloudflare Worker):**
+- Supabase free tier pauses projects after 7 days of inactivity — app currently has 0 Supabase requests (still reading from Sheets)
+- Added daily cron trigger (`0 12 * * *` = noon UTC / 7 AM Eastern) to `intransit-worker`
+- Added `scheduled()` handler in `index.js` — pings `https://hutmehcaijdxbqchuivh.supabase.co/rest/v1/` with anon key header; logs result to console
+- `SUPABASE_ANON_KEY` added as Worker secret via `wrangler secret put`
+- `wrangler.toml` updated with `[triggers] crons = ["0 12 * * *"]`
+- Deployed — Supabase project will never pause while Worker is live
+
+**Bug fixed — location modal (HOME / OFFICE / TRAVEL) skipped for known IPs (commit `ad0da08`):**
+- See session 18 entry above

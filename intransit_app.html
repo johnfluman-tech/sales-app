@@ -2764,11 +2764,15 @@ function initSecurity() {
   document.addEventListener('input', e => {
     if (e.target.id === 'note-text-input' || e.target.id === 'note-followup-date') {
       state.hasUnsavedNote = true;
+      const _dot = document.getElementById('note-unsaved-dot');
+      if (_dot) _dot.style.display = 'inline';
     }
   });
   document.addEventListener('change', e => {
     if (e.target.id === 'note-followup-date' || e.target.id === 'note-status-select') {
       state.hasUnsavedNote = true;
+      const _dot = document.getElementById('note-unsaved-dot');
+      if (_dot) _dot.style.display = 'inline';
     }
   });
 
@@ -4440,6 +4444,7 @@ function renderNoteInput(acc) {
           value="${toInputDate(acc.followUpDate || '')}">
         <button onclick="aiGrammarCheck('note-text-input', this)" style="background:transparent;border:1px solid var(--border-hi);color:var(--blue-b);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em;flex-shrink:0">&#10022; Check</button>
         <button class="save-note-btn" onclick="saveNote()">SAVE &amp; LOCK</button>
+        <span id="note-unsaved-dot" style="display:none;font-family:var(--mono);font-size:10px;color:var(--gold);letter-spacing:0.04em">&#9679; UNSAVED</span>
         <button onclick="openScheduleModal('${escJs(acc.name)}','','')" style="background:transparent;border:1px solid var(--blue-b);color:var(--blue-bright);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r);white-space:nowrap">📅 SCHEDULE</button>
       </div>
       ${johnApproveHtml}
@@ -4828,9 +4833,10 @@ let _sortField = 'name';
 let _sortDir   = 1;
 function sortAccountList(field) {
   if (_sortField === field) { _sortDir *= -1; } else { _sortField = field; _sortDir = 1; }
-  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  const _slabels = {'sort-name':'NAME','sort-total':'VALUE','sort-daysInactive':'INACTIVE'};
+  document.querySelectorAll('.sort-btn').forEach(b => { b.classList.remove('active'); if (_slabels[b.id]) b.textContent = _slabels[b.id]; });
   const btn = document.getElementById('sort-' + field);
-  if (btn) btn.classList.add('active');
+  if (btn) { btn.classList.add('active'); btn.textContent = (_slabels['sort-'+field]||field.toUpperCase()) + ' ' + (_sortDir === 1 ? '↑' : '↓'); }
 
   const tbody = document.querySelector('#account-list table tbody');
   if (!tbody) return;
@@ -4882,6 +4888,8 @@ function showLocationModal(isNewIP) {
   btn.style.cursor = 'not-allowed';
   document.getElementById('location-other-input').style.display = 'none';
   document.getElementById('location-custom').value = '';
+  const _warn = document.getElementById('loc-new-ip-warn');
+  if (_warn) _warn.style.display = isNewIP ? 'block' : 'none';
 }
 
 function selectLocation(type) {
@@ -9431,6 +9439,16 @@ function renderSettingsView() {
           + '</div>';
       })() : ''}
 
+      <!-- Data Refresh -->
+      <div style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:15px;font-weight:600">Data &amp; Cache</div>
+          <button id="refresh-all-data-btn" onclick="refreshAllData()" style="background:var(--blue-b);border:none;color:#fff;padding:5px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#8635; Refresh All Data</button>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Force-reload GP history, invoice history, collections, and contacts from Google Sheets. Use if data looks stale without reloading the page.</div>
+        <div style="font-size:11px;font-family:var(--mono);color:var(--text-3)">Cache status: ${state.cacheLoaded ? '<span style="color:var(--green)">&#10003; loaded</span>' : '<span style="color:var(--gold)">&#9650; loading</span>'} &nbsp;|&nbsp; GP rows: ${state.gpCache ? state.gpCache.length.toLocaleString() : '—'} &nbsp;|&nbsp; History rows: ${state.historyCache ? state.historyCache.length.toLocaleString() : '—'}</div>
+      </div>
+
       <!-- App Info -->
       <div style="background:var(--navy-light);border:1px solid var(--border);padding:20px">
         <div style="font-size:15px;font-weight:600;margin-bottom:12px">About</div>
@@ -13339,6 +13357,8 @@ function apkConfirmReset() {
   const rep = window.apkRep;
   const repAccs = state.accounts.filter(a => a.rep === rep).sort((a, b) => (b.total || 0) - (a.total || 0));
   window.apkState = {};
+  window.apkZoneDates = {};
+  try { localStorage.removeItem('it_apk_zdates_' + rep); } catch(e) {}
   repAccs.forEach((a, i) => {
     if (i < 10) window.apkState[a.name] = 'solid';
     else if (i < 20) window.apkState[a.name] = 'center';
@@ -16792,8 +16812,8 @@ async function renderTeamProfile() {
     const rDecl = ra.filter(a => (a.status||'').includes('Decline')||(a.status||'').includes('Stalled')).length;
     const rYtd = ra.reduce((s,a) => s+(a.ytd||a.total2026||0), 0);
     const h = rDecl > ra.length*0.3 ? 'var(--red)' : rInact > ra.length*0.5 ? 'var(--gold)' : 'var(--green)';
-    return '<div style="background:var(--s2);border:1px solid var(--border);border-top:3px solid ' + h + ';border-radius:var(--r2);padding:14px">' +
-      '<div style="font-family:var(--mono);font-size:12px;font-weight:700;color:' + h + ';margin-bottom:10px">' + rep + '</div>' +
+    return '<div onclick="switchViewAs(\'' + rep + '\');switchView(\'accounts\')" style="background:var(--s2);border:1px solid var(--border);border-top:3px solid ' + h + ';border-radius:var(--r2);padding:14px;cursor:pointer;transition:background 0.12s" onmouseover="this.style.background=\'var(--s3)\'" onmouseout="this.style.background=\'var(--s2)\'">' +
+      '<div style="font-family:var(--mono);font-size:12px;font-weight:700;color:' + h + ';margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">' + rep + '<span style="font-size:9px;color:var(--text-3);letter-spacing:0.06em">VIEW →</span></div>' +
       '<div style="display:flex;flex-direction:column;gap:5px;font-size:11px">' +
         '<div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Accounts</span><span>' + ra.length + '</span></div>' +
         '<div style="display:flex;justify-content:space-between"><span style="color:var(--green)">Active</span><span>' + rActive + '</span></div>' +
@@ -17518,6 +17538,30 @@ async function reloadCRMDirectory() {
     }
   }
   if (btn) { btn.disabled = false; btn.textContent = '&#8635; Reload'; }
+}
+
+async function refreshAllData() {
+  const btn = document.getElementById('refresh-all-data-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
+  state.cacheLoaded = false;
+  state._cacheLoadingPromise = null;
+  state.gpCache = [];
+  state.historyCache = {};
+  state._historyCacheNorm = {};
+  state.collectionsCache = {};
+  state.contactsCache = {};
+  state.signaturesCache = {};
+  state.transferHistoryCache = null;
+  state.contactNotesCache = null;
+  state._buyerEmailMap = {};
+  try {
+    await ensureCacheLoaded();
+    showToast('Data refreshed ✓', 'success');
+    if (state.activeView === 'settings') renderSettingsView();
+  } catch(e) {
+    showToast('Refresh error: ' + (e.message||'unknown'), 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '&#8635; Refresh All Data'; }
+  }
 }
 
 async function loadProspects() {

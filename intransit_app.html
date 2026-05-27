@@ -12907,12 +12907,17 @@ function _mgrIntelHtml(teamReps) {
 
     // ── Search ───────────────────────────────────────────────────────────────
     '<div style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:16px">Look up any account\'s complete purchase history — including years before account transfer. Shows revenue by year across all reps, top recurring parts, and AI-generated outreach strategy.</div>' +
-    '<div style="display:flex;gap:8px;margin-bottom:14px">' +
-      '<input id="mgr-intel-input" type="text" placeholder="Search any account name..." ' +
-        'onkeydown="if(event.key===\'Enter\')mgrIntelLookup(this.value)" ' +
-        'style="flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 12px;border-radius:var(--r)">' +
-      '<button onclick="mgrIntelLookup(document.getElementById(\'mgr-intel-input\').value)" ' +
-        'style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;padding:8px 18px;cursor:pointer;border-radius:var(--r)">SEARCH</button>' +
+    '<div style="position:relative;margin-bottom:14px">' +
+      '<div style="display:flex;gap:8px">' +
+        '<input id="mgr-intel-input" type="text" placeholder="Search any account name..." autocomplete="off" ' +
+          'oninput="mgrIntelAutocomplete(this.value)" ' +
+          'onkeydown="mgrIntelKeydown(event)" ' +
+          'onblur="setTimeout(function(){var a=document.getElementById(\'mgr-intel-ac\');if(a)a.style.display=\'none\'},150)" ' +
+          'style="flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 12px;border-radius:var(--r)">' +
+        '<button onclick="mgrIntelLookup(document.getElementById(\'mgr-intel-input\').value);document.getElementById(\'mgr-intel-ac\').style.display=\'none\'" ' +
+          'style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;padding:8px 18px;cursor:pointer;border-radius:var(--r)">SEARCH</button>' +
+      '</div>' +
+      '<div id="mgr-intel-ac" style="display:none;position:absolute;top:100%;left:0;right:48px;background:var(--s1);border:1px solid var(--blue-b);border-top:none;border-radius:0 0 var(--r) var(--r);z-index:200;max-height:260px;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,0.4)"></div>' +
     '</div>' +
     '<div style="margin-bottom:20px">' +
       '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:8px">TRANSFERRED ACCOUNTS — QUICK ACCESS</div>' +
@@ -12920,6 +12925,90 @@ function _mgrIntelHtml(teamReps) {
     '</div>' +
     '<div id="mgr-intel-result"></div>' +
     '</div>';
+}
+
+function mgrIntelAutocomplete(val) {
+  var ac = document.getElementById('mgr-intel-ac');
+  if (!ac) return;
+  var q = (val||'').trim();
+  if (q.length < 2) { ac.style.display = 'none'; return; }
+  var norm = function(s){ return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim(); };
+  var nq = norm(q);
+  var words = nq.split(/\s+/).filter(function(w){ return w.length > 1; });
+
+  // Score each account: exact prefix > all-words > any-word
+  var allAccs = state.accounts || [];
+  var scored = [];
+  allAccs.forEach(function(a) {
+    var na = norm(a.name||'');
+    var score = 0;
+    if (na.indexOf(nq) === 0) score = 100;
+    else if (na.indexOf(nq) > -1) score = 80;
+    else if (words.length > 1 && words.every(function(w){ return na.indexOf(w)>-1; })) score = 60;
+    else if (words.some(function(w){ return na.indexOf(w)>-1; })) score = 30;
+    if (score > 0) scored.push({a:a, score:score});
+  });
+  scored.sort(function(x,y){ return y.score-x.score || (x.a.name||'').localeCompare(y.a.name||''); });
+  var hits = scored.slice(0, 12);
+
+  if (!hits.length) { ac.style.display = 'none'; return; }
+
+  ac.innerHTML = hits.map(function(x, i) {
+    var a = x.a;
+    var repLabel = a.rep ? (' <span style="color:var(--text-3);font-size:9px">' + escHtml(getRepDisplayName(a.rep)||a.rep) + '</span>') : '';
+    var rev = a.total ? ' <span style="color:var(--blue-b);font-size:9px">$' + formatNum(a.total) + '</span>' : '';
+    return '<div data-acn="' + escHtml(a.name) + '" data-aci="' + i + '" ' +
+      'onmousedown="mgrIntelSelect(this.dataset.acn)" ' +
+      'onmouseover="mgrIntelAcHover(' + i + ')" ' +
+      'style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;display:flex;justify-content:space-between;align-items:center">' +
+      '<span>' + escHtml(a.name) + repLabel + '</span>' + rev +
+    '</div>';
+  }).join('');
+  window._mgrAcIdx = -1;
+  ac.style.display = 'block';
+}
+
+function mgrIntelAcHover(i) {
+  var ac = document.getElementById('mgr-intel-ac');
+  if (!ac) return;
+  window._mgrAcIdx = i;
+  Array.from(ac.children).forEach(function(el, j){
+    el.style.background = j === i ? 'var(--s3,#1e293b)' : '';
+  });
+}
+
+function mgrIntelKeydown(e) {
+  var ac = document.getElementById('mgr-intel-ac');
+  if (!ac || ac.style.display === 'none') {
+    if (e.key === 'Enter') { mgrIntelLookup(document.getElementById('mgr-intel-input').value); }
+    return;
+  }
+  var items = ac.children;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    window._mgrAcIdx = Math.min((window._mgrAcIdx||0)+1, items.length-1);
+    mgrIntelAcHover(window._mgrAcIdx);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    window._mgrAcIdx = Math.max((window._mgrAcIdx||0)-1, 0);
+    mgrIntelAcHover(window._mgrAcIdx);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    var idx = window._mgrAcIdx >= 0 ? window._mgrAcIdx : 0;
+    var sel = items[idx];
+    if (sel) mgrIntelSelect(sel.dataset.acn);
+    else { mgrIntelLookup(document.getElementById('mgr-intel-input').value); ac.style.display='none'; }
+  } else if (e.key === 'Escape') {
+    ac.style.display = 'none';
+  }
+}
+
+function mgrIntelSelect(name) {
+  var inp = document.getElementById('mgr-intel-input');
+  var ac  = document.getElementById('mgr-intel-ac');
+  if (inp) inp.value = name;
+  if (ac)  ac.style.display = 'none';
+  mgrIntelLookup(name);
 }
 
 function mgrIntelLookup(query) {

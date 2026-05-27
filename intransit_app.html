@@ -12970,7 +12970,8 @@ function mgrIntelLookup(query) {
       });
     }
     _extraSearchKeys.filter(function(k,i){ return k && _extraSearchKeys.indexOf(k) === i; }).some(function(ek) {
-      var ew = ek.split(/\s+/).filter(function(w){ return w.length > 2; });
+      var _gwStop = /^(inc|llc|ltd|corp|co|sa|de|cv|srl|bv|ag|gmbh|mex|the|and|for)$/i;
+      var ew = ek.split(/\s+/).filter(function(w){ return w.length > 3 && !_gwStop.test(w); });
       if (!ew.length) return false;
       var found = (state.gpCache||[]).filter(function(r){ var b=norm(r[gpBuyerCol]||''); return ew.some(function(w){ return b.indexOf(w)>-1; }); });
       if (found.length) { gpRows = found; usedAnyGP = true; return true; }
@@ -13037,6 +13038,30 @@ function mgrIntelLookup(query) {
       });
       usedAnyGP = true;
       console.log('[INTEL] Synthesized', gpRows.length, 'gpRows from historyCache for:', _hcKey);
+    }
+  }
+
+  // 6th fallback: use acc.years (year→revenue map) from state.accounts when all cache lookups fail
+  // Covers accounts like Zebra that have shipped revenue in rep tabs but no historyCache/gpCache entries
+  if (!gpRows.length && accMatches.length) {
+    var _accF = accMatches[0];
+    if (_accF.years && Object.keys(_accF.years).length) {
+      var _repIdF = _accF.rep || '';
+      Object.keys(_accF.years).forEach(function(yr) {
+        var rev = parseFloat(_accF.years[yr]) || 0;
+        if (!yr.match(/^\d{4}$/) || !rev) return;
+        var r = {};
+        r[gpBuyerCol] = _accF.name;
+        r[gpRevCol]   = rev;
+        r[gpDateCol]  = yr + '-06-01';
+        r[gpRepCol]   = _repIdF;
+        r['GP']       = 0;
+        gpRows.push(r);
+      });
+      if (gpRows.length) {
+        usedAnyGP = true;
+        console.log('[INTEL] Synthesized', gpRows.length, 'gpRows from acc.years for:', _accF.name);
+      }
     }
   }
 

@@ -1279,7 +1279,7 @@ body::before {
     <div class="topbar">
       <button id="mobile-menu-btn" onclick="toggleMobileNav()" aria-label="Menu">☰</button>
       <div class="topbar-title" id="topbar-title">My Accounts</div>
-      <input class="topbar-search" type="text" placeholder="Search accounts..." id="search-input" oninput="filterAccounts()">
+      <input class="topbar-search" type="text" placeholder="Search accounts..." id="search-input" oninput="filterAccounts()" autocomplete="off">
       <button id="btn-find-account" onclick="showCRMSearch()" style="display:none;padding:6px 12px;background:var(--s2);border:1px solid var(--border);color:var(--blue-bright);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;cursor:pointer;border-radius:var(--r);white-space:nowrap">🔍 FIND ACCOUNT</button>
       <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">ALL CRM</button>
       <button class="filter-btn" id="filter-shipped" onclick="setFilter('shipped')">SHIPPED</button>
@@ -4214,7 +4214,7 @@ function getViewAccounts() {
       a.name.toLowerCase().includes(search) ||
       (a.contactName || '').toLowerCase().includes(search) ||
       (a.contactEmail || '').toLowerCase().includes(search) ||
-      (a.rep || '').toLowerCase().includes(search) ||
+      (a.rep || '').toLowerCase().includes(search) || (getRepDisplayName(a.rep)||'').toLowerCase().includes(search) ||
       (a.city || '').toLowerCase().includes(search)
     );
   }
@@ -4336,7 +4336,7 @@ function renderAccountsView() {
         '<td class="td-name">' + escHtml(acc.name) +
           '<span style="display:inline-block;margin-left:6px;background:var(--s2);border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:8px;padding:1px 5px;border-radius:var(--r);vertical-align:middle;letter-spacing:0.06em">CRM</span>' +
         '</td>' +
-        (showRep ? '<td class="td-mono">' + escHtml(acc.rep) + '</td>' : '') +
+        (showRep ? '<td class="td-mono">' + escHtml(getRepDisplayName(acc.rep)) + '</td>' : '') +
         '<td><span style="color:var(--text-3);font-size:11px">' + escHtml(loc) + '</span></td>' +
         '<td class="td-mono" style="color:var(--text-3)">' + (acc.lastActivity ? acc.lastActivity.slice(0,10) : '—') + '</td>' +
         '<td class="td-amount"><span style="color:var(--text-muted)">No shipments</span></td>' +
@@ -4347,7 +4347,7 @@ function renderAccountsView() {
         : '<span style="color:var(--text-muted)">—</span>';
       tr.innerHTML =
         '<td class="td-name">' + escHtml(acc.name) + '</td>' +
-        (showRep ? '<td class="td-mono">' + escHtml(acc.rep) + '</td>' : '') +
+        (showRep ? '<td class="td-mono">' + escHtml(getRepDisplayName(acc.rep)) + '</td>' : '') +
         '<td>' + statusBadge(acc.status) + '</td>' +
         '<td class="td-mono">' + (acc.lastSaleDate ? acc.lastSaleDate.slice(0,10) : '—') + '</td>' +
         '<td class="td-amount">' + (acc.total > 0 ? '$' + formatNum(acc.total) : '<span style="color:var(--text-muted)">—</span>') + '</td>' +

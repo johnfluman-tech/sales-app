@@ -2645,7 +2645,7 @@ const LANG = {
     // Nav
     myAccounts: 'My Accounts', followups: 'Follow-ups Due', dashboard: 'Dashboard',
     collections: 'Collections', contacts: 'Contacts', attackPlan: 'Attack Plan',
-    settings: 'Settings', signOut: 'SIGN OUT', removalRequests: 'Removal Requests',
+    settings: 'Settings', signOut: 'SIGN OUT', removalRequests: 'Removal Requests', myRequests: 'My Requests',
     viewAsRep: 'VIEW AS REP', intelligence: 'INTELLIGENCE', workflow: 'WORKFLOW', system: 'SYSTEM',
     // Topbar filters
     all: 'ALL', active: 'ACTIVE', inactive: 'INACTIVE', declining: 'DECLINING',
@@ -2693,7 +2693,7 @@ By clicking "I ACCEPT" you agree to the following:
     // Nav
     myAccounts: 'Mis Cuentas', followups: 'Seguimientos Pendientes', dashboard: 'Panel',
     collections: 'Cobranza', contacts: 'Contactos', attackPlan: 'Plan de Ataque',
-    settings: 'Configuración', signOut: 'CERRAR SESIÓN', removalRequests: 'Solicitudes de Baja',
+    settings: 'Configuración', signOut: 'CERRAR SESIÓN', removalRequests: 'Solicitudes de Baja', myRequests: 'Mis Solicitudes',
     viewAsRep: 'VER COMO REP', intelligence: 'INTELIGENCIA', workflow: 'FLUJO DE TRABAJO', system: 'SISTEMA',
     // Topbar filters
     all: 'TODOS', active: 'ACTIVOS', inactive: 'INACTIVOS', declining: 'EN DECLINE',
@@ -2771,7 +2771,15 @@ function applyLanguage() {
   };
   Object.entries(navMap).forEach(([id, key]) => {
     const el = document.getElementById(id);
-    if (el) el.textContent = t(key);
+    if (!el) return;
+    const inner = el.querySelector('.nav-item-inner');
+    if (!inner) return;
+    for (const node of inner.childNodes) {
+      if (node.nodeType === 3 && node.textContent.trim()) {
+        node.textContent = ' ' + t(key) + ' ';
+        break;
+      }
+    }
   });
 
   // Sign out

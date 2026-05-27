@@ -13024,12 +13024,14 @@ function mgrIntelLookup(query) {
       if (hit && (!_hcKey || norm(k).length < norm(_hcKey).length)) _hcKey = k;
     });
     if (_hcKey && (state.historyCache[_hcKey].invoices||[]).length) {
+      // historyCache invoices have no per-invoice rep field — use the account's current rep
+      var _hcRep = (accMatches && accMatches.length && accMatches[0].rep) ? accMatches[0].rep : '';
       gpRows = (state.historyCache[_hcKey].invoices||[]).map(function(inv) {
         var r = {};
         r[gpBuyerCol] = _hcKey;
         r[gpRevCol]   = inv.lineTotal || 0;
         r[gpDateCol]  = inv.date || '';
-        r[gpRepCol]   = inv.rep || '';
+        r[gpRepCol]   = _hcRep;
         r['GP']       = 0;
         return r;
       });
@@ -13070,21 +13072,21 @@ function mgrIntelLookup(query) {
   var maxRev = Math.max.apply(null, years.map(function(y){ return byYear[y].total; }))||1;
 
   // Rep transition analysis — identify current rep vs prior rep from actual invoice data
-  var _repNames = {CKaren:'Karen Mancebo',BillP:'Bill Pratt',PIan:'Ian Pitman',RMauricio:'Mauricio Rangel',LMancera:'Lizeth Mancera',bcastor:'Brandon Castor',Anolan:'Ana Nolan',Abraham:'Abraham',Arlin:'Arlin'};
+  var _repNames = function(id){ return getRepDisplayName(id) || id || ''; };
   // Current rep: prefer state.accounts match; fall back to most recent invoice
   var currentRepId = accMatches && accMatches.length && accMatches[0].rep ? accMatches[0].rep : '';
   if (!currentRepId && gpRows.length) {
     var _latestGP = gpRows.reduce(function(a,b){ return ((a[gpDateCol]||'')>(b[gpDateCol]||''))?a:b; });
     currentRepId = (_latestGP[gpRepCol]||'').trim();
   }
-  var currentRepName = _repNames[currentRepId] || currentRepId || 'Current Rep';
+  var currentRepName = _repNames(currentRepId) || currentRepId || 'Current Rep';
   var currentRepRows = gpRows.filter(function(r){ return (r[gpRepCol]||'').trim() === currentRepId; });
   var priorRows      = gpRows.filter(function(r){ return (r[gpRepCol]||'').trim() !== currentRepId; });
   // Primary prior rep: highest revenue among all non-current reps
   var _priorRevMap = {};
   priorRows.forEach(function(r){ var rp=(r[gpRepCol]||'').trim(); if(rp) _priorRevMap[rp]=(_priorRevMap[rp]||0)+(parseFloat(r[gpRevCol]||0)||0); });
   var priorRepId   = Object.keys(_priorRevMap).sort(function(a,b){ return _priorRevMap[b]-_priorRevMap[a]; })[0] || '';
-  var priorRepName = _repNames[priorRepId] || priorRepId || 'Prior Rep';
+  var priorRepName = _repNames(priorRepId) || priorRepId || 'Prior Rep';
   var preTotal  = priorRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
   var postTotal = currentRepRows.reduce(function(s,r){ return s+(parseFloat(r[gpRevCol]||0)||0); },0);
   var preYears  = Array.from(new Set(priorRows.map(function(r){ return (r[gpDateCol]||'').slice(0,4); }).filter(function(y){ return y.match(/^\d{4}$/); }))).sort();
@@ -13335,7 +13337,7 @@ function _mgrIntelTransferPartsHtml(query, accMatches, currentRepId) {
   if (!cache) return '<div style="padding:12px 20px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text-3)">&#8987; Pre-transfer history loading...</div>';
   if (!Object.keys(cache).length) return '';
 
-  var _repNames = {CKaren:'Karen Mancebo',BillP:'Bill Pratt',PIan:'Ian Pitman',RMauricio:'Mauricio Rangel',LMancera:'Lizeth Mancera',bcastor:'Brandon Castor',Anolan:'Ana Nolan',Abraham:'Abraham',Arlin:'Arlin'};
+  var _repNames = function(id){ return getRepDisplayName(id) || id || ''; };
   var norm = function(s){ return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim(); };
   var normQ = norm(query);
   var qWords = normQ.split(/\s+/).filter(function(w){ return w.length > 3; });
@@ -13389,7 +13391,7 @@ function _mgrIntelTransferPartsHtml(query, accMatches, currentRepId) {
   var topPre = Object.keys(partMap).sort(function(a,b){ return partMap[b].count - partMap[a].count; }).slice(0,15);
   var totalRevThatYear = yearLines.reduce(function(s,l){ return s+(l.revenue||0); }, 0);
 
-  var crRepName = _repNames[crId] || crId || 'current rep';
+  var crRepName = _repNames(crId) || crId || 'current rep';
 
   // Store for copy function
   window._intelTransferParts = {
@@ -13431,7 +13433,7 @@ function _mgrIntelTransferPartsHtml(query, accMatches, currentRepId) {
   return '<div style="padding:16px 20px;border-bottom:1px solid var(--border);background:rgba(245,158,11,0.03)">' +
     '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">' +
       '<div>' +
-        '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.12em;color:#f59e0b;font-weight:700;margin-bottom:4px">★ OUTREACH LIST — WHAT THEY WERE BUYING BEFORE ' + escHtml((_repNames[currentRepId]||currentRepId||'Current Rep').toUpperCase()) + ' TOOK OVER</div>' +
+        '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.12em;color:#f59e0b;font-weight:700;margin-bottom:4px">★ OUTREACH LIST — WHAT THEY WERE BUYING BEFORE ' + escHtml((_repNames(currentRepId)||currentRepId||'Current Rep').toUpperCase()) + ' TOOK OVER</div>' +
         '<div style="font-size:11px;color:var(--text-2);margin-bottom:2px">' + escHtml(yearLabel) + '</div>' +
         '<div style="font-size:10px;color:var(--text-3)">' + yearLines.length + ' line items &nbsp;·&nbsp; <strong style="color:var(--text-2)">$' + formatNum(totalRevThatYear) + '</strong> total revenue that year</div>' +
       '</div>' +
@@ -13519,7 +13521,7 @@ async function mgrPortfolioReview() {
   if (!out) return;
   out.innerHTML = '<div style="color:#a78bfa;font-family:var(--mono);font-size:11px;padding:4px 0">&#9203; Computing portfolio metrics...</div>';
 
-  var _repNames = {CKaren:'Karen Mancebo',BillP:'Bill Pratt',PIan:'Ian Pitman',RMauricio:'Mauricio Rangel',LMancera:'Lizeth Mancera',bcastor:'Brandon Castor',Anolan:'Ana Nolan',Abraham:'Abraham',Arlin:'Arlin'};
+  var _repNames = function(id){ return getRepDisplayName(id) || id || ''; };
   var norm = function(s){ return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim(); };
   var gpHdrs = (state.gpCache && state.gpCache.length > 0) ? Object.keys(state.gpCache[0]) : [];
   var gpRevCol  = gpHdrs.find(function(h){ return /EXTENDED_PRICE|INVOICE_TOTAL/i.test(h); }) || 'EXTENDED_PRICE';
@@ -13588,7 +13590,7 @@ async function mgrPortfolioReview() {
     var prevRevMap = {};
     prevRows.forEach(function(r){ var rp=(r[gpRepCol]||'').trim(); if(rp) prevRevMap[rp]=(prevRevMap[rp]||0)+(parseFloat(r[gpRevCol]||0)||0); });
     var priorRepId = Object.keys(prevRevMap).sort(function(a,b){ return prevRevMap[b]-prevRevMap[a]; })[0]||'';
-    var priorRepName = _repNames[priorRepId]||priorRepId||'?';
+    var priorRepName = _repNames(priorRepId)||priorRepId||'?';
 
     return {name:target, accName:accMatches.length?accMatches[0].name:target, currentRepId:currentRepId, currentRepName:currentRepName, priorRepName:priorRepName, priorAnnAvg:prevAnnAvg, curAnnAvg:curAnnAvg, pctChange:pctChange, transferYear:transferYear, hasData:gpRows.length>0};
   });

@@ -6618,8 +6618,8 @@ function showReturnRequestModal(accName) {
       '<div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Why should this account be restored to your app view? Be specific &#x2014; admin reviews all return requests.</div>' +
       '<textarea id="return-req-reason" placeholder="e.g. New buyer contact established, situation changed..." style="width:100%;height:90px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text-1);font-size:12px;padding:10px 12px;resize:vertical;font-family:var(--sans);box-sizing:border-box"></textarea>' +
       '<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">' +
-        '<button onclick="document.getElementById('return-request-modal').remove()" style="padding:9px 20px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">CANCEL</button>' +
-        '<button data-n="' + escHtml(accName) + '" onclick="submitReturnRequest(this.dataset.n, document.getElementById('return-req-reason').value)" style="padding:9px 20px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r)">SUBMIT REQUEST</button>' +
+        '<button onclick="document.getElementById(\'return-request-modal\').remove()" style="padding:9px 20px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">CANCEL</button>' +
+        '<button data-n="' + escHtml(accName) + '" onclick="submitReturnRequest(this.dataset.n, document.getElementById(\'return-req-reason\').value)" style="padding:9px 20px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r)">SUBMIT REQUEST</button>' +
       '</div>' +
     '</div>';
   document.body.appendChild(modal);
@@ -6635,7 +6635,7 @@ async function submitReturnRequest(accName, reason) {
 }
 
 async function approveReturnRequest(accName, repId) {
-  if (!confirm('Restore "' + accName + '" to ' + repId + ''s app view?')) return;
+  if (!confirm('Restore "' + accName + '" to ' + repId + '\'s app view?')) return;
   await unhideAccount(accName);
   await resolveRequestLog('RETURN', accName, repId, 'APPROVED', '');
   showToast('Account restored to app view.', 'success');

@@ -3947,9 +3947,6 @@ async function loadAllAccounts() {
         }
       }
 
-      // Load note history for this tab
-      await loadNoteHistory(tab);
-
       console.log('[TAB] Loaded', tab + ':', state.accounts.filter(a => a.tabName === tab).length, 'accounts');
     } catch(e) {
       console.error('[TAB] Error loading tab', tab + ':', e.message);
@@ -3962,12 +3959,15 @@ async function loadAllAccounts() {
     setLoading(true, `LOADING ${tab.toUpperCase()}...`, progress);
   }
 
+  // Load note history once after all tabs (not once per tab — that causes N duplicates)
+  await loadNoteHistory();
+
   setLoading(true, 'BUILDING VIEW...', 90);
   await new Promise(r => setTimeout(r, 100));
   setLoading(false);
 }
 
-async function loadNoteHistory(tab) {
+async function loadNoteHistory() {
   try {
     const rows = await sheetsGet(`'_NOTES_BACKUP'!A1:Z5000`);
     if (rows.length < 2) return;

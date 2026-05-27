@@ -17119,9 +17119,12 @@ async function _renderNotesFeed(isTeamView) {
   const accs = state.accounts || [];
 
   // Apply access control for which accounts to pull notes from
+  const _simRep = (isAdm && state.viewAsRep && state.viewAsRep !== '__TEAM_ALL__') ? state.viewAsRep : null;
   let noteAccs;
-  if (isAdm && !viewingAsMgr && !isActuallyTeamView) {
-    noteAccs = accs; // admin sees all
+  if (isAdm && !_simRep && !viewingAsMgr && !isActuallyTeamView) {
+    noteAccs = accs; // admin sees all (own view, no simulation)
+  } else if (_simRep) {
+    noteAccs = accs.filter(function(a){ return a.rep === _simRep; }); // simulating a rep
   } else if (isActuallyTeamView && teamReps) {
     noteAccs = accs.filter(function(a){ return teamReps.includes(a.rep); });
   } else if (isMgr || viewingAsMgr) {
@@ -17163,7 +17166,9 @@ async function _renderNotesFeed(isTeamView) {
       cnRows.slice(1).filter(function(r){ return r.some(function(c){ return c; }); }).forEach(function(r) {
         const repId = g(r,'rep','rep_id');
         // Access control
-        if (!isAdm || viewingAsMgr || isActuallyTeamView) {
+        if (_simRep) {
+          if (repId !== _simRep) return; // admin simulating a rep: only that rep's notes
+        } else if (!isAdm || viewingAsMgr || isActuallyTeamView) {
           if (isActuallyTeamView && teamReps) {
             if (!teamReps.includes(repId)) return;
           } else if (isMgr || viewingAsMgr) {

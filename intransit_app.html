@@ -6838,10 +6838,13 @@ function renderHiddenAccountsView() {
     '</div>';
     return;
   }
-  if (mgrCfg && mgrCfg.teamReps) {
-    myHidden = (state.hiddenAccounts||[]).filter(function(a){ return mgrCfg.teamReps.indexOf(a.rep) !== -1; });
+  // When admin is viewing as a specific rep/manager, use that identity for scoping
+  var _effRep = (state.isAdmin && state.viewAsRep && state.viewAsRep !== '__TEAM_ALL__') ? state.viewAsRep : state.repId;
+  var _effMgrCfg = (typeof MANAGER_CONFIG !== 'undefined' && MANAGER_CONFIG[_effRep]) || mgrCfg;
+  if (_effMgrCfg && _effMgrCfg.teamReps) {
+    myHidden = (state.hiddenAccounts||[]).filter(function(a){ return _effMgrCfg.teamReps.indexOf(a.rep) !== -1; });
   } else {
-    myHidden = (state.hiddenAccounts||[]).filter(function(a){ return a.rep === state.repId; });
+    myHidden = (state.hiddenAccounts||[]).filter(function(a){ return a.rep === _effRep; });
   }
   const badge = document.getElementById('badge-hidden-accounts');
   if (badge) badge.textContent = myHidden.length || '';

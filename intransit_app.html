@@ -9798,6 +9798,20 @@ function debugRestoreAdmin() {
   });
   var banner = document.getElementById('debug-sim-banner');
   if (banner) banner.remove();
+  // Rebuild admin dropdown with full rep list (simulation may have replaced it with manager-only options)
+  var _sel = document.getElementById('view-as-select');
+  if (_sel && state.isAdmin) {
+    var _reps = CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan'];
+    var _html = '<option value="">── Admin View ──</option>';
+    _html += '<option disabled>── Individual Reps ──</option>';
+    _reps.forEach(function(r){ _html += '<option value="' + r + '">' + r + '</option>'; });
+    _html += '<option disabled>── Manager Views ──</option>';
+    Object.entries(MANAGER_CONFIG).forEach(function(e){
+      _html += '<option value="__MGR_' + e[0] + '">📊 ' + e[1].teamName + ' (All)</option>';
+    });
+    _sel.innerHTML = _html;
+    _sel.value = state.viewAsRep || '';
+  }
   renderAccountsView();
   showToast('Admin session restored ✓', 'success');
   console.log('[SIM] Admin session restored');

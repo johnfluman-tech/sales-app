@@ -1266,6 +1266,7 @@ body::before {
         <div id="crm-update-time" style="font-size:12px;font-weight:600;font-family:var(--mono);color:var(--text-2)">Loading...</div>
         <div id="crm-stale-warn" style="display:none;font-size:9px;color:var(--red);font-family:var(--mono);margin-top:2px">⚠ Scheduler may be down</div>
       </div>
+      <button id="compose-email-btn" onclick="showComposeEmail()" style="display:none;width:100%;margin-bottom:6px;padding:8px;background:transparent;border:1px solid rgba(59,130,246,0.4);color:var(--blue-b);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.06em">&#9993; COMPOSE EMAIL</button>
       <button class="signout-btn" onclick="handleSignout()">Sign Out</button>
       <button id="force-logout-btn" onclick="confirmForceLogoutAll()" style="display:none;margin-top:6px;width:100%;padding:8px;background:transparent;border:1px solid rgba(239,68,68,0.5);color:var(--red);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.06em">⏏ LOG OUT ALL</button>
     </div>
@@ -1403,6 +1404,59 @@ body::before {
       <button onclick="closeAddProspectModal()" style="background:none;border:none;color:var(--text-3);font-size:18px;cursor:pointer">×</button>
     </div>
     <div id="add-prospect-form-body"></div>
+  </div>
+</div>
+
+<!-- COMPOSE EMAIL MODAL -->
+<div id="compose-email-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeComposeEmail()">
+  <div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid var(--blue-b);border-radius:var(--r2);width:600px;max-width:96vw;max-height:90vh;overflow-y:auto;padding:24px 28px;box-shadow:0 24px 64px rgba(0,0,0,0.7)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:0.08em">&#9993; COMPOSE EMAIL</div>
+      <button onclick="closeComposeEmail()" style="background:transparent;border:none;color:var(--text-3);font-size:20px;cursor:pointer;line-height:1">&times;</button>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.12em;margin-bottom:4px">TO</div>
+      <input id="compose-to" type="email" list="compose-to-suggestions" class="field-input" placeholder="Enter any email address..." style="font-size:13px">
+      <datalist id="compose-to-suggestions">
+        <option value="john.fluman@intransittech.com">John Fluman (Admin)</option>
+        <option value="kmancebo@intransittech.com">Karen Mancebo</option>
+        <option value="bill.pratt@intransittech.com">Bill Pratt</option>
+        <option value="ian.pitman@intransittech.com">Ian Pitman</option>
+        <option value="mauricio.rangel@intransittech.com">Mauricio Rangel</option>
+        <option value="lmancera@intransittech.com">Lizeth Mancera</option>
+        <option value="brandonar@intransittech.com">Brandon Castor</option>
+        <option value="anolan@intransittech.com">Ana Nolan</option>
+      </datalist>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.12em;margin-bottom:4px">CC <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional — comma-separated)</span></div>
+      <input id="compose-cc" type="text" class="field-input" placeholder="e.g. john.fluman@intransittech.com, karen@..." style="font-size:12px">
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.12em;margin-bottom:4px">SUBJECT</div>
+      <input id="compose-subject" type="text" class="field-input" placeholder="Subject line..." style="font-size:13px">
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.12em">MESSAGE</div>
+        <button onclick="composeToggleAI()" style="padding:4px 10px;background:transparent;border:1px solid var(--border-hi);color:var(--blue-b);font-family:var(--mono);font-size:9px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em">&#10022; DRAFT WITH AI</button>
+      </div>
+      <div id="compose-ai-section" style="display:none;margin-bottom:8px;padding:10px 12px;background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.25);border-radius:var(--r)">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--blue-b);margin-bottom:6px">TELL AI WHAT TO WRITE</div>
+        <div style="display:flex;gap:8px">
+          <input id="compose-ai-prompt" type="text" class="field-input" placeholder="e.g. Ask John about pricing approval for the Siemens quote..." style="font-size:12px">
+          <button id="compose-ai-btn" onclick="composeAIGenerate()" style="padding:8px 14px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r);white-space:nowrap">GENERATE</button>
+        </div>
+      </div>
+      <textarea id="compose-body" rows="10" class="field-input field-textarea" spellcheck="true" lang="en-US"
+        placeholder="Type your message, or use Draft with AI above..."
+        style="font-size:12px;line-height:1.7;resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="closeComposeEmail()" style="padding:9px 18px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">CANCEL</button>
+      <button onclick="copyComposeEmail()" class="btn btn-secondary">COPY</button>
+      <button onclick="sendComposeEmail()" style="flex:1;padding:9px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer;border-radius:var(--r);letter-spacing:0.06em">&#9993; OPEN IN EMAIL CLIENT</button>
+    </div>
   </div>
 </div>
 
@@ -3187,9 +3241,11 @@ function completeLogin() {
     if (_nfInner && !isAdmin() && !isManager()) _nfInner.innerHTML = '<span class="nav-icon">&#128203;</span> My Notes';
   }
   academyUpdateBadge();
-  // Show My Feedback nav for all users
+  // Show My Feedback nav + Compose button for all users
   const _fbNav = document.getElementById('nav-my-feedback');
   if (_fbNav) _fbNav.style.display = 'block';
+  const _composeBtn = document.getElementById('compose-email-btn');
+  if (_composeBtn) _composeBtn.style.display = 'block';
   // Proactive refresh disabled — requestAccessToken() opens a popup window on some
   // browsers/PCs even when silent, causing an infinite background-popup loop.
   // Sessions expire after 60 min; the 401 handler will sign the user out cleanly.
@@ -10067,6 +10123,9 @@ function selectCollectionsAccount(name) {
             >${escHtml(ct.name)}${ct.title?' ('+escHtml(ct.title)+')':''} — ${escHtml(ct.email)}</option>`).join('')}
           </select>
           ${multipleAP ? `<div style="font-size:10px;color:var(--orange);margin-top:4px;font-family:var(--mono)">⚠ Multiple AP contacts — select primary manually</div>` : ''}
+          <input id="coll-email-to-custom" type="email" class="field-input"
+            placeholder="Or type any email address (overrides above)..."
+            style="margin-top:5px;font-size:12px">
         </div>
 
         <!-- CC field with auto-highlight and deselect button -->
@@ -10087,6 +10146,9 @@ function selectCollectionsAccount(name) {
             }).join('')}
           </select>
           <div style="font-size:10px;color:var(--text-3);margin-top:3px">AP/Collections contacts pre-selected ✓ · Hold Ctrl/Cmd to adjust</div>
+          <input id="coll-email-cc-extra" type="text" class="field-input"
+            placeholder="Add any extra CC (e.g. john.fluman@intransittech.com)..."
+            style="margin-top:5px;font-size:12px">
         </div>
       </div>` : `
       <div style="margin-bottom:14px;padding:10px;background:var(--orange-bg);border:1px solid rgba(249,115,22,0.3);border-radius:var(--r);font-size:11px;color:var(--orange)">
@@ -10564,13 +10626,19 @@ function copyCollectionsEmail() {
 }
 
 function openCollectionsEmailClientFull() {
-  const to      = document.getElementById('coll-email-to')?.value || '';
+  const toSel   = document.getElementById('coll-email-to');
+  const toCust  = document.getElementById('coll-email-to-custom');
   const ccSel   = document.getElementById('coll-email-cc');
-  const ccList  = ccSel ? [...ccSel.selectedOptions].map(o => o.value).filter(v => v !== to) : [];
-  const subject = encodeURIComponent(document.getElementById('coll-email-subject')?.value || '');
-  const body    = encodeURIComponent(document.getElementById('coll-email-body')?.value    || '');
+  const ccExtra = document.getElementById('coll-email-cc-extra');
+  const to = (toCust && toCust.value.trim()) ? toCust.value.trim() : (toSel ? toSel.value : '');
+  const ccList = ccSel ? [...ccSel.selectedOptions].map(function(o){ return o.value; }).filter(function(v){ return v !== to; }) : [];
+  if (ccExtra && ccExtra.value.trim()) {
+    ccExtra.value.split(',').map(function(e){ return e.trim(); }).filter(Boolean).forEach(function(e){ if (!ccList.includes(e)) ccList.push(e); });
+  }
+  const subject = encodeURIComponent(document.getElementById('coll-email-subject') ? document.getElementById('coll-email-subject').value : '');
+  const body    = encodeURIComponent(document.getElementById('coll-email-body') ? document.getElementById('coll-email-body').value : '');
   const cc      = ccList.length ? '&cc=' + encodeURIComponent(ccList.join(',')) : '';
-  window.open(`mailto:${encodeURIComponent(to)}?subject=${subject}${cc}&body=${body}`);
+  window.open('mailto:'+encodeURIComponent(to)+'?subject='+subject+cc+'&body='+body);
 }
 
 function openCollectionsEmailClient(email) {
@@ -10954,6 +11022,9 @@ function selectContactCard(el, accountName, contactName) {
               ${ct.name === contactName ? 'selected' : ''}
             >${escHtml(ct.name)}${ct.title?' ('+escHtml(ct.title)+')':''} — ${escHtml(ct.email||'no email')}</option>`).join('')}
           </select>
+          <input id="ct-email-to-custom-${safeId}" type="email" class="field-input"
+            placeholder="Or type any email address (overrides above)..."
+            style="margin-top:5px;font-size:12px">
         </div>
 
         <!-- CC field — all other account contacts -->
@@ -10971,6 +11042,12 @@ function selectContactCard(el, accountName, contactName) {
           </select>
           <div style="font-size:10px;color:var(--text-3);margin-top:3px">Hold Ctrl/Cmd to select multiple</div>
         </div>` : ''}
+        <div style="margin-bottom:10px">
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--text-3);margin-bottom:4px">ADD ANY EMAIL TO CC</div>
+          <input id="ct-email-cc-extra-${safeId}" type="text" class="field-input"
+            placeholder="e.g. john.fluman@intransittech.com (comma-separated)"
+            style="font-size:12px">
+        </div>
 
         <!-- AI custom prompt -->
         <div style="margin-bottom:10px">
@@ -11317,6 +11394,85 @@ Return ONLY a JSON object with keys "subject" and "body". No preamble, no markdo
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+//  COMPOSE EMAIL (global — any recipient)
+// ══════════════════════════════════════════════════════════════
+
+function showComposeEmail(toAddr, subject, body) {
+  var modal = document.getElementById('compose-email-modal');
+  if (!modal) return;
+  document.getElementById('compose-to').value = toAddr || '';
+  document.getElementById('compose-cc').value = '';
+  document.getElementById('compose-subject').value = subject || '';
+  document.getElementById('compose-body').value = body || '';
+  document.getElementById('compose-ai-section').style.display = 'none';
+  document.getElementById('compose-ai-prompt').value = '';
+  modal.style.display = 'flex';
+  setTimeout(function(){ document.getElementById('compose-to').focus(); }, 100);
+}
+
+function closeComposeEmail() {
+  var modal = document.getElementById('compose-email-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function composeToggleAI() {
+  var sec = document.getElementById('compose-ai-section');
+  if (!sec) return;
+  sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
+  if (sec.style.display === 'block') setTimeout(function(){ document.getElementById('compose-ai-prompt').focus(); }, 50);
+}
+
+async function composeAIGenerate() {
+  var prompt = (document.getElementById('compose-ai-prompt') || {}).value;
+  if (prompt) prompt = prompt.trim();
+  if (!prompt) { showToast('Describe what you want the email to say', 'error'); return; }
+  var btn = document.getElementById('compose-ai-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'DRAFTING...'; }
+  try {
+    var to = (document.getElementById('compose-to') || {}).value || '';
+    var repName = (state.user && state.user.name) ? state.user.name : (state.repId || 'Rep');
+    var sysPrompt = 'You are drafting a professional email for ' + repName + ' at Intransit Technologies, an aerospace and industrial parts distributor. Write concisely — 2-3 paragraphs max. Sound like a real person, not a template. Return ONLY a JSON object with keys "subject" and "body". No markdown fences.';
+    var userPrompt = 'Write an email: ' + prompt + (to ? ' (recipient: ' + to + ')' : '');
+    var res = await callAI({ model: 'claude-haiku-4-5-20251001', max_tokens: 600, messages: [{ role: 'user', content: sysPrompt + '\n\n' + userPrompt }] });
+    var text = (res.content && res.content[0]) ? res.content[0].text : '';
+    var parsed;
+    try { parsed = JSON.parse(text.replace(/```json|```/g,'').trim()); }
+    catch(e) {
+      var sm = text.match(/"subject"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      var bm = text.match(/"body"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/);
+      parsed = { subject: sm ? sm[1] : '', body: bm ? bm[1] : text };
+    }
+    if (parsed.subject) document.getElementById('compose-subject').value = parsed.subject;
+    if (parsed.body) {
+      var sig = getSignatureForCurrentRep();
+      var bodyText = parsed.body.replace(/\\n/g,'\n').replace(/\\"/g,'"');
+      document.getElementById('compose-body').value = bodyText + (sig ? '\n\n' + sig : '');
+    }
+    document.getElementById('compose-ai-section').style.display = 'none';
+    showToast('Email drafted ✓', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'GENERATE'; } }
+}
+
+function sendComposeEmail() {
+  var to = document.getElementById('compose-to') ? document.getElementById('compose-to').value.trim() : '';
+  if (!to || to.indexOf('@') < 0) { showToast('Please enter a valid email address in the TO field', 'error'); return; }
+  var cc = document.getElementById('compose-cc') ? document.getElementById('compose-cc').value.trim() : '';
+  var subject = encodeURIComponent(document.getElementById('compose-subject') ? document.getElementById('compose-subject').value : '');
+  var body = encodeURIComponent(document.getElementById('compose-body') ? document.getElementById('compose-body').value : '');
+  var ccParam = cc ? '&cc=' + encodeURIComponent(cc) : '';
+  window.open('mailto:' + encodeURIComponent(to) + '?subject=' + subject + ccParam + '&body=' + body);
+}
+
+function copyComposeEmail() {
+  var subject = document.getElementById('compose-subject') ? document.getElementById('compose-subject').value : '';
+  var body = document.getElementById('compose-body') ? document.getElementById('compose-body').value : '';
+  navigator.clipboard.writeText('Subject: ' + subject + '\n\n' + body)
+    .then(function(){ showToast('Copied ✓', 'success'); })
+    .catch(function(){ showToast('Could not copy', 'error'); });
+}
+
 function copyContactEmail(safeId) {
   const subject = document.getElementById('ct-email-subject-'+safeId)?.value || '';
   const body    = document.getElementById('ct-email-body-'+safeId)?.value    || '';
@@ -11326,14 +11482,19 @@ function copyContactEmail(safeId) {
 }
 
 function openContactEmailClient(accountName, safeId) {
-  const toSel  = document.getElementById('ct-email-to-'+safeId);
-  const ccSel  = document.getElementById('ct-email-cc-'+safeId);
-  const to     = toSel?.value || '';
-  const ccList = ccSel ? [...ccSel.selectedOptions].map(o=>o.value).filter(v=>v!==to) : [];
-  const subject = encodeURIComponent(document.getElementById('ct-email-subject-'+safeId)?.value||'');
-  const body    = encodeURIComponent(document.getElementById('ct-email-body-'+safeId)?.value||'');
+  const toSel   = document.getElementById('ct-email-to-'+safeId);
+  const toCust  = document.getElementById('ct-email-to-custom-'+safeId);
+  const ccSel   = document.getElementById('ct-email-cc-'+safeId);
+  const ccExtra = document.getElementById('ct-email-cc-extra-'+safeId);
+  const to = (toCust && toCust.value.trim()) ? toCust.value.trim() : (toSel ? toSel.value : '');
+  const ccList = ccSel ? [...ccSel.selectedOptions].map(function(o){ return o.value; }).filter(function(v){ return v !== to; }) : [];
+  if (ccExtra && ccExtra.value.trim()) {
+    ccExtra.value.split(',').map(function(e){ return e.trim(); }).filter(Boolean).forEach(function(e){ if (!ccList.includes(e)) ccList.push(e); });
+  }
+  const subject = encodeURIComponent(document.getElementById('ct-email-subject-'+safeId) ? document.getElementById('ct-email-subject-'+safeId).value : '');
+  const body    = encodeURIComponent(document.getElementById('ct-email-body-'+safeId) ? document.getElementById('ct-email-body-'+safeId).value : '');
   const cc      = ccList.length ? '&cc='+encodeURIComponent(ccList.join(',')) : '';
-  window.open(`mailto:${encodeURIComponent(to)}?subject=${subject}${cc}&body=${body}`);
+  window.open('mailto:'+encodeURIComponent(to)+'?subject='+subject+cc+'&body='+body);
 }
 
 // ══════════════════════════════════════════════════════════════

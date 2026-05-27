@@ -16967,17 +16967,31 @@ async function loadSuggestionsBoardBadge() {
     if (!rows || rows.length < 2) return;
     const hdrs = rows[0].map(h => (h||'').toLowerCase());
     const statusIdx = hdrs.indexOf('status');
-    const newCount = rows.slice(1).filter(r => {
-      const s = statusIdx >= 0 ? (r[statusIdx] || '').toLowerCase() : '';
-      return !s || s === 'new';
-    }).length;
+    const totalRows = rows.slice(1).filter(r => r.some(c => c)).length;
+    // Badge shows submissions added since last time admin opened the board
+    const seen = parseInt(localStorage.getItem('it_sugg_seen') || '0', 10);
+    const unseen = Math.max(0, totalRows - seen);
     const badge = document.getElementById('badge-suggestions-board');
-    if (badge) badge.textContent = newCount > 0 ? newCount : '';
+    if (badge) badge.textContent = unseen > 0 ? unseen : '';
   } catch(e) { /* ignore */ }
+}
+
+function clearSuggestionsBadge() {
+  // Called when admin opens Suggestions Board — marks current total as seen
+  try {
+    sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SUGGESTIONS'!A1:A500").then(function(rows) {
+      if (!rows) return;
+      var total = Math.max(0, rows.filter(function(r){ return r.some(function(c){ return c; }); }).length - 1);
+      localStorage.setItem('it_sugg_seen', String(total));
+      var badge = document.getElementById('badge-suggestions-board');
+      if (badge) badge.textContent = '';
+    }).catch(function(){});
+  } catch(e) {}
 }
 
 async function renderSuggestionsBoard() {
   if (!isAdmin()) { switchView('accounts'); return; }
+  clearSuggestionsBadge();
   const el = document.getElementById('main-content');
   el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font-family:var(--mono);color:var(--text-3)">Loading...</div></div>';
   let rows = [];

@@ -1169,6 +1169,13 @@ body::before {
           <span class="nav-badge" id="badge-request-log" style="background:var(--blue-b)"></span>
         </div>
       </div>
+      <div class="nav-item" id="nav-my-feedback" data-view="myFeedback" onclick="switchView('myFeedback')"
+           style="display:none">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#128161;</span> My Feedback
+          <span class="nav-badge" id="badge-my-feedback" style="background:var(--gold);color:#000"></span>
+        </div>
+      </div>
       <div class="nav-item" id="nav-hidden-accounts" data-view="hiddenAccounts" onclick="switchView('hiddenAccounts')">
         <div class="nav-item-inner">
           <span class="nav-icon">&#128274;</span> Hidden Accounts
@@ -1236,7 +1243,7 @@ body::before {
       <div id="view-as-section" style="display:none">
         <div class="nav-section-label">View As Rep</div>
         <div style="padding:0 12px 10px">
-          <select id="view-as-select" onchange="switchViewAs(this.value)"
+          <select id="view-as-select" autocomplete="off" onchange="switchViewAs(this.value)"
             style="width:100%;background:var(--s2);border:1px solid var(--border);
                    color:var(--text);font-family:var(--mono);font-size:11px;
                    padding:7px 10px;outline:none;cursor:pointer;border-radius:var(--r)">
@@ -1764,31 +1771,17 @@ async function loadSupplementalData() {
 
     state.cacheLoaded = true;
 
-    // Load contact notes (non-blocking, after cacheLoaded)
+    // Load contact notes — stored as 2D array [[header],[rows...]] for Notes Feed + save consistency
     try {
       const cnRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_NOTES'!A1:F50000");
       if (cnRows.length > 1) {
-        state.contactNotesCache = {};
-        for (let r = 1; r < cnRows.length; r++) {
-          const row = cnRows[r];
-          const acct = (row[0] || '').trim();
-          if (!acct) continue;
-          if (!state.contactNotesCache[acct]) state.contactNotesCache[acct] = [];
-          state.contactNotesCache[acct].push({
-            contact: (row[1] || '').trim(),
-            type:    (row[2] || 'Note').trim(),
-            note:    (row[3] || '').trim(),
-            date:    (row[4] || '').trim(),
-            rep:     (row[5] || '').trim(),
-          });
-        }
+        state.contactNotesCache = cnRows; // raw 2D array: row[0]=header, rest=data
       } else {
-        state.contactNotesCache = {};
-        try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT','CONTACT','TYPE','NOTE','DATE','REP']], CONFIG.HISTORY_SPREADSHEET_ID); } catch(e2) {}
+        state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
+        try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']], CONFIG.HISTORY_SPREADSHEET_ID); } catch(e2) {}
       }
     } catch(e) {
-      state.contactNotesCache = {};
-      try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT','CONTACT','TYPE','NOTE','DATE','REP']], CONFIG.HISTORY_SPREADSHEET_ID); } catch(e2) {}
+      state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
     }
 
     // Load schedule
@@ -1911,7 +1904,7 @@ function renderContactsTab(acc) {
   const ap = contacts.filter(c => c.type === 'AP/Collections');
 
   // Load contact notes for this account from cache
-  const acctNotes = (state.contactNotesCache || {})[acc.name.trim()] || [];
+  const acctNotes = getContactNotesForAccount(acc.name);
 
   const renderContactNotes = (contactName) => {
     const notes = acctNotes.filter(n => n.contact === contactName);
@@ -2062,7 +2055,7 @@ async function generateNextBestAction(accountName, resultDivId) {
   // Gather account data for the prompt
   const h = state.historyCache[accountName.trim()] || { invoices: [], reqs: [], quotes: [] };
   const contacts = _contactsFor(accountName);
-  const notes = (state.contactNotesCache || {})[accountName.trim()] || [];
+  const notes = getContactNotesForAccount(accountName);
 
   // Top parts purchased
   const partCounts = {};
@@ -2934,6 +2927,22 @@ let state = {
 // Prevents cascade of handleSignout() calls from concurrent background API failures
 let _signedOut = false;
 
+// Returns contact notes for a single account as [{contact,type,note,date,rep}]
+// Works with array format [[header],[row],...] — the canonical contactNotesCache format
+function getContactNotesForAccount(accName) {
+  const cache = state.contactNotesCache;
+  if (!cache) return [];
+  const _n = (accName || '').trim().toLowerCase();
+  if (Array.isArray(cache)) {
+    return cache.slice(1).filter(function(r) {
+      return (r[0] || '').trim().toLowerCase() === _n;
+    }).map(function(r) {
+      return { contact: r[1]||'', type: r[2]||'Note', note: r[3]||'', date: r[4]||'', rep: r[5]||'' };
+    });
+  }
+  return (cache[accName] || []); // legacy dict fallback
+}
+
 // ══════════════════════════════════════════════════════════
 //  GOOGLE AUTH
 // ══════════════════════════════════════════════════════════
@@ -3178,6 +3187,9 @@ function completeLogin() {
     if (_nfInner && !isAdmin() && !isManager()) _nfInner.innerHTML = '<span class="nav-icon">&#128203;</span> My Notes';
   }
   academyUpdateBadge();
+  // Show My Feedback nav for all users
+  const _fbNav = document.getElementById('nav-my-feedback');
+  if (_fbNav) _fbNav.style.display = 'block';
   // Proactive refresh disabled — requestAccessToken() opens a popup window on some
   // browsers/PCs even when silent, causing an infinite background-popup loop.
   // Sessions expire after 60 min; the 401 handler will sign the user out cleanly.
@@ -3851,6 +3863,7 @@ function switchView(view) {
     attack:      () => renderAttackPlan(),
     academy:     () => renderAcademyView(),
     suggestionsBoard: () => renderSuggestionsBoard(),
+    myFeedback:       () => renderMyFeedbackView(),
     notesFeed:   () => renderNotesFeed(),
     teamNotes:   () => renderTeamNotes(),
     teamProfile: () => renderTeamProfile(),
@@ -7128,7 +7141,7 @@ function renderFollowUpCommandCenter() {
     invs.forEach(inv => { if (inv.part) partTotals[inv.part] = (partTotals[inv.part]||0) + (inv.lineTotal||0); });
     const topParts = Object.entries(partTotals).sort((a,b)=>b[1]-a[1]).slice(0,3);
 
-    const notes = (state.contactNotesCache||{})[acc.name] || [];
+    const notes = getContactNotesForAccount(acc.name);
     const lastNote = notes.length ? notes[notes.length-1] : null;
     const daysSinceContact = lastNote ? Math.floor((today - new Date(lastNote.date)) / 86400000) : null;
 
@@ -8430,7 +8443,7 @@ function iqShowContactNotes(accName, contactName) {
 
   const notes = [];
   // Contact notes from cache
-  const cnotes = (state.contactNotesCache || {})[accName] || [];
+  const cnotes = getContactNotesForAccount(accName);
   cnotes.filter(function(n){ return !contactName || n.contact === contactName; })
     .forEach(function(n){ notes.push({date:n.date, rep:n.rep, type:n.type||'Note', text:n.note, src:'contact'}); });
   // Rep note
@@ -9034,6 +9047,9 @@ function switchViewAs(rep) {
     // Suggestions board: only show in own admin view — hidden in all view-as modes
     const _suggNav = document.getElementById('nav-suggestions-board');
     if (_suggNav) _suggNav.style.display = !state.viewAsRep ? 'block' : 'none';
+    // My Feedback: hidden when simulating another user
+    const _fbNavAs = document.getElementById('nav-my-feedback');
+    if (_fbNavAs) _fbNavAs.style.display = !state.viewAsRep ? 'block' : 'none';
   } else if (isManager()) {
     const _mc = getManagerConfig(); const _tn = _mc ? _mc.teamName.toUpperCase() : 'TEAM';
     label.textContent = (rep === '__TEAM_ALL__' || rep === 'MX_TEAM') ? 'MANAGER — ' + _tn : rep ? 'VIEWING: ' + rep : 'MANAGER — MY ACCOUNTS';
@@ -10728,8 +10744,8 @@ function selectContactCard(el, accountName, contactName) {
 
   const contacts = _contactsFor(accountName);
   const ct = contacts.find(c => c.name === contactName) || contacts[0];
-  const acctNotes = (state.contactNotesCache || {})[accountName.trim()] || [];
-  const ctNotes = acctNotes.filter(n => n.contact === contactName);
+  const acctNotes = getContactNotesForAccount(accountName);
+  const ctNotes = acctNotes.filter(function(n){ return n.contact === contactName; });
   const h = state.historyCache[accountName.trim()] || { invoices: [], reqs: [], quotes: [] };
   const allContacts = contacts;
 
@@ -11218,7 +11234,7 @@ async function generateContactEmail(accountName, contactName, safeId, emailType)
   const contacts = _contactsFor(accountName);
   const ct       = contacts.find(c => c.name === contactName) || contacts[0];
   const h        = state.historyCache[accountName] || { invoices:[], reqs:[], quotes:[] };
-  const ctNotes  = (state.contactNotesCache||{})[accountName]?.filter(n => n.contact === contactName) || [];
+  const ctNotes  = getContactNotesForAccount(accountName).filter(function(n){ return n.contact === contactName; });
 
   const firstName = (contactName||'').split(' ')[0];
   const revenueContext = acc?.years
@@ -16550,6 +16566,93 @@ async function suggSaveReply(rowIdx) {
     showToast('Reply saved', 'success');
     renderSuggestionsBoard();
   } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MY FEEDBACK VIEW (All users — see own suggestions + replies)
+// ══════════════════════════════════════════════════════════════
+
+async function renderMyFeedbackView() {
+  const el = document.getElementById('main-content');
+  el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font-family:var(--mono);color:var(--text-3)">Loading...</div></div>';
+  let rows = [];
+  try { rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SUGGESTIONS'!A1:Z500") || []; }
+  catch(e) { el.innerHTML = '<div style="padding:40px;color:var(--red)">Error loading feedback: ' + escHtml(e.message) + '</div>'; return; }
+
+  // Normalize headers
+  let _rowOffset = 2;
+  if (rows.length > 0) {
+    const _r0 = rows[0].map(function(c){ return (c||'').toLowerCase(); });
+    if (!['date','rep','description','status','category'].some(function(k){ return _r0.includes(k); })) {
+      rows.unshift(['date','rep','page','category','description','status','admin_response']);
+      _rowOffset = 1;
+    }
+  }
+
+  // Identify current user — match by name (stored at submit time) or repId
+  const myName = (state.user && state.user.name) ? state.user.name.toLowerCase() : '';
+  const myRep = (state.repId || '').toLowerCase();
+
+  var mySuggs = [];
+  if (rows.length >= 2) {
+    const hdrs = rows[0].map(function(h){ return (h||'').toLowerCase(); });
+    const get = function(row) {
+      return {
+        rep:          (row[hdrs.indexOf('rep')] || row[hdrs.indexOf('rep_id')] || ''),
+        category:     (row[hdrs.indexOf('category')] || row[hdrs.indexOf('type')] || ''),
+        page:         (row[hdrs.indexOf('page')] || row[hdrs.indexOf('view')] || ''),
+        description:  (row[hdrs.indexOf('description')] || row[hdrs.indexOf('text')] || ''),
+        status:       (row[hdrs.indexOf('status')] || 'New'),
+        date:         (row[hdrs.indexOf('date')] || row[hdrs.indexOf('timestamp')] || ''),
+        adminResponse:(row[hdrs.indexOf('admin_response')] || row[hdrs.indexOf('response')] || row[hdrs.indexOf('reply')] || ''),
+      };
+    };
+    rows.slice(1).filter(function(r){ return r.some(function(c){ return c; }); }).forEach(function(r) {
+      var s = get(r);
+      var rLow = (s.rep || '').toLowerCase();
+      if (rLow === myName || rLow === myRep) mySuggs.push(s);
+    });
+    mySuggs.sort(function(a,b){ return b.date > a.date ? 1 : -1; });
+  }
+
+  // Update badge
+  var unreadReplies = mySuggs.filter(function(s){ return s.adminResponse && s.adminResponse.trim(); }).length;
+  var badge = document.getElementById('badge-my-feedback');
+  if (badge) badge.textContent = unreadReplies > 0 ? unreadReplies : '';
+
+  var catColors = {'bug':'#ef4444','feature idea':'#3b82f6','improvement':'#22c55e'};
+  var stColors = {'new':'#3b82f6','in progress':'#f59e0b','done':'#22c55e',"won't do":'#6b7280'};
+
+  var cardsHtml = mySuggs.length === 0
+    ? '<div style="padding:60px;text-align:center;color:var(--text-3)"><div style="font-size:36px;margin-bottom:12px">&#128161;</div><div style="font-size:13px">You haven\'t submitted any feedback yet.</div><div style="font-size:11px;margin-top:8px;color:var(--text-3)">Use the 💡 button or click Submit Feedback above to share ideas.</div></div>'
+    : mySuggs.map(function(s) {
+        var cc = catColors[(s.category||'').toLowerCase()] || 'var(--text-3)';
+        var sc = stColors[(s.status||'').toLowerCase()] || '#3b82f6';
+        var dStr = s.date ? new Date(s.date).toLocaleDateString() : '';
+        var hasReply = s.adminResponse && s.adminResponse.trim();
+        return '<div style="background:var(--s2);border:1px solid ' + (hasReply ? 'rgba(59,130,246,0.4)' : 'var(--border)') + ';border-radius:var(--r2);padding:16px 18px;margin-bottom:10px">' +
+          '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">' +
+            (s.category ? '<span style="padding:2px 7px;background:' + cc + ';color:#fff;font-family:var(--mono);font-size:9px;border-radius:3px">' + escHtml(s.category) + '</span>' : '') +
+            '<span style="padding:2px 7px;border:1px solid ' + sc + ';color:' + sc + ';font-family:var(--mono);font-size:9px;border-radius:3px">' + escHtml(s.status || 'New') + '</span>' +
+            (s.page ? '<span style="font-family:var(--mono);font-size:9px;background:var(--s1);padding:2px 6px;border-radius:3px;color:var(--text-3)">' + escHtml(s.page) + '</span>' : '') +
+            '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-left:auto">' + escHtml(dStr) + '</span>' +
+          '</div>' +
+          '<div style="font-size:13px;line-height:1.6;color:var(--text)">' + escHtml(s.description) + '</div>' +
+          (hasReply ? '<div style="margin-top:12px;padding:10px 14px;background:rgba(59,130,246,0.08);border-left:3px solid var(--blue-b);border-radius:var(--r)">' +
+            '<div style="font-family:var(--mono);font-size:9px;color:var(--blue-b);font-weight:700;margin-bottom:4px">&#128172; REPLY FROM JOHN</div>' +
+            '<div style="font-size:12px;line-height:1.6;color:var(--text)">' + escHtml(s.adminResponse) + '</div>' +
+          '</div>' : '<div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-3)">Awaiting reply…</div>') +
+        '</div>';
+      }).join('');
+
+  el.innerHTML = '<div style="padding:20px 24px;height:100%;overflow-y:auto">' +
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">' +
+      '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);letter-spacing:0.12em">&#128161; MY FEEDBACK</div>' +
+      '<button onclick="showSuggestionModal()" style="margin-left:auto;padding:7px 16px;background:var(--gold);border:none;color:#000;font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em">+ SUBMIT FEEDBACK</button>' +
+    '</div>' +
+    (mySuggs.length > 0 ? '<div style="font-size:11px;color:var(--text-3);margin-bottom:14px">' + mySuggs.length + ' submission' + (mySuggs.length !== 1 ? 's' : '') + ' &nbsp;·&nbsp; ' + unreadReplies + ' with reply</div>' : '') +
+    cardsHtml +
+  '</div>';
 }
 
 // ══════════════════════════════════════════════════════════════

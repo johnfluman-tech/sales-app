@@ -17021,7 +17021,10 @@ async function renderMyFeedbackView() {
 
   // When admin is simulating another rep, show that rep's feedback instead of admin's own
   const _viewRep = (state.isAdmin && state.viewAsRep && state.viewAsRep !== '__TEAM_ALL__') ? state.viewAsRep : null;
-  const myName = _viewRep ? '' : ((state.user && state.user.name) ? state.user.name.toLowerCase() : '');
+  // Suggestions sheet stores repName (display name), so match by display name when simulating
+  const myName = _viewRep
+    ? ((CONFIG.REP_DISPLAY_NAMES && CONFIG.REP_DISPLAY_NAMES[_viewRep]) || _viewRep).toLowerCase()
+    : ((state.user && state.user.name) ? state.user.name.toLowerCase() : '');
   const myRep = (_viewRep || state.repId || '').toLowerCase();
 
   var mySuggs = [];
@@ -17046,44 +17049,99 @@ async function renderMyFeedbackView() {
     mySuggs.sort(function(a,b){ return b.date > a.date ? 1 : -1; });
   }
 
-  // Update badge
-  var unreadReplies = mySuggs.filter(function(s){ return s.adminResponse && s.adminResponse.trim(); }).length;
+  // Archive state — keyed by the effective rep (simulated or real), shared with fbArchive/fbUnarchive
+  var _fbEffRep = _viewRep ? _viewRep.toLowerCase() : (state.repId || 'unknown').toLowerCase();
+  window._fbArchKey = 'it_fb_archived_' + _fbEffRep;
+  var _archived = new Set(JSON.parse(localStorage.getItem(window._fbArchKey) || '[]'));
+  var _showArchived = window._fbShowArchived === true;
+
+  // Stable per-card key: date + first 60 chars of description (no quotes needed)
+  function _fbCardKey(s) { return (s.date || '') + '||' + (s.description || '').slice(0, 60); }
+
+  var visible = mySuggs.filter(function(s){ return !_archived.has(_fbCardKey(s)); });
+  var archivedList = mySuggs.filter(function(s){ return _archived.has(_fbCardKey(s)); });
+
+  // Badge only counts unread replies on visible cards
+  var unreadReplies = visible.filter(function(s){ return s.adminResponse && s.adminResponse.trim(); }).length;
   var badge = document.getElementById('badge-my-feedback');
   if (badge) badge.textContent = unreadReplies > 0 ? unreadReplies : '';
 
   var catColors = {'bug':'#ef4444','feature idea':'#3b82f6','improvement':'#22c55e'};
   var stColors = {'new':'#3b82f6','in progress':'#f59e0b','done':'#22c55e',"won't do":'#6b7280'};
 
-  var cardsHtml = mySuggs.length === 0
-    ? '<div style="padding:60px;text-align:center;color:var(--text-3)"><div style="font-size:36px;margin-bottom:12px">&#128161;</div><div style="font-size:13px">You haven\'t submitted any feedback yet.</div><div style="font-size:11px;margin-top:8px;color:var(--text-3)">Use the 💡 button or click Submit Feedback above to share ideas.</div></div>'
-    : mySuggs.map(function(s) {
-        var cc = catColors[(s.category||'').toLowerCase()] || 'var(--text-3)';
-        var sc = stColors[(s.status||'').toLowerCase()] || '#3b82f6';
-        var dStr = s.date ? new Date(s.date).toLocaleDateString() : '';
-        var hasReply = s.adminResponse && s.adminResponse.trim();
-        return '<div style="background:var(--s2);border:1px solid ' + (hasReply ? 'rgba(59,130,246,0.4)' : 'var(--border)') + ';border-radius:var(--r2);padding:16px 18px;margin-bottom:10px">' +
-          '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">' +
-            (s.category ? '<span style="padding:2px 7px;background:' + cc + ';color:#fff;font-family:var(--mono);font-size:9px;border-radius:3px">' + escHtml(s.category) + '</span>' : '') +
-            '<span style="padding:2px 7px;border:1px solid ' + sc + ';color:' + sc + ';font-family:var(--mono);font-size:9px;border-radius:3px">' + escHtml(s.status || 'New') + '</span>' +
-            (s.page ? '<span style="font-family:var(--mono);font-size:9px;background:var(--s1);padding:2px 6px;border-radius:3px;color:var(--text-3)">' + escHtml(s.page) + '</span>' : '') +
-            '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-left:auto">' + escHtml(dStr) + '</span>' +
-          '</div>' +
-          '<div style="font-size:13px;line-height:1.6;color:var(--text)">' + escHtml(s.description) + '</div>' +
-          (hasReply ? '<div style="margin-top:12px;padding:10px 14px;background:rgba(59,130,246,0.08);border-left:3px solid var(--blue-b);border-radius:var(--r)">' +
+  // Store card keys on window so onclick can look up by index (avoids all quote-escaping issues)
+  window._fbCardKeys = mySuggs.map(function(s){ return _fbCardKey(s); });
+
+  function _fbCardHtml(s, isArch, idx) {
+    var cc = catColors[(s.category||'').toLowerCase()] || 'var(--text-3)';
+    var sc = stColors[(s.status||'').toLowerCase()] || '#3b82f6';
+    var dStr = s.date ? new Date(s.date).toLocaleDateString() : '';
+    var hasReply = s.adminResponse && s.adminResponse.trim();
+    var archBtn = isArch
+      ? '<button data-fbi="' + idx + '" onclick="fbUnarchive(this.dataset.fbi)" style="margin-left:auto;padding:2px 9px;background:none;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;cursor:pointer;border-radius:3px">RESTORE</button>'
+      : '<button data-fbi="' + idx + '" onclick="fbArchive(this.dataset.fbi)" style="margin-left:auto;padding:2px 9px;background:none;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;cursor:pointer;border-radius:3px">ARCHIVE</button>';
+    return '<div style="background:var(--s2);border:1px solid ' + (hasReply ? 'rgba(59,130,246,0.4)' : 'var(--border)') + ';border-radius:var(--r2);padding:16px 18px;margin-bottom:10px' + (isArch ? ';opacity:0.6' : '') + '">' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">' +
+        (s.category ? '<span style="padding:2px 7px;background:' + cc + ';color:#fff;font-family:var(--mono);font-size:9px;border-radius:3px">' + escHtml(s.category) + '</span>' : '') +
+        '<span style="padding:2px 7px;border:1px solid ' + sc + ';color:' + sc + ';font-family:var(--mono);font-size:9px;border-radius:3px">' + escHtml(s.status || 'New') + '</span>' +
+        (s.page ? '<span style="font-family:var(--mono);font-size:9px;background:var(--s1);padding:2px 6px;border-radius:3px;color:var(--text-3)">' + escHtml(s.page) + '</span>' : '') +
+        '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + escHtml(dStr) + '</span>' +
+        archBtn +
+      '</div>' +
+      '<div style="font-size:13px;line-height:1.6;color:var(--text)">' + escHtml(s.description) + '</div>' +
+      (hasReply
+        ? '<div style="margin-top:12px;padding:10px 14px;background:rgba(59,130,246,0.08);border-left:3px solid var(--blue-b);border-radius:var(--r)">' +
             '<div style="font-family:var(--mono);font-size:9px;color:var(--blue-b);font-weight:700;margin-bottom:4px">&#128172; REPLY FROM JOHN</div>' +
             '<div style="font-size:12px;line-height:1.6;color:var(--text)">' + escHtml(s.adminResponse) + '</div>' +
-          '</div>' : '<div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-3)">Awaiting reply…</div>') +
-        '</div>';
-      }).join('');
+          '</div>'
+        : '<div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-3)">Awaiting reply…</div>') +
+    '</div>';
+  }
+
+  var visibleHtml = visible.length === 0
+    ? '<div style="padding:60px;text-align:center;color:var(--text-3)"><div style="font-size:36px;margin-bottom:12px">&#128161;</div><div style="font-size:13px">You haven\'t submitted any feedback yet.</div><div style="font-size:11px;margin-top:8px;color:var(--text-3)">Use the 💡 button or click Submit Feedback above to share ideas.</div></div>'
+    : visible.map(function(s, i){ return _fbCardHtml(s, false, mySuggs.indexOf(s)); }).join('');
+
+  var archivedHtml = '';
+  if (archivedList.length > 0) {
+    archivedHtml = '<div style="margin-top:20px">' +
+      '<button onclick="window._fbShowArchived=!window._fbShowArchived;renderMyFeedbackView()" style="background:none;border:none;color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;padding:0;letter-spacing:0.05em">' +
+        (_showArchived ? '&#9660;' : '&#9658;') + ' ' + archivedList.length + ' ARCHIVED' +
+      '</button>' +
+      (_showArchived ? '<div style="margin-top:10px">' + archivedList.map(function(s){ return _fbCardHtml(s, true, mySuggs.indexOf(s)); }).join('') + '</div>' : '') +
+    '</div>';
+  }
 
   el.innerHTML = '<div style="padding:20px 24px;height:100%;overflow-y:auto">' +
     '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">' +
       '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);letter-spacing:0.12em">&#128161; MY FEEDBACK</div>' +
       '<button onclick="showSuggestionModal()" style="margin-left:auto;padding:7px 16px;background:var(--gold);border:none;color:#000;font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em">+ SUBMIT FEEDBACK</button>' +
     '</div>' +
-    (mySuggs.length > 0 ? '<div style="font-size:11px;color:var(--text-3);margin-bottom:14px">' + mySuggs.length + ' submission' + (mySuggs.length !== 1 ? 's' : '') + ' &nbsp;·&nbsp; ' + unreadReplies + ' with reply</div>' : '') +
-    cardsHtml +
+    (mySuggs.length > 0 ? '<div style="font-size:11px;color:var(--text-3);margin-bottom:14px">' + visible.length + ' submission' + (visible.length !== 1 ? 's' : '') + ' &nbsp;·&nbsp; ' + unreadReplies + ' with reply</div>' : '') +
+    visibleHtml +
+    archivedHtml +
   '</div>';
+}
+
+function fbArchive(idxStr) {
+  var idx = parseInt(idxStr, 10);
+  var cardKey = window._fbCardKeys && window._fbCardKeys[idx];
+  if (!cardKey) return;
+  var _ak = window._fbArchKey;
+  var _archived = new Set(JSON.parse(localStorage.getItem(_ak) || '[]'));
+  _archived.add(cardKey);
+  localStorage.setItem(_ak, JSON.stringify(Array.from(_archived)));
+  renderMyFeedbackView();
+}
+function fbUnarchive(idxStr) {
+  var idx = parseInt(idxStr, 10);
+  var cardKey = window._fbCardKeys && window._fbCardKeys[idx];
+  if (!cardKey) return;
+  var _ak = window._fbArchKey;
+  var _archived = new Set(JSON.parse(localStorage.getItem(_ak) || '[]'));
+  _archived.delete(cardKey);
+  localStorage.setItem(_ak, JSON.stringify(Array.from(_archived)));
+  renderMyFeedbackView();
 }
 
 // ══════════════════════════════════════════════════════════════

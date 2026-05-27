@@ -1523,6 +1523,12 @@ const CONFIG = {
   SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
   ADMIN_EMAIL: 'john.fluman@intransittech.com',
   REPS: ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan'],
+  REP_DISPLAY_NAMES: {
+    'CKaren':'Karen Mancebo','BillP':'Bill Pratt','PIan':'Ian Pitman',
+    'RMauricio':'Mauricio Rangel','LMancera':'Lizeth Mancera','bcastor':'Brandon Castor',
+    'FJohn':'John Fluman','ADMIN':'John Fluman','Anolan':'Ana Nolan',
+    'CMancilla':'Carlos Mancilla','MPerezfreye':'Manuel Perezfreyre'
+  },
   REP_EMAIL_MAP: {
     // Map @intransittech.com emails to CRM rep IDs
     // Update these with the actual email addresses
@@ -9243,10 +9249,10 @@ function switchViewAs(rep) {
     if (state.viewingAsManager) {
       const _mc = getManagerConfig();
       const _tn = _mc ? _mc.teamName : 'Team';
-      label.textContent = state.viewAsRep === '__TEAM_ALL__' ? 'ADMIN — ' + _tn + ' view' : 'ADMIN — as ' + state.viewAsRep + ' (Mgr)';
+      label.textContent = state.viewAsRep === '__TEAM_ALL__' ? 'ADMIN — ' + _tn + ' view' : 'ADMIN — as ' + getRepDisplayName(state.viewAsRep) + ' (Mgr)';
       label.style.color = 'var(--accent)';
     } else if (state.viewAsRep) {
-      label.textContent = 'ADMIN — VIEWING AS ' + state.viewAsRep;
+      label.textContent = 'ADMIN — VIEWING AS ' + getRepDisplayName(state.viewAsRep);
       label.style.color = 'var(--accent)';
     } else {
       label.textContent = 'ADMIN — ALL REPS';
@@ -9816,6 +9822,10 @@ function debugRestoreAdmin() {
   renderAccountsView();
   showToast('Admin session restored ✓', 'success');
   console.log('[SIM] Admin session restored');
+}
+
+function getRepDisplayName(repId) {
+  return (CONFIG.REP_DISPLAY_NAMES && CONFIG.REP_DISPLAY_NAMES[repId]) || repId || '';
 }
 
 function toggleViewAsDD(e) {
@@ -11901,7 +11911,7 @@ function apkSelectRep(r) {
   var _sel = document.getElementById('view-as-select');
   if (_sel) _viewAsSetValue(r);
   var _lbl = document.getElementById('sidebar-user-role');
-  if (_lbl) { _lbl.textContent = 'VIEWING: ' + r; _lbl.style.color = 'var(--accent)'; }
+  if (_lbl) { _lbl.textContent = 'VIEWING: ' + getRepDisplayName(r); _lbl.style.color = 'var(--accent)'; }
   renderAttackPlan();
 }
 

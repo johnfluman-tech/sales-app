@@ -969,3 +969,28 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **New functions:** `renderHiddenAccountsView`, `showReturnRequestModal`, `submitReturnRequest`, `approveReturnRequest`
 **New nav:** `nav-hidden-accounts` (🔒 Hidden Accounts)
 **Modified functions:** `renderNoteInput`, `getViewAccounts`, `renderRemovalsView`, `_reqRenderPage`, `renderRequestLogView`, `apkCardHtml` (CRM date fix), `apkOpenAccount` (CRM click fix)
+
+### 2026-05-26 (session 29 — Multi-agent audit + 6 targeted improvements)
+
+**Audit methodology:**
+- Spawned 4 parallel AI agents (Explore agents) to review all views simultaneously:
+  1. My Accounts, Account Detail (Info/History/Notes/Contacts tabs), Collections
+  2. Attack Plan, Prospects, Daily Mission
+  3. Manager Hub, Dashboard, Team views, Auth flow
+  4. Requests & Approvals, Hidden Accounts, My Requests, Access Log, Academy, Settings
+- Each agent returned numbered issue lists with line numbers and function names
+- Verified reported bugs against actual code before implementing (many audit flags were false positives)
+
+**Confirmed bugs fixed:**
+- **Location modal new IP warning not showing:** `showLocationModal(isNewIP)` accepted the `isNewIP` parameter but never used it. Fixed: shows/hides `loc-new-ip-warn` div based on `isNewIP`.
+- **Zone dates persist after plan reset:** `apkConfirmReset()` cleared `window.apkState` but not `window.apkZoneDates`. Fixed: clears zone dates + removes localStorage key on reset.
+
+**UX improvements added:**
+- **Sort direction arrows:** `sortAccountList()` now appends UP or DOWN arrow to the active sort button (NAME UP, VALUE DOWN, etc.).
+- **Team Profile cards clickable:** Rep cards in `renderTeamProfile()` now have onclick to navigate to that rep's accounts view. Shows "VIEW ->" label and hover highlight.
+- **Unsaved note indicator:** Gold "UNSAVED" dot added after SAVE & LOCK button in Notes tab. Appears when user types; hidden when re-rendered after save.
+- **Force Data Refresh in Settings:** New "Data & Cache" card in Settings with Refresh All Data button. Calls `refreshAllData()` which clears all cache objects and re-runs `ensureCacheLoaded()`. Shows cache status (GP rows count, history rows count).
+
+**New functions:** `refreshAllData`
+**Modified functions:** `showLocationModal` (isNewIP finally used), `apkConfirmReset` (zone dates cleared), `sortAccountList` (direction arrows), `renderTeamProfile` (clickable cards), `renderNoteInput` (unsaved dot), input event listeners (dot show/hide)
+**Commit:** `1eb82f2`

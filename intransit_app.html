@@ -14606,6 +14606,7 @@ const ACADEMY_TRACKS = [
     { id: 't1-2', title: 'Your first login', xp: 50 },
     { id: 't1-3', title: 'Reading status badges', xp: 50 },
     { id: 't1-4', title: 'Understanding your accounts', xp: 50 },
+    { id: 't1-5', title: 'My Feedback — submitting ideas & seeing replies', xp: 25 },
   ]},
   { id: 't2', title: 'Daily Mission', icon: '📅', unlockAfter: 't1', lessons: [
     { id: 't2-1', title: 'How AI picks work', xp: 50 },
@@ -14622,6 +14623,7 @@ const ACADEMY_TRACKS = [
     { id: 't3-3', title: 'Setting follow-up dates', xp: 50 },
     { id: 't3-4', title: 'Revenue history charts', xp: 50 },
     { id: 't3-5', title: 'Requesting account removal', xp: 50 },
+    { id: 't3-6', title: 'Prospects — building your pipeline', xp: 75 },
   ]},
   { id: 't4', title: 'Attack Plan', icon: '⚔', unlockAfter: 't3', lessons: [
     { id: 't4-1', title: 'Zone strategy', xp: 50 },
@@ -14670,6 +14672,7 @@ const ACADEMY_TRACKS = [
     { id: 'tm2-2', title: 'Reading the Attack Plan', xp: 50 },
     { id: 'tm2-3', title: 'Transfer candidates', xp: 50 },
     { id: 'tm2-4', title: 'Team Notes and Notes Feed', xp: 50 },
+    { id: 'tm2-5', title: 'Account Intel — pre-transfer history', xp: 75 },
   ]},
   { id: 'tm3', title: 'Performance Leadership', icon: '🏆', managerOnly: true, lessons: [
     { id: 'tm3-1', title: 'Warning signs to watch', xp: 50 },
@@ -16508,7 +16511,7 @@ function academyGetLessonContent(lessonId, progress) {
   return acadLessonWrap('AI Coach Report', 'tm1-4', progress,
     acadSection('What the AI Coach Report does', 'The AI Coach Report in Manager Hub → Playbook generates a personalized coaching brief for your team using real data: account counts, active percentages, notes written, and overdue follow-ups for each rep.') +
     acadSteps([
-      { step: '1', title: 'Open Manager Hub → Playbook tab', desc: 'Scroll to the bottom of the Playbook tab and click GENERATE REPORT.' },
+      { step: '1', title: 'Open Manager Hub → AI Brief tab', desc: 'Click the AI Brief tab in Manager Hub. Three report types appear: Weekly Team Summary, Monthly Forecast, and per-rep 1-on-1 Coaching Prep buttons.' },
       { step: '2', title: 'AI analyzes the data', desc: 'The AI reads the current week\'s metrics for each rep on your team and writes 2-3 specific action items for each person.' },
       { step: '3', title: 'Read and prepare', desc: 'Use the report as your 1-on-1 prep. Copy the relevant section into your notes before each rep\'s call.' },
       { step: '4', title: 'Regenerate weekly', desc: 'Click REGENERATE before each Monday check-in. The AI always uses the most current data.' },
@@ -16544,6 +16547,8 @@ function academyGetLessonContent(lessonId, progress) {
     ]) +
     acadSection('How to view a rep\'s plan', 'Use View As Rep to select the rep, then click Attack Plan in the sidebar. You will see their full board. Look for: empty zones, accounts that have been in a zone 30+ days without movement (shown with a badge), and a pool that never changes.') +
     acadSection('Questions to ask in your 1-on-1', '"Your Solid Core slot 3 has been inactive for 120 days — what\'s your plan?" / "Why is your Active Pursue zone empty?" / "What are your top 3 pool accounts to promote this week?"') +
+    acadSection('The CRM pool — HAS SALES vs NO SALES', 'Below the three zones, the Pool section shows ALL accounts assigned to the rep — including CRM-only accounts that have never placed an order through the app. Three filter buttons appear at the top of the pool: ALL (every account), HAS SALES (accounts with revenue history), and NO SALES (CRM-only accounts with no order history). CRM-only accounts have a blue left border and a 📊 CRM badge instead of a revenue figure. They are untapped territory — use them in your coaching conversation: "I see 40 CRM accounts in your pool with no sales history — what\'s your plan for the top 5?"') +
+    acadKeyTakeaway('An empty zone with a full pool means the rep has not made decisions. An empty pool means they have run out of targets — that is the time to run CRM Discovery together.') +
     acadCompleteBtn('tm2-2')
   );
 },
@@ -16634,8 +16639,59 @@ function academyGetLessonContent(lessonId, progress) {
     acadSection('AI RANK within CRM Discovery', 'Once the CRM Discovery panel is open, clicking AI RANK re-sorts the list by AI-assessed re-engagement opportunity. The top 20 accounts are shown with a reason for each ranking — one line like "High prior revenue, recent lapse" that explains the priority score.') +
     acadSection('Where added accounts go', 'CRM-sourced and AI-picked accounts save to the _ATTACK_POOL tab in the History sheet. They appear in the rep\'s pool and are marked with a CRM or AI badge so you can distinguish them from existing app accounts.') +
     acadSection('Manager role', 'As a manager, use View As Rep to open a rep\'s Attack Plan and run Discover from CRM on their behalf. This is a powerful coaching tool: "I found 15 accounts in your CRM that haven\'t ordered in 18 months — let\'s build a re-engagement plan for the top 5."') +
+    acadSection('ALL CRM filter in My Accounts', 'Reps can also see CRM accounts directly in their My Accounts view. The filter bar at the top has an ALL CRM button (next to ACTIVE, INACTIVE, DECLINING). When selected, the account list expands to show every CRM account assigned to that rep — including ones with no order history. CRM-only accounts appear at 70% opacity with a 📊 CRM badge and show the city, state, and last CRM activity date instead of a revenue figure. Clicking one opens a simple detail panel with an ADD TO PROSPECTS button. This gives reps a way to find and research new targets without leaving the accounts view.') +
     acadKeyTakeaway('CRM Discovery turns historical relationships into active opportunities. Run it for each rep quarterly or whenever their active rate drops below 50%.', 'Open Attack Plan', 'attack') +
     acadCompleteBtn('tm3-4')
+  );
+},
+
+'t1-5': function() {
+  return acadLessonWrap('My Feedback — Submitting Ideas & Seeing Replies', 't1-5', progress,
+    acadSection('What My Feedback is for', 'My Feedback is your direct line to John. Use it to report bugs, suggest features, or flag anything in the app that could work better. Every submission is reviewed personally. Click the 💡 button that appears in the top-right corner of any view to submit, or open My Feedback from the sidebar (System section).') +
+    acadSteps([
+      { step: '1', title: 'Click the 💡 button', desc: 'Available on every page. A quick modal opens — pick a category (Bug, Feature Idea, Improvement), describe what you found or want, and hit SUBMIT.' },
+      { step: '2', title: 'Open My Feedback in the sidebar', desc: 'Under the System section. Shows all your past submissions with their current status: New (received), In Progress (being worked on), Done (shipped), or Won\'t Do (not planned).' },
+      { step: '3', title: 'Look for the blue reply block', desc: 'When John replies to your submission, a blue "REPLY FROM JOHN" block appears below your original text. The 💡 badge on the sidebar nav shows a count of submissions with replies waiting for you.' },
+      { step: '4', title: 'Archive old submissions', desc: 'Once you\'ve read a reply or a submission is resolved, click ARCHIVE to move it out of your main list. An ARCHIVED section appears at the bottom — click the arrow to expand and restore any card if needed.' },
+    ]) +
+    acadKeyTakeaway('The app gets better because of rep feedback. If something is confusing or missing, submit it — that is how features get built.', 'Open My Feedback', 'myFeedback') +
+    acadCompleteBtn('t1-5')
+  );
+},
+
+'t3-6': function() {
+  return acadLessonWrap('Prospects — Building Your Pipeline', 't3-6', progress,
+    acadSection('What Prospects is', 'Prospects is your personal pipeline for companies you want to sell to but have not yet won as customers. Find it in the sidebar under the Workflow section (🎯 Prospects). It is completely separate from My Accounts — Prospects are companies you are pursuing, not companies already buying from you.') +
+    acadTipCards([
+      { color: 'var(--red)', label: '🔥 Hot', text: 'Actively engaged — expecting an order soon. These appear in your Daily Mission as gold PROSPECT cards so they stay top-of-mind every day.' },
+      { color: 'var(--gold)', label: '🌡 Warm', text: 'Interested but not yet committed. Follow up every 2 weeks.' },
+      { color: 'var(--blue-b)', label: '❄ Cold', text: 'Early stage — long runway. Keep in the list and revisit quarterly.' },
+    ]) +
+    acadSection('Adding a prospect — two ways', '') +
+    acadSteps([
+      { step: '1', title: '+ ADD PROSPECT button', desc: 'Opens a form: company name, priority, industry, website, city/state, and opening notes. Fills your list immediately. Use for companies you already know about.' },
+      { step: '2', title: 'Find Account (CRM search)', desc: 'The 🔍 FIND ACCOUNT button in the My Accounts topbar searches the full CRM database (2,400+ companies). Type 3+ characters to see matches — name, rep, city, state, last activity. Click ADD TO PROSPECTS to pre-fill the form.' },
+    ]) +
+    acadSection('Working a prospect', 'Click any prospect card to open its detail panel on the right. Four tabs: Notes (log every conversation — sets last-contacted date automatically), Contacts (names, emails, phones), Outreach (AI-generated cold intro and follow-up emails), Research (AI company profile). When they place their first order, use the Convert tab — the app detects if they appear in your invoice history and walks you through the conversion.') +
+    acadSection('Daily Mission integration', 'Any Hot prospect automatically appears as a gold 🎯 PROSPECT card at the top of your Daily Mission list. This means you never have to manually remember to follow up on a hot lead — the app surfaces it for you every day alongside your account picks.') +
+    acadKeyTakeaway('Hot prospects belong in Daily Mission and in your Solid Core once they become customers. Work them like accounts — log every touch, every conversation.', 'Open Prospects', 'prospects') +
+    acadCompleteBtn('t3-6')
+  );
+},
+
+'tm2-5': function() {
+  return acadLessonWrap('Account Intel — Pre-Transfer History', 'tm2-5', progress,
+    acadSection('What Account Intel is', 'Account Intel is a manager-only research tool inside Manager Hub. Open it from the Account Intel tab (🔍). It is designed to answer one specific question: what was this account buying before the current rep took it over? Use it when you need to build re-engagement outreach for accounts your team recently inherited.') +
+    acadSection('Quick access buttons', 'Six buttons at the top of the panel target the key transferred accounts: San Luis Metal, Siemens, Martinrea, Porta Systems, Navistar, Thyssenkrupp. Click any one to instantly load that account\'s full history. You can also type any account name in the search box.') +
+    acadTipCards([
+      { color: 'var(--blue-b)', label: 'UNDER PRIOR REP vs UNDER CURRENT REP', text: 'A two-column comparison showing total revenue, years of history, and rep names for both eras. An arrow shows whether business grew or declined after the transfer.' },
+      { color: 'var(--gold)', label: 'CURRENT REP PERFORMANCE', text: 'Year-by-year bar chart for the current rep showing revenue and GP% per year, plus trend vs prior year.' },
+      { color: 'var(--green)', label: '★ OUTREACH LIST', text: 'Top 15 part numbers the account ordered in the year BEFORE the current rep took over. This is what they were buying before — leads for re-engagement outreach.' },
+    ]) +
+    acadSection('Using the COPY LIST button', 'The ★ OUTREACH LIST section has a 📋 COPY LIST button. It copies a formatted plaintext list to your clipboard — account name, the year it covers, the top 15 parts with order counts. Paste directly into an email or spreadsheet for Karen to use in customer outreach campaigns.') +
+    acadSection('AI Outreach Strategy button', 'At the bottom of every Account Intel result, a 🤖 BUILD OUTREACH STRATEGY button generates a re-engagement plan via AI: best angle for approach, a suggested email subject line, opening paragraph referencing actual purchase history, and the 2-3 parts to lead with. Takes 10 seconds and is specific to that account\'s data.') +
+    acadKeyTakeaway('Run Account Intel before any outreach call to a transferred account. Knowing what they bought before is more valuable than any generic cold-call script.', 'Open Manager Hub', 'managerHub') +
+    acadCompleteBtn('tm2-5')
   );
 },
 

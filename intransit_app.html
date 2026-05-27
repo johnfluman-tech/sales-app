@@ -12982,6 +12982,16 @@ function mgrIntelLookup(query) {
     });
   }
 
+  // Hard safety net: if a broad-match gpCache result was used, verify at least one BUYER_NAME
+  // actually contains a query word. If not, the match is spurious (e.g., "Neros Technologies"
+  // matched via "technologies" from "Zebra Technologies", or "Ozkon Inc." via "inc" from "Ontic Inc.").
+  // Discard and let historyCache / acc.years fallbacks handle it instead.
+  if (gpRows.length && usedAnyGP) {
+    var _qChk = qWords.length ? qWords : [normQ];
+    var _valid = gpRows.some(function(r){ var b=norm(r[gpBuyerCol]||''); return _qChk.some(function(w){ return b.indexOf(w)>-1; }); });
+    if (!_valid) { gpRows = []; console.log('[INTEL] Discarded spurious gpCache broad-match for:', query); }
+  }
+
   // Last resort: synthesize gpRows from _TRANSFER_HISTORY lines when gpCache has no BUYER_NAME match
   // (covers accounts like Siemens where CRM stores a different legal entity name than GP export)
   if (!gpRows.length && state.transferHistoryCache) {

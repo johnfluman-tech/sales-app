@@ -1243,20 +1243,21 @@ body::before {
       <div id="view-as-section" style="display:none">
         <div class="nav-section-label">View As Rep</div>
         <div style="padding:0 12px 10px">
-          <select id="view-as-select" autocomplete="off" onchange="switchViewAs(this.value)"
-            style="width:100%;background:var(--s2);border:1px solid var(--border);
-                   color:var(--text);font-family:var(--mono);font-size:11px;
-                   padding:7px 10px;outline:none;cursor:pointer;border-radius:var(--r)">
-            <option value="">— Admin View —</option>
-            <option value="CKaren">CKaren</option>
-            <option value="BillP">BillP</option>
-            <option value="PIan">PIan</option>
-            <option value="RMauricio">RMauricio</option>
-            <option value="LMancera">LMancera</option>
-            <option value="bcastor">bcastor</option>
-            <option value="FJohn">FJohn</option>
-            <option value="Anolan">Anolan</option>
-          </select>
+          <div id="view-as-wrap" style="position:relative">
+            <div id="view-as-btn" onclick="toggleViewAsDD(event)"
+                 style="width:100%;background:var(--s2);border:1px solid var(--border);
+                        color:var(--text);font-family:var(--mono);font-size:11px;
+                        padding:7px 10px;cursor:pointer;border-radius:var(--r);
+                        display:flex;justify-content:space-between;align-items:center;
+                        box-sizing:border-box;user-select:none">
+              <span id="view-as-label">── Admin View ──</span>
+              <span style="font-size:9px;opacity:0.5">&#9660;</span>
+            </div>
+            <div id="view-as-dd" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:9999;
+                 background:var(--s2);border:1px solid var(--border);border-top:none;
+                 max-height:280px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.4)"></div>
+            <input type="hidden" id="view-as-select" value="">
+          </div>
         </div>
       </div>
     </div>
@@ -3344,7 +3345,7 @@ function completeLogin() {
       Object.entries(MANAGER_CONFIG).forEach(function(e){
         _admHtml += '<option value="__MGR_' + e[0] + '">📊 ' + e[1].teamName + ' (All)</option>';
       });
-      _admSel.innerHTML = _admHtml;
+      _viewAsSetOptions(_admHtml);
     }
   }
   state.managerRole = getManagerRole(state.repId, state.user ? state.user.email || '' : '');
@@ -3373,10 +3374,10 @@ function completeLogin() {
         if (r === state.repId) return;
         optHtml += '<option value="' + r + '">' + r + '</option>';
       });
-      sel.innerHTML = optHtml;
+      _viewAsSetOptions(optHtml);
       if (!isRepAndMgr) {
         // Manager-only users (CMancilla, MPerezfreye) default to team view
-        sel.value = '__TEAM_ALL__';
+        _viewAsSetValue('__TEAM_ALL__');
         setTimeout(function(){ switchViewAs('__TEAM_ALL__'); }, 150);
       }
     }
@@ -9809,12 +9810,85 @@ function debugRestoreAdmin() {
     Object.entries(MANAGER_CONFIG).forEach(function(e){
       _html += '<option value="__MGR_' + e[0] + '">📊 ' + e[1].teamName + ' (All)</option>';
     });
-    _sel.innerHTML = _html;
-    _sel.value = state.viewAsRep || '';
+    _viewAsSetOptions(_html);
+    _viewAsSetValue(state.viewAsRep || '');
   }
   renderAccountsView();
   showToast('Admin session restored ✓', 'success');
   console.log('[SIM] Admin session restored');
+}
+
+function toggleViewAsDD(e) {
+  var dd = document.getElementById('view-as-dd');
+  if (!dd) return;
+  if (e) e.stopPropagation();
+  var isOpen = dd.style.display !== 'none';
+  dd.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) {
+    setTimeout(function() {
+      document.addEventListener('click', function _ddClose(ev) {
+        var wrap = document.getElementById('view-as-wrap');
+        if (wrap && wrap.contains(ev.target)) return;
+        var dd2 = document.getElementById('view-as-dd');
+        if (dd2) dd2.style.display = 'none';
+        document.removeEventListener('click', _ddClose);
+      });
+    }, 0);
+  }
+}
+function _viewAsSetOptions(optionHtml) {
+  var tmp = document.createElement('select');
+  tmp.innerHTML = optionHtml;
+  var dd = document.getElementById('view-as-dd');
+  if (!dd) return;
+  var out = '';
+  for (var i = 0; i < tmp.options.length; i++) {
+    var opt = tmp.options[i];
+    if (opt.disabled) {
+      out += '<div style="padding:4px 10px;font-size:9px;color:var(--text-muted);font-family:var(--mono);letter-spacing:0.05em;pointer-events:none">' + opt.text + '</div>';
+    } else {
+      out += '<div data-vav="' + opt.value + '" onclick="_viewAsSelectItem(this)"'
+        + ' style="padding:7px 10px;font-size:11px;font-family:var(--mono);cursor:pointer;color:var(--text)"'
+        + ' onmouseover="this.style.background=\'var(--s3)\'" onmouseout="this.style.background=\'\'">'
+        + opt.text + '</div>';
+    }
+  }
+  dd.innerHTML = out;
+  var cur = (document.getElementById('view-as-select') || {}).value || '';
+  _viewAsHighlight(cur);
+}
+function _viewAsSelectItem(el) {
+  var val = el.getAttribute('data-vav');
+  var txt = el.textContent || el.innerText;
+  var hidden = document.getElementById('view-as-select');
+  var label = document.getElementById('view-as-label');
+  if (hidden) hidden.value = val;
+  if (label) label.textContent = txt;
+  var dd = document.getElementById('view-as-dd');
+  if (dd) dd.style.display = 'none';
+  _viewAsHighlight(val);
+  switchViewAs(val);
+}
+function _viewAsHighlight(val) {
+  var dd = document.getElementById('view-as-dd');
+  if (!dd) return;
+  dd.querySelectorAll('[data-vav]').forEach(function(el) {
+    var isMatch = el.getAttribute('data-vav') === val;
+    el.style.background = isMatch ? 'var(--s3)' : '';
+    el.style.color = isMatch ? 'var(--accent)' : 'var(--text)';
+  });
+}
+function _viewAsSetValue(val) {
+  var hidden = document.getElementById('view-as-select');
+  if (hidden) hidden.value = val || '';
+  var dd = document.getElementById('view-as-dd');
+  var label = document.getElementById('view-as-label');
+  if (dd && label) {
+    var item = val ? dd.querySelector('[data-vav="' + val + '"]') : null;
+    if (item) label.textContent = item.textContent || item.innerText;
+    else if (!val) label.textContent = '── Admin View ──';
+  }
+  _viewAsHighlight(val || '');
 }
 
 function copySessionToken() {
@@ -11825,7 +11899,7 @@ function canSeeTransferCandidates() {
 function apkSelectRep(r) {
   state.viewAsRep = r;
   var _sel = document.getElementById('view-as-select');
-  if (_sel) _sel.value = r;
+  if (_sel) _viewAsSetValue(r);
   var _lbl = document.getElementById('sidebar-user-role');
   if (_lbl) { _lbl.textContent = 'VIEWING: ' + r; _lbl.style.color = 'var(--accent)'; }
   renderAttackPlan();
@@ -14359,7 +14433,7 @@ function apkOpenAccount(name) {
   // Switch to accounts view and open the account detail
   const viewAsSelect = document.getElementById('view-as-select');
   if (state.isAdmin && window.apkRep && viewAsSelect) {
-    viewAsSelect.value = window.apkRep;
+    _viewAsSetValue(window.apkRep);
     switchViewAs(window.apkRep);
   }
   switchView('accounts');

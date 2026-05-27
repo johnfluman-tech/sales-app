@@ -9281,9 +9281,9 @@ function switchViewAs(rep) {
     // Suggestions board: only show in own admin view — hidden in all view-as modes
     const _suggNav = document.getElementById('nav-suggestions-board');
     if (_suggNav) _suggNav.style.display = !state.viewAsRep ? 'block' : 'none';
-    // My Feedback: hidden when simulating another user
+    // My Feedback: always visible (admin can preview another rep's feedback when simulating)
     const _fbNavAs = document.getElementById('nav-my-feedback');
-    if (_fbNavAs) _fbNavAs.style.display = !state.viewAsRep ? 'block' : 'none';
+    if (_fbNavAs) _fbNavAs.style.display = 'block';
   } else if (isManager()) {
     const _mc = getManagerConfig(); const _tn = _mc ? _mc.teamName.toUpperCase() : 'TEAM';
     label.textContent = (rep === '__TEAM_ALL__' || rep === 'MX_TEAM') ? 'MANAGER — ' + _tn : rep ? 'VIEWING: ' + rep : 'MANAGER — MY ACCOUNTS';
@@ -17019,9 +17019,10 @@ async function renderMyFeedbackView() {
     }
   }
 
-  // Identify current user — match by name (stored at submit time) or repId
-  const myName = (state.user && state.user.name) ? state.user.name.toLowerCase() : '';
-  const myRep = (state.repId || '').toLowerCase();
+  // When admin is simulating another rep, show that rep's feedback instead of admin's own
+  const _viewRep = (state.isAdmin && state.viewAsRep && state.viewAsRep !== '__TEAM_ALL__') ? state.viewAsRep : null;
+  const myName = _viewRep ? '' : ((state.user && state.user.name) ? state.user.name.toLowerCase() : '');
+  const myRep = (_viewRep || state.repId || '').toLowerCase();
 
   var mySuggs = [];
   if (rows.length >= 2) {

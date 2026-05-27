@@ -2464,9 +2464,169 @@ function renderHistoryTab(acc) {
       + content + '</div>';
   };
 
+  // ── NEGOTIATION TARGETS — open quotes where part never purchased ──
+  const _purchasedNorm = new Set(h.invoices.map(function(i){
+    return (i.part || '').toUpperCase().replace(/[\s\-\/]/g,'');
+  }).filter(Boolean));
+  const _openUnpurchased = (h.quotes || []).filter(function(q){
+    if (q.closed === 'Y' || !q.part) return false;
+    var pn = (q.part).toUpperCase().replace(/[\s\-\/]/g,'');
+    return pn && !_purchasedNorm.has(pn);
+  }).sort(function(a,b){ return (b.price||0)-(a.price||0); });
+
+  var negoHtml = '';
+  if (!_openUnpurchased.length) {
+    negoHtml = '<div style="font-size:11px;color:var(--text-muted);padding:8px 0">No open quotes pending purchase</div>';
+  } else {
+    var _negoAccName = escHtml(acc.name);
+    var _negoContact = escHtml(acc.contactEmail || '');
+    var _negoSubj = encodeURIComponent('Following up on your quote — ' + acc.name);
+    var _partsPreview = _openUnpurchased.slice(0,3).map(function(q){ return q.part; }).join(', ');
+    var _negoBody = encodeURIComponent(
+      'Hi,\n\nI wanted to follow up on ' + _openUnpurchased.length + ' open quote' + (_openUnpurchased.length > 1 ? 's' : '')
+      + ' we have on file for ' + acc.name + ':\n\n'
+      + _openUnpurchased.slice(0,8).map(function(q,i){
+          return (i+1) + '. ' + q.part + (q.mfr ? ' (' + q.mfr + ')' : '') + ' — Qty: ' + (q.qty||'?') + ' @ $' + formatNum(q.price||0);
+        }).join('\n')
+      + (_openUnpurchased.length > 8 ? '\n... and ' + (_openUnpurchased.length-8) + ' more' : '')
+      + '\n\nI\'d love to discuss pricing to help you close on these. Please let me know if we can work something out.\n'
+    );
+    window._lastNegoAccName = acc.name;
+    window._lastNegoTargets = _openUnpurchased;
+    negoHtml = '<div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:8px">These parts were quoted but never ordered — price may be the barrier.</div>'
+      + _openUnpurchased.slice(0,15).map(function(q) {
+        var daysAgo = q.date ? Math.floor((Date.now() - new Date(q.date).getTime()) / 86400000) : null;
+        return '<div style="padding:9px 12px;background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.25);border-left:3px solid var(--gold);margin-bottom:5px;font-size:12px">'
+          + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">'
+          +   '<span style="font-weight:600;font-family:var(--font-mono);font-size:11px;color:var(--gold)">' + escHtml(q.part||'') + '</span>'
+          +   '<span style="font-family:var(--font-mono);font-size:12px;color:var(--accent)">$' + formatNum(q.price||0) + '</span>'
+          + '</div>'
+          + '<div style="font-size:11px;color:var(--text-muted)">'
+          +   (q.mfr ? escHtml(q.mfr) + ' &nbsp;·&nbsp; ' : '')
+          +   'Qty&nbsp;' + escHtml(String(q.qty||1))
+          +   (daysAgo !== null ? ' &nbsp;·&nbsp; Quoted&nbsp;' + daysAgo + 'd ago' : '')
+          + '</div>'
+          + (q.desc ? '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">' + escHtml(String(q.desc).slice(0,80)) + '</div>' : '')
+          + '</div>';
+      }).join('')
+      + (_openUnpurchased.length > 15 ? '<div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);padding:4px 0">+ ' + (_openUnpurchased.length-15) + ' more open quotes</div>' : '')
+      + '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'
+      +   '<button onclick="histCopyNegoList()" class="btn btn-ghost btn-sm">📋 COPY LIST</button>'
+      +   '<button data-to="' + _negoContact + '" data-subj="' + _negoSubj + '" data-body="' + _negoBody + '" '
+      +     'onclick="showComposeEmail(this.dataset.to,decodeURIComponent(this.dataset.subj),decodeURIComponent(this.dataset.body))" '
+      +     'class="btn btn-secondary btn-sm">&#9993; DRAFT PITCH EMAIL</button>'
+      +   '<button onclick="histNegoAIPitch()" class="btn btn-gold btn-sm">&#10022; AI PITCH STRATEGY</button>'
+      + '</div>';
+  }
+
+  // ── REACTIVATION LIST — historical purchases for inactive/declining accounts ──
+  var _isReactivation = acc.status === 'Inactive' || acc.status === 'Declining' || (acc.daysInactive||0) > 180;
+  var reactHtml = '';
+  if (_isReactivation) {
+    if (!h.invoices.length) {
+      reactHtml = '<div style="font-size:11px;color:var(--text-muted);padding:8px 0">No purchase history on record</div>';
+    } else {
+      var _partAgg = {};
+      h.invoices.forEach(function(item) {
+        var pk = (item.part||'').trim();
+        if (!pk) return;
+        if (!_partAgg[pk]) _partAgg[pk] = { part: pk, desc: item.desc||'', count: 0, qty: 0, revenue: 0, lastDate: '' };
+        _partAgg[pk].count++;
+        _partAgg[pk].qty += Number(item.qty||0);
+        _partAgg[pk].revenue += Number(item.lineTotal||0);
+        if (!_partAgg[pk].lastDate || (item.date||'') > _partAgg[pk].lastDate) _partAgg[pk].lastDate = item.date||'';
+      });
+      var _partList = Object.values(_partAgg).sort(function(a,b){ return b.count-a.count; }).slice(0,20);
+      window._lastReactParts = _partList;
+      window._lastReactAccName = acc.name;
+      var _reactContact = escHtml(acc.contactEmail || '');
+      var _reactSubj = encodeURIComponent('Products we have available for ' + acc.name);
+      var _reactBodyLines = 'Here is a list of products we have previously supplied to ' + acc.name + ':\n\n'
+        + _partList.slice(0,10).map(function(p,i){ return (i+1)+'. '+p.part+(p.desc?' — '+String(p.desc).slice(0,50):'')+'  (ordered '+p.count+'x, last: '+String(p.lastDate).slice(0,10)+')'; }).join('\n')
+        + '\n\nWe have stock on most of these and would love to get your business going again. Let me know if you need updated pricing.';
+      var _reactBody = encodeURIComponent(_reactBodyLines);
+      reactHtml = '<div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:8px">'
+        + 'Show this list to the client — often they forget what they\'ve bought from Intransit.</div>'
+        + _partList.map(function(p) {
+          return '<div style="padding:7px 10px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid var(--blue-b);margin-bottom:4px;display:flex;align-items:center;gap:10px">'
+            + '<div style="flex:1;min-width:0">'
+            +   '<div style="font-family:var(--font-mono);font-size:11px;font-weight:600">' + escHtml(p.part) + '</div>'
+            +   (p.desc ? '<div style="font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(String(p.desc).slice(0,60)) + '</div>' : '')
+            + '</div>'
+            + '<div style="text-align:right;flex-shrink:0">'
+            +   '<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-2)">' + p.count + '&times; ordered</div>'
+            +   '<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">last ' + String(p.lastDate||'').slice(0,10) + '</div>'
+            + '</div>'
+            + '</div>';
+        }).join('')
+        + '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'
+        +   '<button onclick="histCopyReactList()" class="btn btn-ghost btn-sm">📋 COPY LIST</button>'
+        +   '<button data-to="' + _reactContact + '" data-subj="' + _reactSubj + '" data-body="' + _reactBody + '" '
+        +     'onclick="showComposeEmail(this.dataset.to,decodeURIComponent(this.dataset.subj),decodeURIComponent(this.dataset.body))" '
+        +     'class="btn btn-secondary btn-sm">&#9993; DRAFT REACTIVATION EMAIL</button>'
+        +   '<button onclick="histReactAIPitch()" class="btn btn-gold btn-sm">&#10022; AI REACTIVATION STRATEGY</button>'
+        + '</div>';
+    }
+  }
+
   return sDiv('📦 Recent Invoices', 'var(--green)', invCount, invHtml)
     + sDiv('📋 RFQ History', 'var(--blue-bright)', reqs.length, reqHtml)
-    + sDiv('💬 Quote History', 'var(--accent)', quotes.length, quoteHtml);
+    + sDiv('💬 Quote History', 'var(--accent)', quotes.length, quoteHtml)
+    + sDiv('🎯 Negotiation Targets', 'var(--gold)', _openUnpurchased.length, negoHtml)
+    + (_isReactivation ? sDiv('🔁 Reactivation List', 'var(--blue-b)', Object.keys(_partAgg||{}).length, reactHtml) : '');
+}
+
+function histCopyNegoList() {
+  var targets = window._lastNegoTargets;
+  var accName = window._lastNegoAccName || '';
+  if (!targets || !targets.length) { showToast('No targets to copy', 'error'); return; }
+  var lines = ['NEGOTIATION TARGETS — ' + accName, 'Open quotes never converted to orders:', ''];
+  targets.forEach(function(q, i) {
+    lines.push((i+1) + '. ' + q.part + (q.mfr ? ' (' + q.mfr + ')' : '') + '  Qty: ' + (q.qty||'?') + '  Quoted: $' + formatNum(q.price||0) + (q.date ? '  (' + String(q.date).slice(0,10) + ')' : ''));
+  });
+  navigator.clipboard.writeText(lines.join('\n')).then(function(){ showToast('Copied ' + targets.length + ' targets ✓', 'success'); }).catch(function(){ showToast('Could not copy', 'error'); });
+}
+
+function histCopyReactList() {
+  var parts = window._lastReactParts;
+  var accName = window._lastReactAccName || '';
+  if (!parts || !parts.length) { showToast('No parts to copy', 'error'); return; }
+  var lines = ['PURCHASE HISTORY — ' + accName, 'Products previously bought from Intransit:', ''];
+  parts.forEach(function(p, i) {
+    lines.push((i+1) + '. ' + p.part + (p.desc ? ' — ' + String(p.desc).slice(0,60) : '') + '  (ordered ' + p.count + 'x, last: ' + String(p.lastDate||'').slice(0,10) + ')');
+  });
+  navigator.clipboard.writeText(lines.join('\n')).then(function(){ showToast('Copied ' + parts.length + ' parts ✓', 'success'); }).catch(function(){ showToast('Could not copy', 'error'); });
+}
+
+async function histNegoAIPitch() {
+  var targets = window._lastNegoTargets;
+  var accName = window._lastNegoAccName || 'this account';
+  if (!targets || !targets.length) { showToast('No negotiation targets loaded', 'error'); return; }
+  showToast('Generating pitch strategy...', 'success');
+  var partLines = targets.slice(0,10).map(function(q){ return '- ' + q.part + (q.mfr?' ('+q.mfr+')':'') + '  Qty: '+(q.qty||'?')+'  Quoted $'+formatNum(q.price||0)+(q.date?'  on '+String(q.date).slice(0,10):''); }).join('\n');
+  var prompt = 'Sales strategy for closing ' + targets.length + ' open quotes at ' + accName + ' that were never converted to orders.\n\nOpen quotes:\n' + partLines + '\n\nProvide:\n1. One sentence on why these may have stalled (price, timing, competition, budget)\n2. The best 2-3 negotiation tactics (be specific — anchor pricing, bundle deal, volume discount, urgency, etc.)\n3. One suggested opening line for a follow-up call\n\nBe direct and practical. Max 150 words.';
+  try {
+    var res = await callAI({ model: 'claude-haiku-4-5-20251001', max_tokens: 400, messages: [{ role: 'user', content: prompt }] });
+    var text = (res.content && res.content[0]) ? res.content[0].text : '';
+    showComposeEmail('', 'Negotiation strategy — ' + accName, text);
+    showToast('Strategy ready ✓', 'success');
+  } catch(e) { showToast('AI error: ' + e.message, 'error'); }
+}
+
+async function histReactAIPitch() {
+  var parts = window._lastReactParts;
+  var accName = window._lastReactAccName || 'this account';
+  if (!parts || !parts.length) { showToast('No history loaded', 'error'); return; }
+  showToast('Generating reactivation strategy...', 'success');
+  var acc = state.accounts.find(function(a){ return a.name === accName; });
+  var partLines = parts.slice(0,10).map(function(p,i){ return (i+1)+'. '+p.part+(p.desc?' — '+String(p.desc).slice(0,50):'')+'  ('+p.count+'x, last '+String(p.lastDate||'').slice(0,10)+')'; }).join('\n');
+  var prompt = 'Reactivation strategy for ' + accName + ' — a ' + (acc ? (acc.status || 'inactive') : 'inactive') + ' account that has not ordered recently.\n\nTop products they\'ve bought before:\n' + partLines + '\n\nProvide:\n1. One reason why referencing their purchase history works in reactivation calls\n2. Which 1-2 parts are the best "hook" to lead with (and why)\n3. One specific opening line for a cold-call or email that references their history\n\nBe direct and practical. Max 150 words.';
+  try {
+    var res = await callAI({ model: 'claude-haiku-4-5-20251001', max_tokens: 400, messages: [{ role: 'user', content: prompt }] });
+    var text = (res.content && res.content[0]) ? res.content[0].text : '';
+    showComposeEmail(acc ? (acc.contactEmail || '') : '', 'Reactivation outreach — ' + accName, text);
+    showToast('Strategy ready ✓', 'success');
+  } catch(e) { showToast('AI error: ' + e.message, 'error'); }
 }
 
 // ══════════════════════════════════════════════════════════

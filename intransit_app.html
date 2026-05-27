@@ -3185,7 +3185,17 @@ function completeLogin() {
   // Start loading supplemental data (incl. GP) immediately in background
   // Don't wait for loadAllAccounts — they run in parallel for speed
   ensureCacheLoaded().catch(() => {});
-  loadAllAccounts().then(() => {
+  loadAllAccounts().then(async () => {
+    // Apply persistent hidden list — survives sales_report.py overwrites of rep tabs
+    try {
+      const _pHidden = await loadHiddenAccountsTab();
+      if (_pHidden.size > 0) {
+        const _toHide = state.accounts.filter(function(a){ return _pHidden.has(a.name.toLowerCase().trim()); });
+        state.accounts = state.accounts.filter(function(a){ return !_pHidden.has(a.name.toLowerCase().trim()); });
+        _toHide.forEach(function(a){ a.johnApproval = 'YES'; state.hiddenAccounts.push(a); });
+        if (_toHide.length) console.log('[HIDDEN] Applied', _toHide.length, 'persistent hidden accounts:', _toHide.map(function(a){ return a.name; }));
+      }
+    } catch(e) { console.warn('[HIDDEN] Could not load hidden accounts tab:', e.message); }
     console.log('[ACCOUNTS] Loaded', state.accounts.length, 'accounts | repId:', state.repId, '| viewAsRep:', state.viewAsRep, '| managerRole:', state.managerRole);
     const _viewAccs = getViewAccounts();
     console.log('[ACCOUNTS] After filter:', _viewAccs.length, 'visible accounts');
@@ -6259,9 +6269,30 @@ async function unhideAccount(accountName) {
     // Move back to active accounts
     state.hiddenAccounts = state.hiddenAccounts.filter(function(a){ return a.name !== accountName; });
     state.accounts.push(acc);
+    sheetsAppend("'_HIDDEN_ACCOUNTS'!A:C", [[accountName, acc.rep || '', 'RESTORED']], CONFIG.HISTORY_SPREADSHEET_ID).catch(function(){});
     showToast(accountName + ' restored to ' + acc.rep + "'s account list ✓", 'success');
     renderRemovalsView();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function loadHiddenAccountsTab() {
+  try {
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_HIDDEN_ACCOUNTS'!A:C");
+    if (!rows || rows.length < 2) return new Set();
+    const header = rows[0].map(function(h){ return (h||'').toUpperCase().trim(); });
+    const iName = header.indexOf('ACCOUNT_NAME');
+    const iStatus = header.indexOf('STATUS');
+    if (iName < 0) return new Set();
+    const statusMap = {};
+    rows.slice(1).forEach(function(r) {
+      const name = (r[iName]||'').trim();
+      const status = iStatus >= 0 ? (r[iStatus]||'HIDDEN').toUpperCase() : 'HIDDEN';
+      if (name) statusMap[name.toLowerCase()] = { name: name, status: status };
+    });
+    const hiddenSet = new Set();
+    Object.values(statusMap).forEach(function(e){ if (e.status === 'HIDDEN') hiddenSet.add(e.name.toLowerCase()); });
+    return hiddenSet;
+  } catch(e) { return new Set(); }
 }
 
 async function approveRemovalDirect(accountName) {
@@ -6284,6 +6315,7 @@ async function approveRemovalDirect(accountName) {
     state.hiddenAccounts.push(acc);
     if (state.selectedAccount && state.selectedAccount.name === accountName) state.selectedAccount = null;
     resolveRequestLog('HIDE', accountName, acc.rep || '', 'APPROVED', '').catch(function(){});
+    sheetsAppend("'_HIDDEN_ACCOUNTS'!A:C", [[accountName, acc.rep || '', 'HIDDEN']], CONFIG.HISTORY_SPREADSHEET_ID).catch(function(){});
     showToast(accountName + ' hidden from ' + acc.rep + "'s view ✓", 'success');
     renderRemovalsView();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }

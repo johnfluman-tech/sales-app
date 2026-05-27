@@ -12970,10 +12970,13 @@ function mgrIntelLookup(query) {
       });
     }
     _extraSearchKeys.filter(function(k,i){ return k && _extraSearchKeys.indexOf(k) === i; }).some(function(ek) {
-      var _gwStop = /^(inc|llc|ltd|corp|co|sa|de|cv|srl|bv|ag|gmbh|mex|the|and|for)$/i;
+      // Strip generic business words so "Zebra Technologies" → ["zebra"] not ["zebra","technologies"]
+      // Use AND logic so ALL remaining distinctive words must match — prevents "technologies" matching "Neros Technologies"
+      var _gwStop = /^(inc|llc|ltd|corp|co|sa|de|cv|srl|bv|ag|gmbh|mex|the|and|for|technologies|manufacturing|engineering|systems|solutions|international|industries|corporation|company|services|group|holdings|partners|enterprises|consulting|distribution|logistics|products|global|mexico|america)$/i;
       var ew = ek.split(/\s+/).filter(function(w){ return w.length > 3 && !_gwStop.test(w); });
       if (!ew.length) return false;
-      var found = (state.gpCache||[]).filter(function(r){ var b=norm(r[gpBuyerCol]||''); return ew.some(function(w){ return b.indexOf(w)>-1; }); });
+      // AND match: every distinctive word must appear in the buyer name
+      var found = (state.gpCache||[]).filter(function(r){ var b=norm(r[gpBuyerCol]||''); return ew.every(function(w){ return b.indexOf(w)>-1; }); });
       if (found.length) { gpRows = found; usedAnyGP = true; return true; }
       return false;
     });

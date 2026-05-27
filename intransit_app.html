@@ -1525,8 +1525,8 @@ const CONFIG = {
   REPS: ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan'],
   REP_DISPLAY_NAMES: {
     'CKaren':'Karen Mancebo','BillP':'Bill Pratt','PIan':'Ian Pitman',
-    'RMauricio':'Mauricio Rangel','LMancera':'Lizeth Mancera','bcastor':'Brandon Castor',
-    'FJohn':'John Fluman','ADMIN':'John Fluman','Anolan':'Ana Nolan',
+    'RMauricio':'Mauricio Rangel','LMancera':'Luis Mancera','bcastor':'Brandon Castor',
+    'FJohn':'John Fluman','ADMIN':'John Fluman','Anolan':'Anthony Nolan',
     'CMancilla':'Carlos Mancilla','MPerezfreye':'Manuel Perezfreyre'
   },
   REP_EMAIL_MAP: {
@@ -3346,7 +3346,7 @@ function completeLogin() {
       const _reps = CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan'];
       let _admHtml = '<option value="">── Admin View ──</option>';
       _admHtml += '<option disabled>── Individual Reps ──</option>';
-      _reps.forEach(function(r){ _admHtml += '<option value="' + r + '">' + r + '</option>'; });
+      _reps.forEach(function(r){ _admHtml += '<option value="' + r + '">' + (CONFIG.REP_DISPLAY_NAMES[r]||r) + '</option>'; });
       _admHtml += '<option disabled>── Manager Views ──</option>';
       Object.entries(MANAGER_CONFIG).forEach(function(e){
         _admHtml += '<option value="__MGR_' + e[0] + '">📊 ' + e[1].teamName + ' (All)</option>';
@@ -3378,7 +3378,7 @@ function completeLogin() {
       // List team members — skip the manager's own repId since "My Accounts" already covers them
       teamReps.forEach(function(r) {
         if (r === state.repId) return;
-        optHtml += '<option value="' + r + '">' + r + '</option>';
+        optHtml += '<option value="' + r + '">' + (CONFIG.REP_DISPLAY_NAMES[r]||r) + '</option>';
       });
       _viewAsSetOptions(optHtml);
       if (!isRepAndMgr) {
@@ -9811,7 +9811,7 @@ function debugRestoreAdmin() {
     var _reps = CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan'];
     var _html = '<option value="">── Admin View ──</option>';
     _html += '<option disabled>── Individual Reps ──</option>';
-    _reps.forEach(function(r){ _html += '<option value="' + r + '">' + r + '</option>'; });
+    _reps.forEach(function(r){ _html += '<option value="' + r + '">' + (CONFIG.REP_DISPLAY_NAMES[r]||r) + '</option>'; });
     _html += '<option disabled>── Manager Views ──</option>';
     Object.entries(MANAGER_CONFIG).forEach(function(e){
       _html += '<option value="__MGR_' + e[0] + '">📊 ' + e[1].teamName + ' (All)</option>';

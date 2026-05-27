@@ -13071,14 +13071,15 @@ function mgrIntelLookup(query) {
     });
   }
 
-  // Hard safety net: if a broad-match gpCache result was used, verify at least one BUYER_NAME
-  // actually contains a query word. If not, the match is spurious (e.g., "Neros Technologies"
-  // matched via "technologies" from "Zebra Technologies", or "Ozkon Inc." via "inc" from "Ontic Inc.").
-  // Discard and let historyCache / acc.years fallbacks handle it instead.
+  // Hard safety net: broad-match gpCache result must contain a DISTINCTIVE query word in the buyer name.
+  // "Zebra Technologies Corporation" → distinctive = ["zebra"]; "Neros Technologies" lacks "zebra" → discard.
+  // Uses the same stop-word list as the 3rd fallback so generic terms never count as a valid match.
   if (gpRows.length && usedAnyGP) {
-    var _qChk = qWords.length ? qWords : [normQ];
-    var _valid = gpRows.some(function(r){ var b=norm(r[gpBuyerCol]||''); return _qChk.some(function(w){ return b.indexOf(w)>-1; }); });
-    if (!_valid) { gpRows = []; console.log('[INTEL] Discarded spurious gpCache broad-match for:', query); }
+    var _gwNet = /^(inc|llc|ltd|corp|co|sa|de|cv|srl|bv|ag|gmbh|mex|the|and|for|technologies|manufacturing|engineering|systems|solutions|international|industries|corporation|company|services|group|holdings|partners|enterprises|consulting|distribution|logistics|products|global|mexico|america)$/i;
+    var _dWords = qWords.filter(function(w){ return w.length > 3 && !_gwNet.test(w); });
+    if (!_dWords.length) _dWords = qWords;
+    var _valid = gpRows.some(function(r){ var b=norm(r[gpBuyerCol]||''); return _dWords.some(function(w){ return b.indexOf(w)>-1; }); });
+    if (!_valid) { gpRows = []; console.log('[INTEL] Discarded spurious broad-match (no distinctive word) for:', query); }
   }
 
   // Last resort: synthesize gpRows from _TRANSFER_HISTORY lines when gpCache has no BUYER_NAME match
@@ -13116,13 +13117,16 @@ function mgrIntelLookup(query) {
   if (!gpRows.length) {
     var _hcSearchKeys = [normQ].concat((accMatches||[]).slice(0,4).map(function(a){ return norm(a.name||''); }));
     var _hcKey = null;
+    var _gwHC = /^(inc|llc|ltd|corp|co|sa|de|cv|srl|bv|ag|gmbh|mex|the|and|for|technologies|manufacturing|engineering|systems|solutions|international|industries|corporation|company|services|group|holdings|partners|enterprises|consulting|distribution|logistics|products|global|mexico|america)$/i;
     Object.keys(state.historyCache||{}).forEach(function(k) {
       var nk = norm(k);
       var hit = _hcSearchKeys.some(function(sq) {
-        var sw = sq.split(/\s+/).filter(function(w){ return w.length > 2; });
+        // Strip generic words first so "technologies" from "Zebra Technologies" can't match "Neros Technologies"
+        var sw = sq.split(/\s+/).filter(function(w){ return w.length > 2 && !_gwHC.test(w); });
+        if (!sw.length) sw = sq.split(/\s+/).filter(function(w){ return w.length > 2; }); // all generic — use raw
         if (!sw.length) sw = [sq];
-        return sw.every(function(w){ return nk.indexOf(w) > -1; }) ||
-               (sw.length >= 2 && sw.some(function(w){ return nk.indexOf(w) > -1; }));
+        // AND-only: all distinctive words must be present; no OR fallback (avoids generic-word false matches)
+        return sw.every(function(w){ return nk.indexOf(w) > -1; });
       });
       if (hit && (!_hcKey || norm(k).length < norm(_hcKey).length)) _hcKey = k;
     });

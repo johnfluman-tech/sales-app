@@ -13007,6 +13007,37 @@ function mgrIntelLookup(query) {
     }
   }
 
+  // 5th fallback: synthesize from historyCache (keyed by company name, covers all current-rep accounts)
+  // gpCache BUYER_NAME = buyer contact person — searching by company name always fails there.
+  // historyCache IS indexed by company name, so this covers any regular account like Ontic.
+  if (!gpRows.length) {
+    var _hcSearchKeys = [normQ].concat((accMatches||[]).slice(0,4).map(function(a){ return norm(a.name||''); }));
+    var _hcKey = null;
+    Object.keys(state.historyCache||{}).forEach(function(k) {
+      var nk = norm(k);
+      var hit = _hcSearchKeys.some(function(sq) {
+        var sw = sq.split(/\s+/).filter(function(w){ return w.length > 2; });
+        if (!sw.length) sw = [sq];
+        return sw.every(function(w){ return nk.indexOf(w) > -1; }) ||
+               (sw.length >= 2 && sw.some(function(w){ return nk.indexOf(w) > -1; }));
+      });
+      if (hit && (!_hcKey || norm(k).length < norm(_hcKey).length)) _hcKey = k;
+    });
+    if (_hcKey && (state.historyCache[_hcKey].invoices||[]).length) {
+      gpRows = (state.historyCache[_hcKey].invoices||[]).map(function(inv) {
+        var r = {};
+        r[gpBuyerCol] = _hcKey;
+        r[gpRevCol]   = inv.lineTotal || 0;
+        r[gpDateCol]  = inv.date || '';
+        r[gpRepCol]   = inv.rep || '';
+        r['GP']       = 0;
+        return r;
+      });
+      usedAnyGP = true;
+      console.log('[INTEL] Synthesized', gpRows.length, 'gpRows from historyCache for:', _hcKey);
+    }
+  }
+
   // Nothing found — show "Did you mean?" suggestions from state.accounts
   if (!accMatches.length && !gpRows.length) {
     var suggestions = allAccs.map(function(a){ return {a:a,score:scoreFn(a.name||'')}; })

@@ -1162,6 +1162,12 @@ body::before {
           <span class="nav-icon">⊹</span> Attack Plan
         </div>
       </div>
+      <div class="nav-item" id="nav-available-pool" data-view="availablePool" onclick="switchView('availablePool')">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#127942;</span> Available Accounts
+          <span class="nav-badge" id="badge-available-pool" style="background:var(--green)"></span>
+        </div>
+      </div>
       <div class="nav-section-label">System</div>
       <div class="nav-item" id="nav-request-log" data-view="requestLog" onclick="switchView('requestLog')">
         <div class="nav-item-inner">
@@ -1180,6 +1186,14 @@ body::before {
         <div class="nav-item-inner">
           <span class="nav-icon">&#128274;</span> Hidden Accounts
           <span class="nav-badge" id="badge-hidden-accounts" style="background:var(--orange)"></span>
+        </div>
+      </div>
+      <!-- Admin/Manager: Pool Management -->
+      <div class="nav-item" id="nav-pool-management" data-view="poolManagement" onclick="switchView('poolManagement')"
+           style="display:none;border-left:2px solid #14b8a6">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#127946;</span> Pool Management
+          <span class="nav-badge" id="badge-pool-management" style="background:#14b8a6"></span>
         </div>
       </div>
       <!-- Admin-only: Removal/Hold/Transfer Requests -->
@@ -1853,6 +1867,7 @@ async function loadSupplementalData() {
     loadTransferHistory().catch(e => console.warn('Transfer history load failed:', e));
     loadProspects().catch(e => console.warn('Prospects load failed:', e));
     loadLastRunTime().catch(e => console.warn('Last run time load failed:', e));
+    loadPoolManaged().catch(e => console.warn('Pool managed load failed:', e));
 
     // Auto-render Daily Mission now that all core data is ready
     if (state.activeView === 'followup') {
@@ -3130,7 +3145,8 @@ let state = {
   gpCache: [],            // GP records
   gpLoadError: null,
   reqsCache: [],          // flat reqs for dashboard counting
-  collectionsCache: {},          // keyed by customer name — balance/risk from _COLLECTIONS
+  collectionsCache: {},
+  poolManagedCache: null,          // keyed by customer name — balance/risk from _COLLECTIONS
   collectionsNotes: {},        // keyed by customer name — collections-specific notes
   collectionsInvoicesCache: {}, // keyed by customer name — open invoices
   signaturesCache: {},          // keyed by rep ID — email signatures
@@ -3347,6 +3363,8 @@ function completeLogin() {
     if (suggBoardNav) suggBoardNav.style.display = 'block';
     const notesFeedNav = document.getElementById('nav-notes-feed');
     if (notesFeedNav) notesFeedNav.style.display = 'block';
+    const poolMgmtNav = document.getElementById('nav-pool-management');
+    if (poolMgmtNav) poolMgmtNav.style.display = 'block';
     loadSuggestionsBoardBadge();
     // Populate admin View As dropdown
     const _admSel = document.getElementById('view-as-select');
@@ -3365,6 +3383,8 @@ function completeLogin() {
   state.managerRole = getManagerRole(state.repId, state.user ? state.user.email || '' : '');
   if (isManager() || isAdmin()) {
     document.getElementById('nav-manager-hub').style.display = 'block';
+    const _pmNav = document.getElementById('nav-pool-management');
+    if (_pmNav) _pmNav.style.display = 'block';
   }
   if (isManager()) {
     document.getElementById('view-as-section').style.display = 'block';
@@ -4132,6 +4152,12 @@ function switchView(view) {
     setTimeout(restoreSplitPositions, 30);
   } else if (view === 'hiddenAccounts') {
     renderHiddenAccountsView();
+    setTimeout(restoreSplitPositions, 30);
+  } else if (view === 'poolManagement') {
+    renderPoolManagementView();
+    setTimeout(restoreSplitPositions, 30);
+  } else if (view === 'availablePool') {
+    renderAvailablePoolView();
     setTimeout(restoreSplitPositions, 30);
   } else if (view === 'access') {
     renderAccessLog();
@@ -6965,6 +6991,344 @@ async function approveReturnRequest(accName, repId) {
 }
 
 // ══════════════════════════════════════════════════════════
+//  POOL MANAGEMENT — Inactive Account Curation
+// ══════════════════════════════════════════════════════════
+
+async function loadPoolManaged(force) {
+  if (!force && state.poolManagedCache !== null) return;
+  try {
+    var rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A1:H2000");
+    if (!rows || rows.length < 2) { state.poolManagedCache = []; return; }
+    var hdr = rows[0].map(function(h){ return (h||'').toUpperCase().trim(); });
+    var iName = hdr.indexOf('ACCOUNT_NAME');
+    var iSrc  = hdr.indexOf('SOURCE_REP');
+    var iPri  = hdr.indexOf('PRIORITY');
+    var iSt   = hdr.indexOf('STATUS');
+    var iAsgn = hdr.indexOf('ASSIGNED_TO');
+    var iAppr = hdr.indexOf('APPROVED_BY');
+    var iDate = hdr.indexOf('APPROVED_DATE');
+    var iNote = hdr.indexOf('NOTES');
+    state.poolManagedCache = rows.slice(1).map(function(r){
+      return {
+        name:         (r[iName]||'').trim(),
+        sourceRep:    (r[iSrc] ||'').trim(),
+        priority:     (r[iPri] ||'Warm').trim(),
+        status:       (r[iSt]  ||'AVAILABLE').trim().toUpperCase(),
+        assignedTo:   (r[iAsgn]||'ALL').trim(),
+        approvedBy:   (r[iAppr]||'').trim(),
+        approvedDate: (r[iDate]||'').trim(),
+        notes:        (r[iNote]||'').trim(),
+      };
+    }).filter(function(r){ return !!r.name; });
+    console.log('[POOL] Loaded', state.poolManagedCache.length, 'pool records');
+    _updatePoolBadge();
+  } catch(e) {
+    console.warn('[POOL] loadPoolManaged failed:', e);
+    state.poolManagedCache = [];
+  }
+}
+
+function _updatePoolBadge() {
+  var badge = document.getElementById('badge-available-pool');
+  if (!badge) return;
+  var myRep = state.repId;
+  var avail = (state.poolManagedCache||[]).filter(function(p){
+    return p.status === 'AVAILABLE' && (p.assignedTo === 'ALL' || p.assignedTo === myRep);
+  });
+  badge.textContent = avail.length ? avail.length : '';
+}
+
+async function poolSaveRecord(record) {
+  var row = [record.name, record.sourceRep, record.priority, record.status, record.assignedTo,
+             record.approvedBy, record.approvedDate, record.notes];
+  try {
+    var rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A1:H2000");
+    if (rows && rows.length > 1) {
+      for (var i = 1; i < rows.length; i++) {
+        if ((rows[i][0]||'').trim().toLowerCase() === record.name.toLowerCase()) {
+          var rng = "'_POOL_MANAGED'!A" + (i+1) + ":H" + (i+1);
+          await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, rng, [row]);
+          return;
+        }
+      }
+    }
+    await sheetsAppend("'_POOL_MANAGED'!A1", [row], CONFIG.HISTORY_SPREADSHEET_ID);
+  } catch(e) {
+    console.warn('[POOL] poolSaveRecord failed:', e);
+    await sheetsAppend("'_POOL_MANAGED'!A1", [row], CONFIG.HISTORY_SPREADSHEET_ID);
+  }
+}
+
+async function poolMarkAvailable(accName, sourceRep, priority) {
+  var today = new Date().toISOString().slice(0,10);
+  var rec = { name: accName, sourceRep: sourceRep, priority: priority||'Warm',
+              status: 'AVAILABLE', assignedTo: 'ALL', approvedBy: state.repId, approvedDate: today, notes: '' };
+  if (!state.poolManagedCache) state.poolManagedCache = [];
+  var idx = state.poolManagedCache.findIndex(function(p){ return p.name.toLowerCase() === accName.toLowerCase(); });
+  if (idx >= 0) state.poolManagedCache[idx] = rec;
+  else state.poolManagedCache.push(rec);
+  await poolSaveRecord(rec);
+  showToast(accName + ' added to available pool.', 'success');
+  _updatePoolBadge();
+  renderPoolManagementView();
+}
+
+async function poolMarkHidden(accName) {
+  if (!state.poolManagedCache) state.poolManagedCache = [];
+  var idx = state.poolManagedCache.findIndex(function(p){ return p.name.toLowerCase() === accName.toLowerCase(); });
+  var today = new Date().toISOString().slice(0,10);
+  var acc = (state.accounts||[]).find(function(a){ return a.name === accName; }) || {};
+  var rec = { name: accName, sourceRep: acc.rep||'', priority: 'Cold',
+              status: 'HIDDEN', assignedTo: 'ALL', approvedBy: state.repId, approvedDate: today, notes: '' };
+  if (idx >= 0) { rec.sourceRep = state.poolManagedCache[idx].sourceRep || rec.sourceRep; state.poolManagedCache[idx] = rec; }
+  else state.poolManagedCache.push(rec);
+  await poolSaveRecord(rec);
+  showToast(accName + ' hidden from pool.', 'info');
+  renderPoolManagementView();
+}
+
+async function poolSetPriority(accName, priority) {
+  if (!state.poolManagedCache) return;
+  var idx = state.poolManagedCache.findIndex(function(p){ return p.name.toLowerCase() === accName.toLowerCase(); });
+  if (idx < 0) return;
+  state.poolManagedCache[idx].priority = priority;
+  await poolSaveRecord(state.poolManagedCache[idx]);
+  renderPoolManagementView();
+}
+
+async function poolAssignTo(accName, repId) {
+  if (!state.poolManagedCache) return;
+  var idx = state.poolManagedCache.findIndex(function(p){ return p.name.toLowerCase() === accName.toLowerCase(); });
+  if (idx < 0) return;
+  state.poolManagedCache[idx].assignedTo = repId;
+  await poolSaveRecord(state.poolManagedCache[idx]);
+  showToast('Assigned to ' + repId, 'success');
+  renderPoolManagementView();
+}
+
+async function poolRemoveFromPool(accName) {
+  if (!confirm('Remove "' + accName + '" from the pool entirely? Reps who claimed it will no longer see it.')) return;
+  if (!state.poolManagedCache) state.poolManagedCache = [];
+  var idx = state.poolManagedCache.findIndex(function(p){ return p.name.toLowerCase() === accName.toLowerCase(); });
+  if (idx >= 0) { state.poolManagedCache[idx].status = 'REMOVED'; await poolSaveRecord(state.poolManagedCache[idx]); }
+  showToast(accName + ' removed from pool.', 'info');
+  _updatePoolBadge();
+  renderPoolManagementView();
+}
+
+async function poolClaim(accName) {
+  if (!state.poolManagedCache) return;
+  var idx = state.poolManagedCache.findIndex(function(p){ return p.name.toLowerCase() === accName.toLowerCase(); });
+  if (idx < 0) return;
+  var rec = state.poolManagedCache[idx];
+  rec.status = 'CLAIMED';
+  rec.assignedTo = state.repId;
+  await poolSaveRecord(rec);
+  showToast(accName + ' claimed! Add it to your Attack Plan to start working it.', 'success');
+  _updatePoolBadge();
+  renderAvailablePoolView();
+}
+
+async function poolNotInterested(accName) {
+  if (!state.poolManagedCache) return;
+  var idx = state.poolManagedCache.findIndex(function(p){ return p.name.toLowerCase() === accName.toLowerCase(); });
+  if (idx >= 0) {
+    var rec = state.poolManagedCache[idx];
+    rec.notes = (rec.notes ? rec.notes + '; ' : '') + state.repId + ' not interested ' + new Date().toISOString().slice(0,10);
+    await poolSaveRecord(rec);
+  }
+  showToast('Noted — we\'ll remove this from your view.', 'info');
+  renderAvailablePoolView();
+}
+
+function renderPoolManagementView() {
+  var el = document.getElementById('main-content');
+  if (!el) return;
+  if (!isAdmin() && !state.managerRole) { switchView('accounts'); return; }
+
+  var mgrCfg = getManagerConfig();
+  var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[]).filter(function(r){ return r !== 'FJohn'; });
+
+  var poolSource = (state.accounts||[]).filter(function(a){
+    if (teamReps.indexOf(a.rep) === -1) return false;
+    return isInactive(a) || isDeclining(a);
+  });
+
+  var poolCache = state.poolManagedCache || [];
+  var priColors = { Hot: '#ef4444', Warm: '#f59e0b', Cold: '#3b82f6' };
+  var repNames  = CONFIG.REP_DISPLAY_NAMES || {};
+
+  var inPool = poolSource.filter(function(a){
+    var rec = poolCache.find(function(p){ return p.name.toLowerCase() === a.name.toLowerCase(); });
+    return rec && (rec.status === 'AVAILABLE' || rec.status === 'CLAIMED');
+  });
+  var hiddenFromPool = poolSource.filter(function(a){
+    var rec = poolCache.find(function(p){ return p.name.toLowerCase() === a.name.toLowerCase(); });
+    return rec && rec.status === 'HIDDEN';
+  });
+  var needsReview = poolSource.filter(function(a){
+    var rec = poolCache.find(function(p){ return p.name.toLowerCase() === a.name.toLowerCase(); });
+    return !rec || rec.status === 'REMOVED';
+  });
+
+  function poolCard(a, rec) {
+    var pri = (rec && rec.priority) || 'Warm';
+    var priC = priColors[pri] || '#888';
+    var assignedTo = (rec && rec.assignedTo) || 'ALL';
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid ' + priC + ';border-radius:var(--r2);padding:14px 18px;display:flex;align-items:flex-start;gap:14px;margin-bottom:8px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:14px;font-weight:700;margin-bottom:3px">' + escHtml(a.name) + '</div>' +
+        '<div style="font-size:11px;color:var(--text-3)">Rep: <strong>' + escHtml(a.rep) + '</strong> &middot; $' + formatNum(a.total||0) + ' lifetime &middot; <em>' + escHtml(a.status||'') + '</em></div>' +
+        (a.lastSale ? '<div style="font-size:10px;color:var(--text-3);margin-top:2px">Last sale: ' + escHtml(String(a.lastSale).slice(0,10)) + '</div>' : '') +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">' +
+        '<select data-n="' + escHtml(a.name) + '" onchange="poolSetPriority(this.dataset.n,this.value)" style="padding:4px 6px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:9px;border-radius:var(--r);cursor:pointer">' +
+          ['Hot','Warm','Cold'].map(function(p){ return '<option value="' + p + '"' + (p===pri?' selected':'') + '>' + p + '</option>'; }).join('') +
+        '</select>' +
+        '<select data-n="' + escHtml(a.name) + '" onchange="poolAssignTo(this.dataset.n,this.value)" style="padding:4px 6px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:9px;border-radius:var(--r);cursor:pointer">' +
+          '<option value="ALL"' + (assignedTo==='ALL'?' selected':'') + '>All Reps</option>' +
+          teamReps.map(function(r){ return '<option value="' + r + '"' + (assignedTo===r?' selected':'') + '>' + (repNames[r]||r) + '</option>'; }).join('') +
+        '</select>' +
+        '<span style="background:rgba(20,184,166,0.15);color:#14b8a6;font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:var(--r);font-weight:700">' + ((rec&&rec.status)||'AVAILABLE') + '</span>' +
+        '<button data-n="' + escHtml(a.name) + '" onclick="poolRemoveFromPool(this.dataset.n)" style="padding:5px 10px;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">REMOVE</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function reviewCard(a) {
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:14px 18px;display:flex;align-items:flex-start;gap:14px;margin-bottom:8px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:14px;font-weight:700;margin-bottom:3px">' + escHtml(a.name) + '</div>' +
+        '<div style="font-size:11px;color:var(--text-3)">Rep: <strong>' + escHtml(a.rep) + '</strong> &middot; $' + formatNum(a.total||0) + ' lifetime &middot; <em>' + escHtml(a.status||'') + '</em></div>' +
+        (a.lastSale ? '<div style="font-size:10px;color:var(--text-3);margin-top:2px">Last sale: ' + escHtml(String(a.lastSale).slice(0,10)) + '</div>' : '') +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
+        '<button data-n="' + escHtml(a.name) + '" data-r="' + escHtml(a.rep) + '" onclick="poolMarkAvailable(this.dataset.n,this.dataset.r,\'Warm\')" style="padding:6px 12px;background:rgba(20,184,166,0.12);border:1px solid #14b8a6;color:#14b8a6;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">+ ADD TO POOL</button>' +
+        '<button data-n="' + escHtml(a.name) + '" onclick="poolMarkHidden(this.dataset.n)" style="padding:6px 10px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">HIDE</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  var inPoolHtml = inPool.length
+    ? inPool.map(function(a){ var rec = poolCache.find(function(p){ return p.name.toLowerCase()===a.name.toLowerCase(); }); return poolCard(a,rec); }).join('')
+    : '<div style="padding:20px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">No accounts in pool yet &mdash; add some from the review section below</div>';
+
+  var needsHtml = needsReview.length
+    ? needsReview.map(function(a){ return reviewCard(a); }).join('')
+    : '<div style="padding:20px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">All inactive accounts have been reviewed &#10003;</div>';
+
+  var hiddenHtml = hiddenFromPool.length
+    ? hiddenFromPool.map(function(a){
+        return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:12px 18px;display:flex;align-items:center;gap:14px;margin-bottom:6px;opacity:0.7">' +
+          '<div style="flex:1;font-size:13px;font-weight:600">' + escHtml(a.name) + ' <span style="font-size:10px;color:var(--text-3);font-weight:400">' + escHtml(a.rep) + '</span></div>' +
+          '<button data-n="' + escHtml(a.name) + '" data-r="' + escHtml(a.rep) + '" onclick="poolMarkAvailable(this.dataset.n,this.dataset.r,\'Warm\')" style="padding:5px 10px;background:rgba(59,130,246,0.1);border:1px solid var(--blue-b);color:var(--blue-b);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">RESTORE TO POOL</button>' +
+        '</div>';
+      }).join('')
+    : '';
+
+  el.innerHTML =
+    '<div style="padding:28px 32px;max-width:1000px">' +
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">' +
+        '<div style="font-size:18px;font-weight:700">&#127946; Pool Management</div>' +
+        '<span style="background:#14b8a6;color:#fff;font-size:10px;font-family:var(--mono);padding:2px 10px;border-radius:10px">' + inPool.length + ' in pool</span>' +
+        '<span style="background:var(--s2);color:var(--text-3);font-size:10px;font-family:var(--mono);padding:2px 10px;border-radius:10px">' + needsReview.length + ' needs review</span>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--text-3);margin-bottom:28px">Curate which inactive accounts are visible to reps in <strong>Available Accounts</strong>. Add accounts to the pool to make them claimable, or hide ones that aren\'t suitable opportunities.</div>' +
+
+      '<div style="font-family:var(--mono);font-size:10px;color:#14b8a6;letter-spacing:0.1em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">&#9650; IN POOL &#x2014; AVAILABLE TO REPS (' + inPool.length + ')</div>' +
+      '<div style="margin-bottom:24px">' + inPoolHtml + '</div>' +
+
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--gold);letter-spacing:0.1em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">&#9670; NEEDS REVIEW &#x2014; INACTIVE ACCOUNTS (' + needsReview.length + ')</div>' +
+      '<div style="margin-bottom:24px">' + needsHtml + '</div>' +
+
+      (hiddenFromPool.length ? '<details style="margin-bottom:16px"><summary style="font-family:var(--mono);font-size:10px;color:var(--text-3);cursor:pointer;letter-spacing:0.1em;list-style:none">&#9654; HIDDEN FROM POOL (' + hiddenFromPool.length + ')</summary><div style="margin-top:10px">' + hiddenHtml + '</div></details>' : '') +
+
+    '</div>';
+}
+
+function renderAvailablePoolView() {
+  var el = document.getElementById('main-content');
+  if (!el) return;
+  var myRep = state.repId;
+  var poolCache = state.poolManagedCache;
+
+  if (!poolCache) {
+    el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">Loading pool data...</div>';
+    loadPoolManaged().then(function(){ renderAvailablePoolView(); });
+    return;
+  }
+
+  var available = poolCache.filter(function(p){
+    if (p.status !== 'AVAILABLE') return false;
+    return p.assignedTo === 'ALL' || p.assignedTo === myRep;
+  });
+
+  var enriched = available.map(function(p){
+    var acc = (state.accounts||[]).find(function(a){ return a.name.toLowerCase() === p.name.toLowerCase(); });
+    return { pool: p, acc: acc };
+  });
+
+  var priOrder = { Hot: 0, Warm: 1, Cold: 2 };
+  enriched.sort(function(a, b){
+    return (priOrder[a.pool.priority]||1) - (priOrder[b.pool.priority]||1);
+  });
+
+  var priColors = { Hot: '#ef4444', Warm: '#f59e0b', Cold: '#3b82f6' };
+  var priEmoji  = { Hot: '&#128293;', Warm: '&#127777;', Cold: '&#10052;' };
+  var repNames  = CONFIG.REP_DISPLAY_NAMES || {};
+
+  function availCard(item) {
+    var p = item.pool;
+    var a = item.acc;
+    var priC = priColors[p.priority] || '#888';
+    var priE = priEmoji[p.priority] || '';
+    var lastSale  = a ? (a.lastSale ? String(a.lastSale).slice(0,10) : 'No recent sale') : '';
+    var lifetime  = a ? '$' + formatNum(a.total||0) : '';
+    var status    = a ? escHtml(a.status||'') : 'Inactive';
+    var srcRep    = p.sourceRep || (a ? a.rep : '');
+    var srcRepName = (repNames[srcRep]||srcRep);
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid ' + priC + ';border-radius:var(--r2);padding:16px 18px;margin-bottom:10px">' +
+      '<div style="display:flex;align-items:flex-start;gap:14px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+            '<span style="background:' + priC + ';color:#fff;font-size:9px;font-family:var(--mono);padding:2px 8px;border-radius:10px;font-weight:700">' + priE + ' ' + p.priority.toUpperCase() + '</span>' +
+            '<span style="font-size:15px;font-weight:700">' + escHtml(p.name) + '</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--text-3)">' +
+            (srcRepName ? 'Previously: <strong>' + escHtml(srcRepName) + '</strong>' : '') +
+            (lifetime ? ' &middot; ' + lifetime + ' lifetime' : '') +
+            (lastSale ? ' &middot; Last sale: ' + lastSale : '') +
+            (status ? ' &middot; <em>' + status + '</em>' : '') +
+          '</div>' +
+          (p.notes ? '<div style="font-size:10px;color:var(--text-3);margin-top:4px;font-style:italic">' + escHtml(p.notes.split(';')[0]) + '</div>' : '') +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">' +
+          '<button data-n="' + escHtml(p.name) + '" onclick="poolClaim(this.dataset.n)" style="padding:8px 16px;background:rgba(20,184,166,0.12);border:1px solid #14b8a6;color:#14b8a6;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:10px;font-weight:700">CLAIM</button>' +
+          '<button data-n="' + escHtml(p.name) + '" onclick="poolNotInterested(this.dataset.n)" style="padding:8px 10px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">NOT INTERESTED</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  el.innerHTML =
+    '<div style="padding:28px 32px;max-width:900px">' +
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">' +
+        '<div style="font-size:18px;font-weight:700">&#127942; Available Accounts</div>' +
+        '<span style="background:' + (enriched.length ? '#14b8a6' : 'var(--s2)') + ';color:' + (enriched.length ? '#fff' : 'var(--text-3)') + ';font-size:10px;font-family:var(--mono);padding:2px 10px;border-radius:10px">' + enriched.length + ' available</span>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--text-3);margin-bottom:24px">Inactive accounts approved by management for you to pursue. <strong>Claim</strong> an account to start working it, or click <strong>Not Interested</strong> to dismiss it.</div>' +
+      (enriched.length
+        ? '<div>' + enriched.map(availCard).join('') + '</div>'
+        : '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:40px;text-align:center;color:var(--text-3)">' +
+            '<div style="font-size:28px;margin-bottom:10px">&#127942;</div>' +
+            '<div style="font-family:var(--mono);font-size:11px">No accounts available right now</div>' +
+            '<div style="font-size:11px;color:var(--text-3);margin-top:6px">Your manager adds accounts here as opportunities become available.</div>' +
+          '</div>'
+      ) +
+    '</div>';
+}
+
+// ══════════════════════════════════════════════════════════
 //  FOLLOW-UP COMMAND CENTER
 // ══════════════════════════════════════════════════════════
 
@@ -9321,6 +9685,8 @@ function switchViewAs(rep) {
     // Manager Hub: visible in own admin view or manager simulation; hidden when viewing as regular rep
     const _mgrHubNav = document.getElementById('nav-manager-hub');
     if (_mgrHubNav) _mgrHubNav.style.display = showAdminNav ? 'block' : 'none';
+    const _poolMgmtNavEl = document.getElementById('nav-pool-management');
+    if (_poolMgmtNavEl) _poolMgmtNavEl.style.display = showAdminNav ? 'block' : 'none';
     // Suggestions board: only show in own admin view — hidden in all view-as modes
     const _suggNav = document.getElementById('nav-suggestions-board');
     if (_suggNav) _suggNav.style.display = !state.viewAsRep ? 'block' : 'none';

@@ -1,5 +1,19 @@
 "At the end of every session, update this file with new files created, functions added, bugs fixed, and any new rules learned."
 
+## ⚠ CRITICAL — NEVER REGRESS THESE BEHAVIORS
+
+These things have broken more than once. Do not break them again:
+
+1. **Hidden accounts** — accounts hidden via Requests & Approvals (JOHN_APPROVAL='YES') must persist across page reloads. Two-layer system: (a) JOHN_APPROVAL column in rep tab, (b) `_HIDDEN_ACCOUNTS` tab in History sheet read by `loadHiddenAccountsTab()`. The tab has NO header row — `loadHiddenAccountsTab()` detects this and reads positionally [name, rep, status]. Do NOT add a header check that returns early. Do NOT change column order in `approveRemovalDirect()`.
+
+2. **Note history deduplication** — `loadNoteHistory()` must be called ONCE after all tabs load, NOT once per tab. Called at the bottom of the `loadAllAccounts()` loop (after all tabs finish). Calling it per-tab multiplies every note by the number of tabs (8× for admin).
+
+3. **_CONTACT_NOTES in History sheet** — all reads/writes must use `CONFIG.HISTORY_SPREADSHEET_ID`, never `CONFIG.SPREADSHEET_ID` (Main is at cell limit).
+
+4. **applyLanguage() nav icons** — must walk `.nav-item-inner` childNodes and update only the text node. Never set `el.textContent` or `el.innerHTML` on `.nav-item` — destroys badges and icons.
+
+5. **Account Intel generic-word matching** — stop-word list (`technologies`, `manufacturing`, `engineering`, `corporation`, `inc`, etc.) must be applied in the safety net AND in the historyCache 5th fallback. "Zebra Technologies" → distinctive word = "zebra" only. Never remove this filtering.
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.

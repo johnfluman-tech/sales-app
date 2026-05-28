@@ -3432,11 +3432,15 @@ function completeLogin() {
     // Apply persistent hidden list — survives sales_report.py overwrites of rep tabs
     try {
       const _pHidden = await loadHiddenAccountsTab();
+      console.log('[HIDDEN] Persistent hidden set size:', _pHidden.size);
       if (_pHidden.size > 0) {
         const _toHide = state.accounts.filter(function(a){ return _pHidden.has(a.name.toLowerCase().trim()); });
         state.accounts = state.accounts.filter(function(a){ return !_pHidden.has(a.name.toLowerCase().trim()); });
         _toHide.forEach(function(a){ a.johnApproval = 'YES'; state.hiddenAccounts.push(a); });
-        if (_toHide.length) console.log('[HIDDEN] Applied', _toHide.length, 'persistent hidden accounts:', _toHide.map(function(a){ return a.name; }));
+        console.log('[HIDDEN] Applied', _toHide.length, 'persistent hidden accounts:', _toHide.map(function(a){ return a.name; }));
+        if (_toHide.length === 0 && _pHidden.size > 0) {
+          console.warn('[HIDDEN] WARNING: hidden accounts in tab but none matched state.accounts names — check name case/spacing');
+        }
       }
     } catch(e) { console.warn('[HIDDEN] Could not load hidden accounts tab:', e.message); }
     console.log('[ACCOUNTS] Loaded', state.accounts.length, 'accounts | repId:', state.repId, '| viewAsRep:', state.viewAsRep, '| managerRole:', state.managerRole);
@@ -6522,21 +6526,25 @@ async function unhideAccount(accountName) {
 async function loadHiddenAccountsTab() {
   try {
     const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_HIDDEN_ACCOUNTS'!A:C");
-    if (!rows || rows.length < 2) return new Set();
-    const header = rows[0].map(function(h){ return (h||'').toUpperCase().trim(); });
-    const iName = header.indexOf('ACCOUNT_NAME');
-    const iStatus = header.indexOf('STATUS');
-    if (iName < 0) return new Set();
+    if (!rows || rows.length < 1) return new Set();
+    // Detect whether row 0 is a real header or a data row
+    const firstRow = rows[0].map(function(h){ return (h||'').toUpperCase().trim(); });
+    const hasHeader = firstRow[0] === 'ACCOUNT_NAME' || firstRow[2] === 'STATUS';
+    // If no header: columns are positional [ACCOUNT_NAME, REP, STATUS]
+    const iName   = hasHeader ? firstRow.indexOf('ACCOUNT_NAME') : 0;
+    const iStatus = hasHeader ? firstRow.indexOf('STATUS')       : 2;
+    const dataRows = hasHeader ? rows.slice(1) : rows;
     const statusMap = {};
-    rows.slice(1).forEach(function(r) {
-      const name = (r[iName]||'').trim();
-      const status = iStatus >= 0 ? (r[iStatus]||'HIDDEN').toUpperCase() : 'HIDDEN';
+    dataRows.forEach(function(r) {
+      const name   = (r[iName]  || '').trim();
+      const status = (r[iStatus] || 'HIDDEN').toUpperCase();
       if (name) statusMap[name.toLowerCase()] = { name: name, status: status };
     });
     const hiddenSet = new Set();
     Object.values(statusMap).forEach(function(e){ if (e.status === 'HIDDEN') hiddenSet.add(e.name.toLowerCase()); });
+    console.log('[HIDDEN] loadHiddenAccountsTab: found', hiddenSet.size, 'hidden accounts in _HIDDEN_ACCOUNTS tab');
     return hiddenSet;
-  } catch(e) { return new Set(); }
+  } catch(e) { console.warn('[HIDDEN] Could not read _HIDDEN_ACCOUNTS tab:', e.message); return new Set(); }
 }
 
 async function approveRemovalDirect(accountName) {

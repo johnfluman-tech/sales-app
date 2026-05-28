@@ -4497,8 +4497,8 @@ function renderDetail(acc) {
   const panel = document.getElementById('detail-panel');
   if (!panel) return;
 
-  const years = Object.keys(acc.years).sort();
-  const maxVal = Math.max(...Object.values(acc.years), 1);
+  const years = Object.keys(acc.years || {}).sort();
+  const maxVal = years.length ? Math.max(...Object.values(acc.years), 1) : 1;
 
   const barsHtml = years.map(y => {
     const val = acc.years[y] || 0;
@@ -4630,7 +4630,7 @@ function renderNotesTab(acc) {
   // Also include current note from sheet if not already in history
   let allNotes = [...history];
   if (acc.repNote && acc.repNote.trim()) {
-    const alreadyIn = allNotes.some(n => n.note === acc.repNote);
+    const alreadyIn = allNotes.some(n => (n.note||'').trim().replace(/\s+/g,' ') === (acc.repNote||'').trim().replace(/\s+/g,' '));
     if (!alreadyIn) {
       allNotes.unshift({
         timestamp: 'Current',
@@ -4782,13 +4782,13 @@ function renderEmailTab(acc) {
       </div>` : `
       <div>
         <div style="font-size:11px;color:var(--orange);padding:8px 12px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:var(--r);margin-bottom:6px">
-          ⚠ No email contacts found for: <strong>${escHtml(name)}</strong>
+          ⚠ No email contacts found for: <strong>${escHtml(acc.name)}</strong>
         </div>
         <div style="margin-top:8px;padding:8px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r)">
           <div style="font-size:10px;color:var(--text-3);font-family:var(--mono);margin-bottom:5px">Enter email manually to proceed:</div>
-            <input type="text" id="coll-manual-email" placeholder="accounts@company.com"
+            <input type="text" id="email-tab-manual-email" placeholder="accounts@company.com"
               style="background:var(--s1);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px 8px;width:200px;font-family:var(--font);outline:none;border-radius:var(--r)">
-            <button onclick="applyManualEmail()" style="background:var(--blue-b);border:none;color:#fff;font-size:10px;font-family:var(--mono);padding:5px 10px;cursor:pointer;border-radius:var(--r);margin-left:6px">USE THIS EMAIL</button>
+            <button onclick="(function(){ var v=document.getElementById('email-tab-manual-email')?.value.trim(); if(!v){showToast('Enter an email address','error');return;} var sel=document.getElementById('email-to-contact'); if(sel){ var opt=document.createElement('option'); opt.value=v; opt.text=v; opt.selected=true; sel.appendChild(opt); } showToast('Email set: '+v,'success'); })()" style="background:var(--blue-b);border:none;color:#fff;font-size:10px;font-family:var(--mono);padding:5px 10px;cursor:pointer;border-radius:var(--r);margin-left:6px">USE THIS EMAIL</button>
           </div>
       </div>`}
 
@@ -4834,7 +4834,7 @@ function renderCollectionsTab(acc) {
   if (!c) {
     return `<div class="note-empty">NO OPEN BALANCE<br><span style="font-size:10px;margin-top:4px;display:block;color:var(--green)">✓ Account is current</span></div>`;
   }
-  const riskColor = c.risk.includes('HIGH') ? 'var(--red)' : c.risk.includes('WATCH') ? 'var(--orange)' : 'var(--accent)';
+  const riskColor = c.risk?.includes('HIGH') ? 'var(--red)' : c.risk?.includes('WATCH') ? 'var(--orange)' : c.risk ? 'var(--accent)' : 'var(--text-3)';
   return `
     <div style="padding:14px;background:var(--navy-mid);border:1px solid var(--border);border-left:3px solid ${riskColor};margin-bottom:12px">
       ${c.risk ? `<div style="font-family:var(--font-mono);font-size:11px;color:${riskColor};margin-bottom:8px">${escHtml(c.risk)}</div>` : ''}
@@ -4854,9 +4854,9 @@ function renderCollectionsTab(acc) {
 }
 
 function renderInfoTab(acc) {
-  const years = Object.keys(acc.years).sort();
+  const years = Object.keys(acc.years || {}).sort();
   const vals = years.map(function(y){ return acc.years[y] || 0; });
-  const maxVal = Math.max.apply(null, vals) || 1;
+  const maxVal = Math.max.apply(null, vals.length ? vals : [0]) || 1;
 
   // SVG bar chart
   const barW = 28, barGap = 6, chartH = 80, labelH = 18;
@@ -8881,9 +8881,10 @@ function renderFollowUpCommandCenter() {
     wrap.appendChild(barWrap);
     el.appendChild(wrap);
 
-    let pct = 5;
+    let pct = 5; let _pollTicks = 0;
     const poll = setInterval(() => {
       if (state.activeView !== 'followup') { clearInterval(poll); return; }
+      _pollTicks++;
       pct = Math.min(92, pct + 6);
       const b = document.getElementById('iq-load-bar');
       if (b) b.style.width = pct + '%';
@@ -8894,6 +8895,9 @@ function renderFollowUpCommandCenter() {
         const b2 = document.getElementById('iq-load-bar');
         if (b2) { b2.style.width = '100%'; b2.style.background = 'var(--green)'; }
         setTimeout(() => { if (state.activeView === 'followup') renderFollowUpCommandCenter(); }, 400);
+      } else if (_pollTicks > 60) {
+        clearInterval(poll);
+        el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:14px;font-family:var(--mono)"><div style="font-size:28px">⏱</div><div style="font-size:13px;color:var(--text-muted)">Data is taking a long time to load</div><div style="font-size:11px;color:var(--text-3)">Google Sheets may be slow. Try reloading the page.</div><button onclick="location.reload()" style="margin-top:8px;background:var(--blue-b);border:none;color:#fff;padding:9px 24px;border-radius:4px;font-size:12px;cursor:pointer;font-family:var(--mono)">↻ Reload</button></div>';
       }
     }, 1500);
 
@@ -10668,7 +10672,7 @@ async function refreshDashboard() {
 
   // ── Rep table (admin only) ────────────────────────────────────
   const repTableEl = document.getElementById('dash-rep-table');
-  if (repTableEl && state.isAdmin && !state.viewAsRep) {
+  if (repTableEl && state.isAdmin) {
     const repStats = {};
     CONFIG.REPS.forEach(rep => {
       const ra  = state.accounts.filter(a => a.rep === rep);
@@ -11113,7 +11117,7 @@ Write a SHORT, professional re-engagement email (3-4 paragraphs max). Be specifi
 Return ONLY a JSON object with two keys: "subject" and "body". No preamble, no markdown.`;
 
     const apiKey = getAnthropicKey();
-    if (!apiKey) return;
+    if (!apiKey) { if (btn) { btn.disabled=false; spinner?.classList.remove('visible'); btn.innerHTML='<div class="email-spinner" id="email-spinner"></div> ✦ GENERATE OUTREACH EMAIL WITH AI'; } return; }
     const response = await callAI({        model: 'claude-sonnet-4-5',        max_tokens: 1000,        messages: [{ role: 'user', content: prompt }]      });
     const data = response;
     const text = data.content?.[0]?.text || '';
@@ -11835,7 +11839,7 @@ function renderCollectionsView() {
         <!-- Account list -->
         <div id="coll-list" style="width:380px;min-width:200px;flex-shrink:0;overflow-y:auto">
           ${collList.map(c => {
-            const riskColor = c.risk?.includes('HIGH') ? 'var(--red)' : c.risk?.includes('WATCH') ? 'var(--orange)' : 'var(--accent)';
+            const riskColor = c.risk?.includes('HIGH') ? 'var(--red)' : c.risk?.includes('WATCH') ? 'var(--orange)' : c.risk ? 'var(--accent)' : 'var(--text-3)';
             const holdBadge = c.appHold === 'YES' ? `<span style="background:rgba(192,57,43,0.2);color:var(--red);font-size:9px;font-family:var(--font-mono);padding:2px 5px;margin-left:6px">HOLD</span>` : '';
             const collNote = state.collectionsNotes[c.name] || {};
             const hasNote = collNote.note;
@@ -11874,6 +11878,8 @@ function filterCollections(type, btn) {
     document.querySelectorAll('#collections-main .filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
   }
+  // Clear search when switching filter tabs so results aren't confusingly filtered
+  const _cs = document.getElementById('coll-search'); if (_cs) _cs.value = '';
   const search = document.getElementById('coll-search')?.value.toLowerCase() || '';
   document.querySelectorAll('.coll-item').forEach(el => {
     const name = el.dataset.name?.toLowerCase() || '';
@@ -12334,7 +12340,7 @@ No markdown, no code fences, no explanation. Just the JSON.`;
   try {
     showToast('Generating ' + toneLabel + '...', 'success');
     const apiKey = getAnthropicKey();
-    if (!apiKey) return;
+    if (!apiKey) { if (btn) { btn.disabled=false; spinner?.classList.remove('visible'); btn.innerHTML='<div class="email-spinner" id="email-spinner"></div> ✦ GENERATE OUTREACH EMAIL WITH AI'; } return; }
     const response = await callAI({        model: 'claude-sonnet-4-5',        max_tokens: 2000,        messages: [{ role: 'user', content: prompt }]      });
     const data = response;
 
@@ -19795,6 +19801,7 @@ function closeAddProspectModal() {
 async function submitAddProspect() {
   const name = (document.getElementById('pf-name') || {}).value || '';
   if (!name.trim()) { showToast('Company name is required', 'error'); return; }
+  if ((state.prospectCache||[]).some(function(p){ return (p.COMPANY_NAME||'').toLowerCase() === name.trim().toLowerCase(); })) { showToast('A prospect named "' + name.trim() + '" already exists', 'error'); return; }
   const cityRaw = (document.getElementById('pf-city') || {}).value || '';
   const cityParts = cityRaw.split(',');
   const p = {

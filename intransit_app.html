@@ -1874,6 +1874,8 @@ async function loadSupplementalData() {
     loadProspects().catch(e => console.warn('Prospects load failed:', e));
     loadLastRunTime().catch(e => console.warn('Last run time load failed:', e));
     loadPoolManaged().catch(e => console.warn('Pool managed load failed:', e));
+    // Silently restore Gmail token if rep approved it in a previous session
+    setTimeout(function(){ if (typeof _gmailSilentReconnect === 'function') _gmailSilentReconnect(); }, 3000);
 
     // Auto-render Daily Mission now that all core data is ready
     if (state.activeView === 'followup') {
@@ -7446,12 +7448,37 @@ function requestGmailAccess(callback) {
         return;
       }
       state.gmailToken = resp.access_token;
-      console.log('[GMAIL] Access granted for scope: gmail.readonly');
+      localStorage.setItem('it_gmail_linked_' + (state.repId||''), '1');
+      console.log('[GMAIL] Access granted + linked for:', state.repId);
       if (callback) callback();
     }
   });
   // Use 'consent' to force the popup — 'none'/'' can silently fail for new scopes
   state.gmailTokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+function _gmailSilentReconnect() {
+  // Called after login — if rep previously approved Gmail, silently get a new token (no popup)
+  if (state.gmailToken) return;
+  if (!localStorage.getItem('it_gmail_linked_' + (state.repId||''))) return;
+  try {
+    var _srtc = google.accounts.oauth2.initTokenClient({
+      client_id: CONFIG.CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/gmail.readonly',
+      hint: state.user ? state.user.email : '',
+      callback: function(resp) {
+        if (resp && resp.access_token) {
+          state.gmailToken = resp.access_token;
+          console.log('[GMAIL] Silent reconnect OK for:', state.repId);
+        } else {
+          console.log('[GMAIL] Silent reconnect skipped:', resp && resp.error);
+        }
+      }
+    });
+    _srtc.requestAccessToken({ prompt: '' });
+  } catch(e) {
+    console.log('[GMAIL] Silent reconnect error:', e.message);
+  }
 }
 
 async function gmailFetch(path, params) {
@@ -11352,7 +11379,7 @@ function renderSettingsView() {
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Connect your Gmail account to see email history with each account's contacts — who you emailed, when, the subject, and whether they replied.</div>
         ${state.gmailToken ?
-          '<button onclick="state.gmailToken=null;state.gmailActivityCache={};showToast(\'Gmail disconnected\',\'info\');switchView(\'settings\')" style="background:transparent;border:1px solid var(--red);color:var(--red);padding:5px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#10005; Disconnect Gmail</button>' :
+          '<button onclick="state.gmailToken=null;state.gmailActivityCache={};localStorage.removeItem(\'it_gmail_linked_\'+(state.repId||\'\'));showToast(\'Gmail disconnected\',\'info\');switchView(\'settings\')" style="background:transparent;border:1px solid var(--red);color:var(--red);padding:5px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#10005; Disconnect Gmail</button>' :
           '<button onclick="requestGmailAccess(function(){showToast(\'Gmail connected!\',\'success\');switchView(\'settings\')})" style="background:var(--blue-b);border:none;color:#fff;padding:5px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128272; Connect Gmail</button>'
         }
         <div style="font-size:11px;color:var(--text-3);margin-top:8px">Read-only access to your Gmail Sent folder only. No emails are stored on our servers.</div>
@@ -14015,9 +14042,19 @@ function renderManagerHub() {
   // Block when admin is simulating a regular (non-manager) rep
   if (isAdmin() && state.viewAsRep && !state.viewingAsManager) { switchView('accounts'); return; }
   var mgrCfg = getManagerConfig();
-  // Admin with no managerRole: show all sales reps (exclude FJohn/admin)
-  var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan']).filter(function(r){ return r !== 'FJohn'; });
-  var teamName = mgrCfg ? mgrCfg.teamName : 'All Reps';
+  // Admin can switch between All Reps and MX Team via window._mgrHubTeam
+  var _mht = window._mgrHubTeam || 'all';
+  var teamReps, teamName;
+  if (isAdmin() && _mht === 'mx') {
+    teamReps = ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor'];
+    teamName = 'MX Team';
+  } else if (mgrCfg) {
+    teamReps = mgrCfg.teamReps;
+    teamName = mgrCfg.teamName;
+  } else {
+    teamReps = (CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan']).filter(function(r){ return r !== 'FJohn'; });
+    teamName = 'All Reps';
+  }
   var tab = window._mgrHubTab || 'scoreboard';
   var content = document.getElementById('main-content');
 
@@ -14049,12 +14086,29 @@ function renderManagerHub() {
   else if (tab === 'intel')         bodyHtml = _mgrIntelHtml(teamReps);
   else if (tab === 'outreach')     bodyHtml = _mgrOutreachHtml(teamReps);
 
+  // Admin team toggle (only shown for admin, not when simulating a manager)
+  var adminTeamToggle = '';
+  if (isAdmin() && !state.viewingAsManager) {
+    var _mht2 = window._mgrHubTeam || 'all';
+    adminTeamToggle = ' <span style="display:inline-flex;gap:3px;margin-left:8px;vertical-align:middle">' +
+      ['all','mx'].map(function(k){
+        var lbl = k === 'all' ? 'All Reps' : 'MX Team';
+        var active = _mht2 === k;
+        return '<button onclick="window._mgrHubTeam=\'' + k + '\';renderManagerHub()" ' +
+          'style="padding:3px 9px;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:3px;' +
+          'background:' + (active ? 'var(--blue-b)' : 'transparent') + ';' +
+          'color:' + (active ? '#fff' : 'var(--text-3)') + ';' +
+          'border:1px solid ' + (active ? 'var(--blue-b)' : 'var(--border)') + '">' + lbl + '</button>';
+      }).join('') +
+      '</span>';
+  }
+
   content.innerHTML =
     '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden">' +
     '<div style="padding:14px 20px 0;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0">' +
     '<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">' +
     '<div style="font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.08em">MANAGER HUB</div>' +
-    '<div style="font-size:11px;color:var(--text-3);font-family:var(--mono)">' + escHtml(teamName) + ' &nbsp;&#183;&nbsp; ' + teamReps.length + ' reps</div>' +
+    '<div style="font-size:11px;color:var(--text-3);font-family:var(--mono)">' + escHtml(teamName) + ' &nbsp;&#183;&nbsp; ' + teamReps.length + ' reps' + adminTeamToggle + '</div>' +
     '</div>' +
     '<div style="display:flex;gap:6px;padding-bottom:0">' + tabBarHtml + '</div>' +
     '</div>' +

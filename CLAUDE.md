@@ -1066,3 +1066,28 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 - Audit trail: `poolLogAction(action, accName, detail)` — writes POOL_ACTION row to `_REQUEST_LOG` in History sheet with actor (state.repId) and timestamp; called from `poolMarkAvailable`, `poolMarkHidden`, `poolAssignTo`, `poolRemoveFromPool`
 - Filter/sort state stored in `window._poolFilter` (`{ tab, rep, sort, search, page }`)
 - New helper functions: `_poolMgmtState`, `poolMgmtTab`, `poolMgmtRep`, `poolMgmtSort`, `poolMgmtSearch`, `poolMgmtShowMore`, `poolLogAction`
+
+
+### 2026-05-28 (session 31 — Gmail Email Activity tab)
+
+**Feature added — Gmail Email Activity (commit `051c43c`):**
+- New **✉ Email Activity** tab added to account detail (after Outreach tab, before Collections)
+- Shows sent email history to account contacts via Gmail API (`gmail.readonly` scope)
+- **Auth:** separate `state.gmailTokenClient` using same `CONFIG.CLIENT_ID` but `gmail.readonly` scope; `state.gmailToken` stored separately from `state.accessToken` (Sheets token)
+- **`requestGmailAccess(callback)`** — creates/reuses `state.gmailTokenClient`; calls `requestAccessToken({prompt:''})` for silent/cached grant; stores token in `state.gmailToken`; calls callback on success
+- **`gmailFetch(path, params)`** — Gmail API wrapper with `Authorization: Bearer` header; throws `gmail_401` on 401 so `gmailLoadForAccount` can clear token and prompt re-connect
+- **`loadGmailActivity(accName)`** — builds `in:sent` query from `state.contactsCache[accName]` contact emails; fetches up to 50 message IDs; fetches metadata headers (To, Subject, Date) for each; checks each thread for replies (thread.messages.length > 1); stores result in `state.gmailActivityCache[accName]`
+- **`renderGmailActivityTab(acc)`** — three states: (1) no token → Connect Gmail button; (2) token but not loaded → Load Email Activity button; (3) loaded → KPI bar (Emails Sent, Got Reply, Reply Rate, Contacts) + message list with subject/to/date/reply badge + Reload button
+- **`gmailConnectAndLoad(accName)`** — calls `requestGmailAccess` then `gmailLoadForAccount`
+- **`gmailLoadForAccount(accName)`** — sets cache to `'loading'`, re-renders tab, calls `loadGmailActivity`, re-renders on completion; handles 401 (clears token, shows reconnect toast) and other errors
+- **Settings Gmail card** — shows Connected/Not connected status; Connect button (triggers OAuth) or Disconnect button (clears token + cache); explains read-only Sent folder access only
+- **Scoped to pilot:** Karen's account first; requires one-time Allow click from each user on Google consent screen
+- **No data stored on servers** — all activity read live from Gmail API; cached in memory only (cleared on page reload)
+
+**New state fields:** `gmailToken`, `gmailTokenClient`, `gmailActivityCache`
+**New functions:** `requestGmailAccess`, `gmailFetch`, `loadGmailActivity`, `renderGmailActivityTab`, `_gmailKpi`, `gmailConnectAndLoad`, `gmailLoadForAccount`
+
+**Setup required:**
+- Add `https://www.googleapis.com/auth/gmail.readonly` to Authorized Scopes in Google Cloud Console OAuth client (client ID: `379521778420-8gjfdn4ea5knllkdvd675klu80tcl8jb.apps.googleusercontent.com`)
+- Each user must click Allow once on the Gmail consent screen (popup appears on first "Connect Gmail" click)
+- Pilot: Karen clicks Connect Gmail in Settings or in the Email Activity tab of any account

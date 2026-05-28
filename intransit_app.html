@@ -3168,6 +3168,9 @@ let state = {
   tokenClient: null,             // stored GIS token client instance
   _pendingRefresh: null,         // {resolve,reject,tid} for refreshTokenSilent()
   hiddenAccounts: [],            // accounts where JOHN_APPROVAL=YES — excluded from all views
+  gmailToken: null,               // OAuth access token for Gmail API (separate scope)
+  gmailTokenClient: null,         // GIS token client for gmail.readonly
+  gmailActivityCache: {},         // keyed by account name → [{contactEmail, messages:[]}]
 };
 // Prevents cascade of handleSignout() calls from concurrent background API failures
 let _signedOut = false;
@@ -4497,8 +4500,8 @@ function renderDetail(acc) {
       </div>`;
   }).join('');
 
-  const tabs = ['notes', 'contacts', 'history', 'email', 'collections', 'research', 'info'];
-  const tabLabels = { notes: t('tabNotes'), contacts: t('tabContacts'), history: t('tabHistory'), email: t('tabOutreach'), collections: t('tabCollections'), research: t('tabResearch'), info: t('tabAccount') };
+  const tabs = ['notes', 'contacts', 'history', 'email', 'gmailActivity', 'collections', 'research', 'info'];
+  const tabLabels = { notes: t('tabNotes'), contacts: t('tabContacts'), history: t('tabHistory'), email: t('tabOutreach'), gmailActivity: '✉ Email Activity', collections: t('tabCollections'), research: t('tabResearch'), info: t('tabAccount') };
 
   const hasRemoveRequest = acc.removeFlag && acc.removeFlag.toUpperCase() !== 'YES' && acc.removeFlag.trim() !== '';
   const johnCanApprove = state.isAdmin && hasRemoveRequest;
@@ -4605,6 +4608,7 @@ function renderDetailTab(acc, tab) {
   if (tab === 'collections') return renderCollectionsTab(acc);
   if (tab === 'info') return renderInfoTab(acc);
   if (tab === 'research') return renderResearchTab(acc);
+  if (tab === 'gmailActivity') return renderGmailActivityTab(acc);
   return '';
 }
 
@@ -7413,6 +7417,212 @@ function renderAvailablePoolView() {
 //  PIPELINE INTELLIGENCE — Follow the Money
 //  Contact-first sales pipeline based on invoice value
 // ══════════════════════════════════════════════════════════
+
+// ── Gmail Email Activity ──────────────────────────────────────────────────
+
+function requestGmailAccess(callback) {
+  if (state.gmailToken) { if (callback) callback(); return; }
+  if (!state.gmailTokenClient) {
+    state.gmailTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CONFIG.CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/gmail.readonly',
+      hint: state.user ? state.user.email : '',
+      callback: function(resp) {
+        if (resp.error) { showToast('Gmail access denied: ' + resp.error, 'error'); return; }
+        state.gmailToken = resp.access_token;
+        console.log('[GMAIL] Access granted');
+        if (callback) callback();
+      }
+    });
+  }
+  state.gmailTokenClient.requestAccessToken({ prompt: '' });
+}
+
+async function gmailFetch(path, params) {
+  var url = 'https://gmail.googleapis.com/gmail/v1/' + path;
+  if (params) {
+    var qs = Object.keys(params).map(function(k){ return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); }).join('&');
+    url += '?' + qs;
+  }
+  var resp = await fetch(url, { headers: { Authorization: 'Bearer ' + state.gmailToken } });
+  if (resp.status === 401) { state.gmailToken = null; throw new Error('gmail_401'); }
+  if (!resp.ok) throw new Error('Gmail API ' + resp.status);
+  return resp.json();
+}
+
+async function loadGmailActivity(accName) {
+  // Get contact emails for this account
+  var normName = accName.trim().toLowerCase();
+  var contacts = state.contactsCache[accName] || state.contactsCache[normName] || [];
+  // Also try normalized lookup
+  if (!contacts.length && state._contactsCacheNorm) {
+    contacts = state._contactsCacheNorm[normName] || [];
+  }
+  var emails = contacts.filter(function(c){ return c.email && c.email.includes('@'); })
+                       .map(function(c){ return c.email.toLowerCase().trim(); });
+  if (!emails.length) return { noContacts: true };
+
+  // Build Gmail query: in:sent AND (to:email1 OR to:email2 ...)
+  var toQuery = emails.map(function(e){ return 'to:' + e; }).join(' OR ');
+  var q = 'in:sent (' + toQuery + ')';
+
+  var data = await gmailFetch('users/me/messages', { q: q, maxResults: '50' });
+  var messages = data.messages || [];
+
+  // Fetch metadata for each message
+  var details = await Promise.all(messages.slice(0, 30).map(async function(m) {
+    try {
+      var msg = await gmailFetch('users/me/messages/' + m.id, {
+        format: 'metadata',
+        metadataHeaders: 'To,Subject,Date'
+      });
+      var headers = {};
+      (msg.payload && msg.payload.headers || []).forEach(function(h){
+        headers[h.name.toLowerCase()] = h.value;
+      });
+      // Check if thread has replies (more than 1 message = got a reply)
+      var threadData = await gmailFetch('users/me/threads/' + msg.threadId, { format: 'minimal' });
+      var replied = (threadData.messages && threadData.messages.length > 1);
+      return {
+        id: m.id,
+        threadId: msg.threadId,
+        subject: headers.subject || '(no subject)',
+        to: headers.to || '',
+        date: headers.date || '',
+        replied: replied,
+        snippet: msg.snippet || ''
+      };
+    } catch(e) { return null; }
+  }));
+
+  var result = details.filter(Boolean);
+  state.gmailActivityCache[accName] = { emails: emails, messages: result, loadedAt: Date.now() };
+  return state.gmailActivityCache[accName];
+}
+
+function renderGmailActivityTab(acc) {
+  var cached = state.gmailActivityCache[acc.name];
+
+  // Build connect / status header
+  var connectHtml = '';
+  if (!state.gmailToken) {
+    connectHtml = '<div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);padding:14px 16px;margin-bottom:16px;border-radius:4px;display:flex;align-items:center;gap:12px">' +
+      '<span style="font-size:22px">✉</span>' +
+      '<div><div style="font-size:13px;font-weight:600;margin-bottom:4px">Gmail Access Required</div>' +
+      '<div style="font-size:11px;color:var(--text-muted)">Connect your Gmail account once to see email history with this account\'s contacts.</div></div>' +
+      '<button data-n="' + escHtml(acc.name) + '" onclick="gmailConnectAndLoad(this.dataset.n)" ' +
+      'style="margin-left:auto;background:var(--blue-b);border:none;color:#fff;padding:6px 14px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;font-family:var(--mono)">&#128272; Connect Gmail</button>' +
+      '</div>';
+  } else if (!cached) {
+    connectHtml = '<div style="margin-bottom:16px">' +
+      '<button data-n="' + escHtml(acc.name) + '" onclick="gmailLoadForAccount(this.dataset.n)" ' +
+      'style="background:var(--blue-b);border:none;color:#fff;padding:7px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128269; Load Email Activity</button>' +
+      '</div>';
+  } else if (cached === 'loading') {
+    connectHtml = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px">Loading email activity...</div>';
+  }
+
+  if (!cached || cached === 'loading') {
+    return '<div style="padding:16px">' + connectHtml + '<div style="font-size:11px;color:var(--text-muted)">Email activity shows emails you sent to this account\'s contacts via Gmail, whether they replied, and subject lines.</div></div>';
+  }
+
+  if (cached.noContacts) {
+    return '<div style="padding:16px"><div style="font-size:12px;color:var(--text-muted)">No contact emails on file for this account. Add contacts in the Contacts tab first.</div></div>';
+  }
+
+  var msgs = cached.messages || [];
+  var emails = cached.emails || [];
+  var loadedAgo = cached.loadedAt ? Math.round((Date.now() - cached.loadedAt) / 60000) + ' min ago' : '';
+
+  // Summary bar
+  var replied = msgs.filter(function(m){ return m.replied; }).length;
+  var replyRate = msgs.length ? Math.round(replied / msgs.length * 100) : 0;
+  var summaryHtml = '<div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">' +
+    _gmailKpi('Emails Sent', msgs.length, '#3b82f6') +
+    _gmailKpi('Got Reply', replied, '#22c55e') +
+    _gmailKpi('Reply Rate', replyRate + '%', replyRate >= 40 ? '#22c55e' : replyRate >= 20 ? '#f59e0b' : '#ef4444') +
+    _gmailKpi('Contacts', emails.length, '#8b5cf6') +
+    '</div>';
+
+  // Message list
+  var listHtml = '';
+  if (!msgs.length) {
+    listHtml = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px">No sent emails found to this account\'s contacts.</div>';
+  } else {
+    listHtml = msgs.map(function(m) {
+      var dStr = '';
+      try { dStr = new Date(m.date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); } catch(e) { dStr = m.date; }
+      var repliedBadge = m.replied
+        ? '<span style="font-size:9px;background:rgba(34,197,94,0.15);color:#22c55e;padding:1px 5px;border-radius:3px;font-family:var(--mono)">&#10003; REPLIED</span>'
+        : '<span style="font-size:9px;background:rgba(239,68,68,0.1);color:var(--text-muted);padding:1px 5px;border-radius:3px;font-family:var(--mono)">NO REPLY</span>';
+      var toShort = m.to.length > 40 ? m.to.slice(0, 40) + '...' : m.to;
+      return '<div style="border-bottom:1px solid var(--border);padding:10px 0">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
+        '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:12px;font-weight:600;margin-bottom:3px;color:var(--text)">' + escHtml(m.subject) + '</div>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">To: ' + escHtml(toShort) + '</div>' +
+        '<div style="font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml((m.snippet||'').slice(0,100)) + '</div>' +
+        '</div>' +
+        '<div style="flex-shrink:0;text-align:right">' +
+        '<div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;font-family:var(--mono)">' + dStr + '</div>' +
+        repliedBadge +
+        '</div></div></div>';
+    }).join('');
+  }
+
+  var reloadBtn = '<button data-n="' + escHtml(acc.name) + '" onclick="gmailLoadForAccount(this.dataset.n)" ' +
+    'style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer;font-family:var(--mono)">&#8635; Reload</button>';
+
+  return '<div style="padding:16px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+    '<div style="font-size:11px;color:var(--text-muted)">Contacts tracked: ' + emails.map(escHtml).join(', ') + '</div>' +
+    '<div style="display:flex;align-items:center;gap:8px">' +
+    (loadedAgo ? '<span style="font-size:10px;color:var(--text-3)">loaded ' + loadedAgo + '</span>' : '') +
+    reloadBtn + '</div></div>' +
+    summaryHtml + listHtml + '</div>';
+}
+
+function _gmailKpi(label, val, color) {
+  return '<div style="background:var(--navy-light);border:1px solid var(--border);padding:8px 12px;border-radius:4px;min-width:80px">' +
+    '<div style="font-size:16px;font-weight:700;color:' + color + '">' + val + '</div>' +
+    '<div style="font-size:10px;color:var(--text-muted);font-family:var(--mono)">' + label + '</div>' +
+    '</div>';
+}
+
+async function gmailConnectAndLoad(accName) {
+  requestGmailAccess(function(){ gmailLoadForAccount(accName); });
+}
+
+async function gmailLoadForAccount(accName) {
+  if (!state.gmailToken) { requestGmailAccess(function(){ gmailLoadForAccount(accName); }); return; }
+  state.gmailActivityCache[accName] = 'loading';
+  // Re-render tab to show loading state
+  var tabEl = document.getElementById('detail-tab-body');
+  if (tabEl && state.selectedAccount && state.selectedAccount.name === accName) {
+    tabEl.innerHTML = renderGmailActivityTab(state.selectedAccount);
+  }
+  try {
+    var result = await loadGmailActivity(accName);
+    if (tabEl && state.selectedAccount && state.selectedAccount.name === accName) {
+      tabEl.innerHTML = renderGmailActivityTab(state.selectedAccount);
+    }
+  } catch(e) {
+    console.error('[GMAIL] Load failed:', e);
+    if (e.message === 'gmail_401') {
+      state.gmailToken = null;
+      showToast('Gmail session expired — reconnect in Settings or account tab', 'error');
+    } else {
+      showToast('Gmail load failed: ' + e.message, 'error');
+    }
+    delete state.gmailActivityCache[accName];
+    if (tabEl && state.selectedAccount && state.selectedAccount.name === accName) {
+      tabEl.innerHTML = renderGmailActivityTab(state.selectedAccount);
+    }
+  }
+}
+
+// End Gmail Email Activity ─────────────────────────────────────────────────
+
 //  INTRANSIT IQ — DAILY MISSION + CALENDAR + AI AGENT
 // ══════════════════════════════════════════════════════════
 
@@ -10215,6 +10425,21 @@ function renderSettingsView() {
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Force-reload GP history, invoice history, collections, and contacts from Google Sheets. Use if data looks stale without reloading the page.</div>
         <div style="font-size:11px;font-family:var(--mono);color:var(--text-3)">Cache status: ${state.cacheLoaded ? '<span style="color:var(--green)">&#10003; loaded</span>' : '<span style="color:var(--gold)">&#9650; loading</span>'} &nbsp;|&nbsp; GP rows: ${state.gpCache ? state.gpCache.length.toLocaleString() : '—'} &nbsp;|&nbsp; History rows: ${state.historyCache ? Object.keys(state.historyCache).length.toLocaleString() : '—'}</div>
+      </div>
+
+
+      <!-- Gmail Email Activity -->
+      <div id="gmail-settings-card" style="background:var(--navy-light);border:1px solid var(--border);padding:20px;margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:15px;font-weight:600">&#9993; Gmail Email Activity</div>
+          <span id="gmail-connect-status" style="font-size:11px;font-family:var(--mono);color:var(--text-muted)">${state.gmailToken ? '<span style="color:var(--green)">&#10003; Connected</span>' : 'Not connected'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Connect your Gmail account to see email history with each account's contacts — who you emailed, when, the subject, and whether they replied.</div>
+        ${state.gmailToken ?
+          '<button onclick="state.gmailToken=null;state.gmailActivityCache={};showToast(\'Gmail disconnected\',\'info\');switchView(\'settings\')" style="background:transparent;border:1px solid var(--red);color:var(--red);padding:5px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#10005; Disconnect Gmail</button>' :
+          '<button onclick="requestGmailAccess(function(){showToast(\'Gmail connected!\',\'success\');switchView(\'settings\')})" style="background:var(--blue-b);border:none;color:#fff;padding:5px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128272; Connect Gmail</button>'
+        }
+        <div style="font-size:11px;color:var(--text-3);margin-top:8px">Read-only access to your Gmail Sent folder only. No emails are stored on our servers.</div>
       </div>
 
       <!-- App Info -->

@@ -1008,3 +1008,49 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **New functions:** `refreshAllData`
 **Modified functions:** `showLocationModal` (isNewIP finally used), `apkConfirmReset` (zone dates cleared), `sortAccountList` (direction arrows), `renderTeamProfile` (clickable cards), `renderNoteInput` (unsaved dot), input event listeners (dot show/hide)
 **Commit:** `1eb82f2`
+
+### 2026-05-27 (session 30 — Account Intel fixes + Requests cleanup + Pool Management)
+
+**Account Intel — wrong company data (Ontic/Zebra):**
+- **Root cause (Ontic):** gpCache 2nd fallback OR-match returned "Ozkon Inc." before 3rd fallback ran; safety net used ALL qWords including "inc" which matched "Ozkon **Inc**." — Round 1 fix (stop-words) wasn't enough
+- **Root cause (Zebra):** historyCache 5th fallback had same OR-match problem — "technologies" from "Zebra Technologies" matched "Neros Technologies"
+- **Fix Round 3:** Changed safety net to use distinctive-word-filtered qWords only; changed historyCache 5th fallback to AND-only matching (no OR fallback). Resolved both Ontic and Zebra.
+- **Stop-word list** applies in: 3rd gpCache fallback AND-match, safety net distinctive-word check, historyCache 5th fallback — all must use the same `_gwStop` regex
+
+**Account Intel — autocomplete:**
+- `mgrIntelAutocomplete(val)` — triggers on oninput after 2 chars; scores accounts: exact prefix=100, substring=80, all-words=60, any-word=30; shows up to 12 results with rep + YTD revenue in dropdown
+- `mgrIntelKeydown(event)` — arrow nav, Enter selects, Esc closes
+- `mgrIntelAcHover(i)` / `mgrIntelSelect(name)` — hover highlight + fill input + trigger search
+- Input wrapped in `position:relative` div; dropdown `#mgr-intel-ac` absolutely positioned below
+
+**Note history deduplication:**
+- `loadNoteHistory(tab)` was called once per tab → 8× duplication for admin
+- Fixed: removed call from per-tab loop; call `loadNoteHistory()` once after all tabs finish
+- Function signature changed: `async function loadNoteHistory()` (tab param removed — was never used)
+
+**Hidden accounts not persisting in Requests & Approvals:**
+- `_HIDDEN_ACCOUNTS` tab has NO header row; `loadHiddenAccountsTab()` was checking for 'ACCOUNT_NAME' header and returning empty Set when not found
+- Fixed: detect header vs data row positionally — `hasHeader = firstRow[0] === 'ACCOUNT_NAME' || firstRow[2] === 'STATUS'`; if no header, `dataRows = rows` (no slice)
+
+**Requests & Approvals — HOLD/TRANSFER/RETURN dismissal:**
+- HOLD requests had no dismiss mechanism; added DONE IN CRM + NOT NEEDED buttons → `resolveHoldRequest(accName, repId, status)`
+- TRANSFER requests reappeared after deny because page re-reads `_LOG` on every render; fixed by building `resolvedSet` from `_REQUEST_LOG` and filtering during `allItems` construction
+- RETURN card DENY called `denyRemoval()` (wrong); fixed to `denyReturnRequest()` which calls `resolveRequestLog()`
+- New functions: `resolveHoldRequest`, `denyReturnRequest`
+
+**Pool Management feature (commit `c2bc937`):**
+- **`nav-pool-management`** (admin/manager only): "🏊 Pool Management" — shows all inactive/declining accounts for the team; admin can mark AVAILABLE/HIDDEN, set Hot/Warm/Cold priority, assign to specific rep or ALL reps
+- **`nav-available-pool`** (all reps): "🏆 Available Accounts" — shows AVAILABLE accounts assigned to them or ALL; CLAIM button marks it for them; NOT INTERESTED dismisses it
+- Data persists to `_POOL_MANAGED` tab in History sheet — **create this tab manually with header row: `ACCOUNT_NAME, SOURCE_REP, PRIORITY, STATUS, ASSIGNED_TO, APPROVED_BY, APPROVED_DATE, NOTES`**
+- STATUS values: AVAILABLE, HIDDEN, CLAIMED, REMOVED
+- `loadPoolManaged(force)` — loads on startup non-blocking; caches in `state.poolManagedCache`
+- `poolSaveRecord(record)` — finds existing row by name and updates in-place, or appends new row
+- `_updatePoolBadge()` — updates badge count on Available Accounts nav item
+- `renderPoolManagementView()` — 3 sections: IN POOL, NEEDS REVIEW (bulk of inactive accounts), HIDDEN (collapsed details)
+- `renderAvailablePoolView()` — sorted Hot→Warm→Cold; enriched with state.accounts data for revenue/status
+- Nav visibility: shown for admin+manager in completeLogin; hidden in regular-rep simulation via switchViewAs
+- `isInactive(a)` / `isDeclining(a)` — existing functions used to source the pool candidates
+
+**New state field:** `state.poolManagedCache` (initialized to null, populated by `loadPoolManaged`)
+**New functions:** `loadPoolManaged`, `_updatePoolBadge`, `poolSaveRecord`, `poolMarkAvailable`, `poolMarkHidden`, `poolSetPriority`, `poolAssignTo`, `poolRemoveFromPool`, `poolClaim`, `poolNotInterested`, `renderPoolManagementView`, `renderAvailablePoolView`
+**Commit:** `c2bc937`

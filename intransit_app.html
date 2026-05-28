@@ -6100,14 +6100,26 @@ async function renderRemovalsView() {
     window._ndaRowsCache = ndaRows;
   } catch(e) {}
 
-  let returnReqs = [];
+  let returnReqs = [], resolvedSet = new Set();
   try {
     const rlRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_REQUEST_LOG'!A1:H500");
-    returnReqs = (rlRows || []).filter(function(r, i) {
-      return i > 0 && (r[1]||'') === 'RETURN' && (!(r[5]||'') || (r[5]||'').toUpperCase() === 'PENDING');
+    const allReqRows = (rlRows || []).slice(1); // skip header row
+    returnReqs = allReqRows.filter(function(r) {
+      return (r[1]||'') === 'RETURN' && (!(r[5]||'') || (r[5]||'').toUpperCase() === 'PENDING');
     }).slice().reverse().slice(0, 30);
+    // Build resolved set — any type that has been resolved (DONE/DENIED/APPROVED)
+    // Used to filter HOLD/TRANSFER items out of the pending list
+    allReqRows.forEach(function(r) {
+      const rawType = (r[1]||'').toLowerCase();
+      const acc     = (r[2]||'').toLowerCase().trim();
+      const status  = (r[5]||'').toUpperCase();
+      if (!acc) return;
+      const baseType = rawType.replace('_resolved','');
+      const isResolved = rawType.endsWith('_resolved') || (status && status !== 'PENDING');
+      if (isResolved) resolvedSet.add(baseType + '|' + acc);
+    });
   } catch(e) {}
-  window._reqData = { pendingRemovals, holdReqs, transferReqs, hideReqs, globalRemoveReqs, ndaRows, returnReqs };
+  window._reqData = { pendingRemovals, holdReqs, transferReqs, hideReqs, globalRemoveReqs, ndaRows, returnReqs, resolvedSet };
   const badge = document.getElementById('badge-removals');
   if (badge) badge.textContent = pendingRemovals.length || '';
   if (!window._reqActiveTab) window._reqActiveTab = 'pending';
@@ -6117,7 +6129,7 @@ async function renderRemovalsView() {
 function _reqRenderPage() {
   const el = document.getElementById('main-content');
   if (!el || !window._reqData) return;
-  const { pendingRemovals, holdReqs, transferReqs, hideReqs, globalRemoveReqs, ndaRows, returnReqs = [] } = window._reqData;
+  const { pendingRemovals, holdReqs, transferReqs, hideReqs, globalRemoveReqs, ndaRows, returnReqs = [], resolvedSet = new Set() } = window._reqData;
   const tab = window._reqActiveTab || 'pending';
   const filter = window._reqFilter || 'ALL';
 
@@ -6151,26 +6163,28 @@ function _reqRenderPage() {
         '</div>' +
         '<div style="display:flex;flex-direction:column;gap:7px;flex-shrink:0">' +
           '<button data-n="' + escHtml(item.accName) + '" data-rid="' + escHtml(item.rep) + '" onclick="approveReturnRequest(this.dataset.n, this.dataset.rid)" style="padding:8px 18px;background:rgba(249,115,22,0.85);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r)">&#x2713; APPROVE RETURN</button>' +
-          '<button data-n="' + escHtml(item.accName) + '" onclick="showDenyHideModal(this.dataset.n)" style="padding:8px 18px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">&#x2717; DENY</button>' +
+          '<button data-n="' + escHtml(item.accName) + '" data-rid="' + escHtml(item.rep||'') + '" onclick="denyReturnRequest(this.dataset.n,this.dataset.rid)" style="padding:8px 18px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">&#x2717; DENY</button>' +
         '</div>' +
       '</div>' +
     '</div>';
   };
 
-  // ── Collect all pending items ──────────────────────────────────────────────
+  // ── Collect all pending items (skip already-resolved HOLD/TRANSFER) ─────────
   let allItems = [];
   pendingRemovals.forEach(acc => allItems.push({ type: 'REMOVE', acc }));
   holdReqs.forEach(r => {
     const msg = r[3] || '';
+    const accName = (msg.match(/hold for: (.+?)\. Reason:/) || [])[1] || msg.slice(0, 40);
+    if (resolvedSet.has('hold|' + accName.toLowerCase().trim())) return;
     allItems.push({ type: 'HOLD', ts: r[0], rep: (r[1] || '').replace('@intransittech.com', ''),
-      accName: (msg.match(/hold for: (.+?)\. Reason:/) || [])[1] || msg.slice(0, 40),
-      reason:  (msg.match(/Reason: (.+)$/) || [])[1] || '' });
+      accName, reason: (msg.match(/Reason: (.+)$/) || [])[1] || '' });
   });
   transferReqs.forEach(r => {
     const msg = r[3] || '';
+    const accName = (msg.match(/requests: (.+?)\. Note:/) || [])[1] || msg.slice(0, 40);
+    if (resolvedSet.has('transfer|' + accName.toLowerCase().trim())) return;
     allItems.push({ type: 'TRANSFER', ts: r[0], rep: (r[1] || '').replace('@intransittech.com', ''),
-      accName: (msg.match(/requests: (.+?)\. Note:/) || [])[1] || msg.slice(0, 40),
-      reason:  (msg.match(/Note: (.+)$/) || [])[1] || '' });
+      accName, reason: (msg.match(/Note: (.+)$/) || [])[1] || '' });
   });
   (returnReqs || []).forEach(function(r) {
     allItems.push({ type: 'RETURN', ts: r[0], rep: (r[3]||''), accName: r[2]||'', reason: r[4]||'' });
@@ -6248,7 +6262,12 @@ function _reqRenderPage() {
         '</div>' +
         '<div style="flex-shrink:0;text-align:center">' +
           '<div style="background:' + bgLight + ';border:1px solid ' + col + ';color:' + col + ';font-family:var(--mono);font-size:9px;padding:8px 12px;border-radius:var(--r);max-width:140px;line-height:1.6;letter-spacing:0.05em;text-align:center">' + action + '</div>' +
-          (isHold ? '' : '<button data-n="' + escHtml(item.accName) + '" data-rid="' + escHtml(item.rep||'') + '" onclick="showDenyTransferModal(this.dataset.n, this.dataset.rid)" style="margin-top:8px;padding:6px 14px;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.4);color:var(--red);font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r);display:block;width:100%;text-align:center">&#x2717; DENY</button>') +
+          (isHold
+            ? '<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">' +
+                '<button data-n="' + escHtml(item.accName) + '" data-rid="' + escHtml(item.rep||'') + '" onclick="resolveHoldRequest(this.dataset.n,this.dataset.rid,\'DONE\')" style="padding:6px 12px;background:rgba(249,115,22,0.85);border:none;color:#fff;font-family:var(--mono);font-size:9px;font-weight:700;cursor:pointer;border-radius:var(--r);white-space:nowrap">&#x2713; DONE IN CRM</button>' +
+                '<button data-n="' + escHtml(item.accName) + '" data-rid="' + escHtml(item.rep||'') + '" onclick="resolveHoldRequest(this.dataset.n,this.dataset.rid,\'DENIED\')" style="padding:6px 12px;background:transparent;border:1px solid rgba(220,38,38,0.4);color:var(--red);font-family:var(--mono);font-size:9px;font-weight:700;cursor:pointer;border-radius:var(--r);white-space:nowrap">&#x2717; NOT NEEDED</button>' +
+              '</div>'
+            : '<button data-n="' + escHtml(item.accName) + '" data-rid="' + escHtml(item.rep||'') + '" onclick="showDenyTransferModal(this.dataset.n, this.dataset.rid)" style="margin-top:8px;padding:6px 14px;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.4);color:var(--red);font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;border-radius:var(--r);display:block;width:100%;text-align:center">&#x2717; DENY</button>') +
         '</div>' +
       '</div>' +
     '</div>';
@@ -6640,6 +6659,22 @@ async function resolveRequestLog(type, account, repId, status, adminNote) {
   } catch(e) {
     console.warn('[REQ_LOG] Resolve write failed:', e.message);
   }
+}
+
+async function resolveHoldRequest(accName, repId, status) {
+  try {
+    await resolveRequestLog('HOLD', accName, repId, status || 'DONE', '');
+    showToast(status === 'DENIED' ? 'Hold request marked not needed ✓' : 'Hold marked done in CRM ✓', 'success');
+    renderRemovalsView();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function denyReturnRequest(accName, repId) {
+  try {
+    await resolveRequestLog('RETURN', accName, repId, 'DENIED', '');
+    showToast('Return request denied for ' + accName + ' ✓', 'success');
+    renderRemovalsView();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 function showDenyHideModal(accountName) {

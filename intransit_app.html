@@ -8015,10 +8015,17 @@ async function renderMyOutreachView() {
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
     '<div style="font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.08em">MY OUTREACH</div>' +
     gmailStatusHtml + '</div>' +
-    '<div style="display:flex;gap:6px;padding-bottom:0">' +
-    '<button onclick="window._myOutreachTab=\'attention\';renderMyOutreachView()" style="padding:7px 14px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r);background:'+((!window._myOutreachTab||window._myOutreachTab==\'attention\')?'\'var(--blue-b)\'':'\'transparent\'')+';color:'+((!window._myOutreachTab||window._myOutreachTab==\'attention\')?'\'#fff\'':'\'var(--text-3)\'')+';border:1px solid '+((!window._myOutreachTab||window._myOutreachTab==\'attention\')?'\'var(--blue-b)\'':'\'var(--border)\'')+';">&#128308; Attention</button>' +
-    '<button onclick="window._myOutreachTab=\'coverage\';renderMyOutreachView()" style="padding:7px 14px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r);background:'+(window._myOutreachTab==\'coverage\'?'\'var(--blue-b)\'':'\'transparent\'')+';color:'+(window._myOutreachTab==\'coverage\'?'\'#fff\'':'\'var(--text-3)\'')+';border:1px solid '+(window._myOutreachTab==\'coverage\'?'\'var(--blue-b)\'':'\'var(--border)\'')+';">&#9993; Contact Coverage</button>' +
-    '</div></div>' +
+    (function(){
+      var _attn = !window._myOutreachTab || window._myOutreachTab === 'attention';
+      var _cov  = window._myOutreachTab === 'coverage';
+      var _btnStyle = 'padding:7px 14px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r);';
+      var _aB = _btnStyle+'background:'+(_attn?'var(--blue-b)':'transparent')+';color:'+(_attn?'#fff':'var(--text-3)')+';border:1px solid '+(_attn?'var(--blue-b)':'var(--border)');
+      var _cB = _btnStyle+'background:'+(_cov?'var(--blue-b)':'transparent')+';color:'+(_cov?'#fff':'var(--text-3)')+';border:1px solid '+(_cov?'var(--blue-b)':'var(--border)');
+      return '<div style="display:flex;gap:6px;padding-bottom:0">' +
+        '<button onclick="window._myOutreachTab=\'attention\';renderMyOutreachView()" style="'+_aB+'">&#128308; Attention</button>' +
+        '<button onclick="window._myOutreachTab=\'coverage\';renderMyOutreachView()" style="'+_cB+'">&#9993; Contact Coverage</button>' +
+        '</div></div>';
+    })() +
 
     '<div style="flex:1;overflow-y:auto;padding:20px">' +
     (_moTab === 'coverage' ? _renderContactCoveragePanel(accs) :
@@ -8063,7 +8070,7 @@ async function renderMyOutreachView() {
     '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;color:#22c55e;margin-bottom:10px">&#10003; WELL COVERED (' + wellCov.length + ')</div>' +
     wellHtml + '</div>' +
 
-    '</div></div>';
+    '</div></div>');
 }
 
 async function myOutreachAI(type) {
@@ -8286,7 +8293,7 @@ function _renderContactCoveragePanel(accs) {
           '</div>' +
           '<div style="text-align:right;flex-shrink:0">' +
           (ytd>0?'<div style="font-size:11px;font-family:var(--mono)">$'+formatNum(ytd)+'</div>':'') +
-          '</div></div>') ;
+          '</div></div>';
       }).join('') +
       '</div>';
   }

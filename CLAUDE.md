@@ -1,5 +1,30 @@
 "At the end of every session, update this file with new files created, functions added, bugs fixed, and any new rules learned."
 
+## 🚨 NEVER DO THIS — BROKE THE APP (blank page, JS syntax error)
+
+**Python-generated JS inline ternary with escaped quotes:**
+NEVER write JS string concatenation where a comparison condition uses `\\'value\\'` escaping from Python. This produces `\'value\'` in the JS file which is only valid inside a JS string literal — not in an expression context.
+
+BAD (causes SyntaxError — breaks entire app):
+```python
+# Python script generates this:
+NEW = "...background:'+(!w._tab||w._tab==\\'attention\\'?'...'+'...')+'..."
+# Which produces this in the file:
+"...background:'+(!w._tab||w._tab==\'attention\'?'...'+'...')+'..."
+# JS parser sees ==\'attention\' as a syntax error
+```
+
+GOOD (always pre-compute booleans first):
+```javascript
+(function(){
+  var _attn = !window._tab || window._tab === 'attention';
+  var _bg = _attn ? 'var(--blue-b)' : 'transparent';
+  return '<button style="background:' + _bg + '">...</button>';
+})()
+```
+
+**Rule:** Whenever building JS string HTML from a Python script, pre-compute all boolean conditions as variables at the top of an IIFE. Never embed `==`, `===`, `!==` comparisons against quoted string values inside the concatenated string.
+
 ## ⚠ CRITICAL — NEVER REGRESS THESE BEHAVIORS
 
 These things have broken more than once. Do not break them again:

@@ -1168,6 +1168,12 @@ body::before {
           <span class="nav-badge" id="badge-available-pool" style="background:var(--green)"></span>
         </div>
       </div>
+      <div class="nav-item" id="nav-my-outreach" data-view="myOutreach" onclick="switchView('myOutreach')">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#128140;</span> My Outreach
+          <span class="nav-badge" id="badge-my-outreach" style="background:var(--red)"></span>
+        </div>
+      </div>
       <div class="nav-section-label">System</div>
       <div class="nav-item" id="nav-request-log" data-view="requestLog" onclick="switchView('requestLog')">
         <div class="nav-item-inner">
@@ -3368,6 +3374,8 @@ function completeLogin() {
     if (notesFeedNav) notesFeedNav.style.display = 'block';
     const poolMgmtNav = document.getElementById('nav-pool-management');
     if (poolMgmtNav) poolMgmtNav.style.display = 'block';
+    const myOutreachNav = document.getElementById('nav-my-outreach');
+    if (myOutreachNav) myOutreachNav.style.display = 'block';
     loadSuggestionsBoardBadge();
     // Populate admin View As dropdown
     const _admSel = document.getElementById('view-as-select');
@@ -4161,6 +4169,9 @@ function switchView(view) {
     setTimeout(restoreSplitPositions, 30);
   } else if (view === 'availablePool') {
     renderAvailablePoolView();
+    setTimeout(restoreSplitPositions, 30);
+  } else if (view === 'myOutreach') {
+    renderMyOutreachView();
     setTimeout(restoreSplitPositions, 30);
   } else if (view === 'access') {
     renderAccessLog();
@@ -7026,6 +7037,7 @@ async function loadPoolManaged(force) {
     }).filter(function(r){ return !!r.name; });
     console.log('[POOL] Loaded', state.poolManagedCache.length, 'pool records');
     _updatePoolBadge();
+    _updateMyOutreachBadge();
   } catch(e) {
     console.warn('[POOL] loadPoolManaged failed:', e);
     state.poolManagedCache = [];
@@ -7422,20 +7434,24 @@ function renderAvailablePoolView() {
 
 function requestGmailAccess(callback) {
   if (state.gmailToken) { if (callback) callback(); return; }
-  if (!state.gmailTokenClient) {
-    state.gmailTokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CONFIG.CLIENT_ID,
-      scope: 'https://www.googleapis.com/auth/gmail.readonly',
-      hint: state.user ? state.user.email : '',
-      callback: function(resp) {
-        if (resp.error) { showToast('Gmail access denied: ' + resp.error, 'error'); return; }
-        state.gmailToken = resp.access_token;
-        console.log('[GMAIL] Access granted');
-        if (callback) callback();
+  // Always re-create so the callback captures the latest caller
+  state.gmailTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CONFIG.CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/gmail.readonly',
+    hint: state.user ? state.user.email : '',
+    callback: function(resp) {
+      if (resp.error) {
+        console.error('[GMAIL] Auth error:', resp.error, resp.error_description || '');
+        showToast('Gmail error: ' + (resp.error_description || resp.error) + '. Make sure Gmail API is enabled in Google Cloud Console.', 'error', 7000);
+        return;
       }
-    });
-  }
-  state.gmailTokenClient.requestAccessToken({ prompt: '' });
+      state.gmailToken = resp.access_token;
+      console.log('[GMAIL] Access granted for scope: gmail.readonly');
+      if (callback) callback();
+    }
+  });
+  // Use 'consent' to force the popup — 'none'/'' can silently fail for new scopes
+  state.gmailTokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
 async function gmailFetch(path, params) {
@@ -7622,6 +7638,518 @@ async function gmailLoadForAccount(accName) {
 }
 
 // End Gmail Email Activity ─────────────────────────────────────────────────
+
+
+// ── Manager Hub: Outreach Tab ─────────────────────────────────────────────
+
+function _mgrOutreachHtml(teamReps) {
+  var accs = state.accounts || [];
+  var now = new Date();
+  var today = now.toISOString().slice(0,10);
+
+  function daysInactive(a) {
+    var d = a.lastSaleDate || a.lastSale || '';
+    if (!d) return 999;
+    try { return Math.floor((now - new Date(d)) / 86400000); } catch(e) { return 999; }
+  }
+
+  // Build per-account attention scores for team reps
+  var teamAccs = accs.filter(function(a){ return teamReps.indexOf(a.rep) !== -1; });
+
+  var active    = teamAccs.filter(function(a){ return daysInactive(a) <= 30; });
+  var atRisk    = teamAccs.filter(function(a){ var d=daysInactive(a); return d>30 && d<=90; });
+  var neglected = teamAccs.filter(function(a){ return daysInactive(a) > 90; });
+
+  // Accounts with no contact email on file
+  var noEmail = teamAccs.filter(function(a){
+    var contacts = state.contactsCache[a.name] || [];
+    return !contacts.some(function(c){ return c.email && c.email.includes('@'); });
+  });
+
+  // Follow-up overdue: had a follow-up date set but it's passed
+  var overdue = teamAccs.filter(function(a){
+    return a.followUpDate && a.followUpDate < today;
+  });
+
+  // Per-rep breakdown
+  var repBreakdown = teamReps.map(function(repId) {
+    var repAccs = teamAccs.filter(function(a){ return a.rep === repId; });
+    var act = repAccs.filter(function(a){ return daysInactive(a) <= 30; }).length;
+    var risk = repAccs.filter(function(a){ var d=daysInactive(a); return d>30&&d<=90; }).length;
+    var neg = repAccs.filter(function(a){ return daysInactive(a) > 90; }).length;
+    var noMail = repAccs.filter(function(a){
+      var c=state.contactsCache[a.name]||[];
+      return !c.some(function(x){ return x.email&&x.email.includes('@'); });
+    }).length;
+    var score = repAccs.length ? Math.round(act/repAccs.length*100) : 0;
+    return { repId:repId, total:repAccs.length, active:act, atRisk:risk, neglected:neg, noEmail:noMail, score:score };
+  }).sort(function(a,b){ return b.neglected - a.neglected; });
+
+  // KPI cards
+  var kpiHtml = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">' +
+    _mgrOKpi('Total Accounts', teamAccs.length, '#3b82f6') +
+    _mgrOKpi('Active (<30d)', active.length, '#22c55e') +
+    _mgrOKpi('At Risk (30-90d)', atRisk.length, '#f59e0b') +
+    _mgrOKpi('Neglected (90d+)', neglected.length, '#ef4444') +
+    _mgrOKpi('Overdue Follow-up', overdue.length, '#a855f7') +
+    _mgrOKpi('No Email On File', noEmail.length, '#6b7280') +
+    '</div>';
+
+  // Rep breakdown table
+  var repTableHtml = '<div style="background:var(--navy-light);border:1px solid var(--border);padding:16px;margin-bottom:20px;border-radius:var(--r2)">' +
+    '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;margin-bottom:12px;color:var(--text-2)">REP OUTREACH HEALTH</div>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+    '<tr style="color:var(--text-3);font-family:var(--mono);font-size:10px">' +
+    '<th style="text-align:left;padding:4px 8px">REP</th>' +
+    '<th style="padding:4px 8px;text-align:center">TOTAL</th>' +
+    '<th style="padding:4px 8px;text-align:center;color:#22c55e">ACTIVE</th>' +
+    '<th style="padding:4px 8px;text-align:center;color:#f59e0b">AT RISK</th>' +
+    '<th style="padding:4px 8px;text-align:center;color:#ef4444">NEGLECTED</th>' +
+    '<th style="padding:4px 8px;text-align:center;color:#6b7280">NO EMAIL</th>' +
+    '<th style="padding:4px 8px;text-align:center">HEALTH</th>' +
+    '<th style="padding:4px 8px;text-align:center">AI COACH</th>' +
+    '</tr>' +
+    repBreakdown.map(function(r) {
+      var scoreColor = r.score>=70?'#22c55e':r.score>=40?'#f59e0b':'#ef4444';
+      var name = getRepDisplayName(r.repId) || r.repId;
+      return '<tr style="border-top:1px solid var(--border)">' +
+        '<td style="padding:7px 8px;font-weight:600">' + escHtml(name) + '</td>' +
+        '<td style="padding:7px 8px;text-align:center">' + r.total + '</td>' +
+        '<td style="padding:7px 8px;text-align:center;color:#22c55e">' + r.active + '</td>' +
+        '<td style="padding:7px 8px;text-align:center;color:#f59e0b">' + r.atRisk + '</td>' +
+        '<td style="padding:7px 8px;text-align:center;color:#ef4444">' + r.neglected + '</td>' +
+        '<td style="padding:7px 8px;text-align:center;color:#6b7280">' + r.noEmail + '</td>' +
+        '<td style="padding:7px 8px;text-align:center;color:'+scoreColor+';font-weight:700">' + r.score + '%</td>' +
+        '<td style="padding:7px 8px;text-align:center"><button data-rep="'+r.repId+'" onclick="mgrOutreachAI(\'coach\',this.dataset.rep)" ' +
+        'style="background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);color:#a78bfa;padding:2px 8px;border-radius:3px;font-size:9px;cursor:pointer;font-family:var(--mono)">&#129302; COACH</button></td>' +
+        '</tr>';
+    }).join('') +
+    '</table></div>';
+
+  // Neglected accounts list (top 20 by revenue)
+  var neglectedSorted = neglected.slice().sort(function(a,b){
+    return (parseFloat(b.ytdRevenue||b.revenue||0)||0) - (parseFloat(a.ytdRevenue||a.revenue||0)||0);
+  }).slice(0, 20);
+
+  var neglectedHtml = '<div style="background:var(--navy-light);border:1px solid rgba(239,68,68,0.3);padding:16px;margin-bottom:20px;border-radius:var(--r2)">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+    '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;color:#ef4444">&#128308; NEGLECTED ACCOUNTS (90d+)</div>' +
+    '<button onclick="mgrOutreachAI(\'neglected\')" style="background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);color:#a78bfa;padding:4px 12px;border-radius:3px;font-size:10px;cursor:pointer;font-family:var(--mono)">&#129302; AI ACTION PLAN</button>' +
+    '</div>' +
+    (neglectedSorted.length === 0 ? '<div style="color:var(--text-muted);font-size:12px">No neglected accounts — great work!</div>' :
+    '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+    '<tr style="color:var(--text-3);font-family:var(--mono);font-size:10px">' +
+    '<th style="text-align:left;padding:4px 6px">ACCOUNT</th>' +
+    '<th style="padding:4px 6px;text-align:left">REP</th>' +
+    '<th style="padding:4px 6px;text-align:right">YTD REV</th>' +
+    '<th style="padding:4px 6px;text-align:right">DAYS INACTIVE</th>' +
+    '<th style="padding:4px 6px;text-align:center">FOLLOW-UP</th>' +
+    '</tr>' +
+    neglectedSorted.map(function(a) {
+      var di = daysInactive(a);
+      var diColor = di > 180 ? '#ef4444' : di > 90 ? '#f59e0b' : 'var(--text-muted)';
+      var fuDate = a.followUpDate ? '<span style="color:'+(a.followUpDate<today?'#ef4444':'#22c55e')+'">'+a.followUpDate+'</span>' : '<span style="color:var(--text-3)">none set</span>';
+      var ytd = parseFloat(a.ytdRevenue||a.revenue||0)||0;
+      return '<tr style="border-top:1px solid var(--border)">' +
+        '<td style="padding:6px 6px;font-weight:600">' + escHtml(a.name.length>32?a.name.slice(0,32)+'...':a.name) + '</td>' +
+        '<td style="padding:6px 6px;color:var(--text-muted)">' + escHtml(getRepDisplayName(a.rep)||a.rep) + '</td>' +
+        '<td style="padding:6px 6px;text-align:right">' + (ytd>0?'$'+formatNum(ytd):'—') + '</td>' +
+        '<td style="padding:6px 6px;text-align:right;color:'+diColor+';font-weight:600">' + di + 'd</td>' +
+        '<td style="padding:6px 6px;text-align:center">' + fuDate + '</td>' +
+        '</tr>';
+    }).join('') + '</table>') +
+    '</div>';
+
+  // Overdue follow-ups
+  var overdueHtml = overdue.length === 0 ? '' :
+    '<div style="background:var(--navy-light);border:1px solid rgba(168,85,247,0.3);padding:16px;margin-bottom:20px;border-radius:var(--r2)">' +
+    '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;color:#a855f7;margin-bottom:12px">&#128197; OVERDUE FOLLOW-UPS</div>' +
+    overdue.slice(0,15).map(function(a){
+      return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">' +
+        '<div><span style="font-weight:600">' + escHtml(a.name.length>35?a.name.slice(0,35)+'...':a.name) + '</span>' +
+        '<span style="color:var(--text-muted);margin-left:8px">' + escHtml(getRepDisplayName(a.rep)||a.rep) + '</span></div>' +
+        '<span style="color:#ef4444;font-family:var(--mono);font-size:10px">Due: ' + escHtml(a.followUpDate||'') + '</span></div>';
+    }).join('') +
+    '</div>';
+
+  // No email on file
+  var noEmailTop = noEmail.slice().sort(function(a,b){
+    return (parseFloat(b.ytdRevenue||b.revenue||0)||0)-(parseFloat(a.ytdRevenue||a.revenue||0)||0);
+  }).slice(0,10);
+  var noEmailHtml = noEmailTop.length === 0 ? '' :
+    '<div style="background:var(--navy-light);border:1px solid var(--border);padding:16px;margin-bottom:20px;border-radius:var(--r2)">' +
+    '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px">&#128231; NO CONTACT EMAIL ON FILE (top by revenue)</div>' +
+    '<div style="font-size:11px;color:var(--text-3);margin-bottom:10px">These accounts can\'t be reached by email until contacts are added in the Contacts tab.</div>' +
+    noEmailTop.map(function(a){
+      var ytd = parseFloat(a.ytdRevenue||a.revenue||0)||0;
+      return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px">' +
+        '<div><span style="font-weight:600">' + escHtml(a.name.length>35?a.name.slice(0,35)+'...':a.name) + '</span>' +
+        '<span style="color:var(--text-muted);margin-left:8px">' + escHtml(getRepDisplayName(a.rep)||a.rep) + '</span></div>' +
+        '<span style="color:var(--text-muted)">' + (ytd>0?'$'+formatNum(ytd):'—') + '</span></div>';
+    }).join('') + '</div>';
+
+  // AI tools panel
+  var aiHtml = '<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(59,130,246,0.08));border:1px solid rgba(139,92,246,0.25);padding:20px;margin-bottom:20px;border-radius:var(--r2)">' +
+    '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;color:#a78bfa;margin-bottom:14px">&#129302; AI OUTREACH INTELLIGENCE</div>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' +
+    '<button onclick="mgrOutreachAI(\'summary\')" style="background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.4);color:#a78bfa;padding:8px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128203; Team Outreach Summary</button>' +
+    '<button onclick="mgrOutreachAI(\'priority\')" style="background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.4);color:#93c5fd;padding:8px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#127775; Top Priority Accounts</button>' +
+    '<button onclick="mgrOutreachAI(\'riskacc\')" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#fca5a5;padding:8px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128308; At-Risk Alert</button>' +
+    '<button onclick="mgrOutreachAI(\'email_missing\')" style="background:rgba(107,114,128,0.2);border:1px solid rgba(107,114,128,0.3);color:#d1d5db;padding:8px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128231; Fix Contact Gaps</button>' +
+    '<button onclick="mgrOutreachAI(\'weekly_plan\')" style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);color:#86efac;padding:8px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128197; This Week\'s Plan</button>' +
+    '</div>' +
+    '<div id="mgr-outreach-ai-out" style="min-height:40px"></div>' +
+    '</div>';
+
+  return kpiHtml + aiHtml + repTableHtml + neglectedHtml + overdueHtml + noEmailHtml;
+}
+
+function _mgrOKpi(label, val, color) {
+  return '<div style="background:var(--navy-light);border:1px solid var(--border);padding:10px 14px;border-radius:4px;min-width:100px">' +
+    '<div style="font-size:18px;font-weight:700;color:' + color + '">' + val + '</div>' +
+    '<div style="font-size:10px;color:var(--text-muted);font-family:var(--mono);margin-top:2px">' + label + '</div>' +
+    '</div>';
+}
+
+async function mgrOutreachAI(type, repId) {
+  var out = document.getElementById('mgr-outreach-ai-out');
+  if (!out) return;
+  out.innerHTML = '<div style="color:#a78bfa;font-family:var(--mono);font-size:11px">&#9203; Analyzing outreach data...</div>';
+
+  var mgrCfg = getManagerConfig();
+  var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[]).filter(function(r){ return r!=='FJohn'; });
+  var accs = state.accounts || [];
+  var teamAccs = accs.filter(function(a){ return teamReps.indexOf(a.rep)!==-1; });
+  var now = new Date();
+
+  function daysSince(a) {
+    var d = a.lastSaleDate || a.lastSale || '';
+    if (!d) return 999;
+    try { return Math.floor((now-new Date(d))/86400000); } catch(e) { return 999; }
+  }
+
+  var neglected = teamAccs.filter(function(a){ return daysSince(a)>90; });
+  var atRisk = teamAccs.filter(function(a){ var d=daysSince(a); return d>30&&d<=90; });
+  var active = teamAccs.filter(function(a){ return daysSince(a)<=30; });
+  var today = now.toISOString().slice(0,10);
+  var overdue = teamAccs.filter(function(a){ return a.followUpDate && a.followUpDate < today; });
+
+  var repStats = teamReps.map(function(r){
+    var ra = teamAccs.filter(function(a){ return a.rep===r; });
+    var neg = ra.filter(function(a){ return daysSince(a)>90; }).length;
+    var act = ra.filter(function(a){ return daysSince(a)<=30; }).length;
+    return (getRepDisplayName(r)||r)+': '+act+' active, '+neg+' neglected of '+ra.length+' total';
+  }).join('\n');
+
+  var top10neg = neglected.slice().sort(function(a,b){
+    return (parseFloat(b.ytdRevenue||b.revenue||0)||0)-(parseFloat(a.ytdRevenue||a.revenue||0)||0);
+  }).slice(0,10).map(function(a){
+    return (a.name.slice(0,30))+' ('+daysSince(a)+'d inactive, $'+formatNum(parseFloat(a.ytdRevenue||a.revenue||0)||0)+' YTD, rep: '+(getRepDisplayName(a.rep)||a.rep)+')';
+  }).join('\n');
+
+  var prompts = {
+    summary: 'You are a sales manager coach. Give me a concise outreach health summary for my team. Include: overall outreach health grade (A-F), top 2-3 concerns, and 3 specific action items for this week. Be direct and practical.\n\nTeam stats:\n'+repStats+'\n\nTotal: '+teamAccs.length+' accounts, '+active.length+' active, '+atRisk.length+' at risk, '+neglected.length+' neglected, '+overdue.length+' overdue follow-ups.',
+
+    priority: 'You are a B2B sales coach. Based on these neglected accounts (sorted by YTD revenue), identify the top 5 priority accounts the team should contact THIS WEEK and explain specifically why each one matters and what angle to use.\n\n'+top10neg,
+
+    riskacc: 'You are a sales risk analyst. These '+atRisk.length+' accounts haven\'t ordered in 30-90 days and are at risk of going dark. Describe the risk level and give 3 concrete steps the team should take immediately to re-engage them. Rep breakdown:\n'+repStats,
+
+    email_missing: 'You are a sales operations consultant. '+teamAccs.filter(function(a){ var c=state.contactsCache[a.name]||[]; return !c.some(function(x){ return x.email&&x.email.includes('@'); }); }).length+' team accounts have no email contact on file. Explain why this is a major gap, what revenue is at risk, and give step-by-step instructions for how reps should find and add contact emails (LinkedIn, websites, phone follow-up). Be practical.',
+
+    weekly_plan: 'You are a sales manager. Create a focused weekly outreach plan for the team. Assign priorities: which accounts each rep should focus on Mon-Wed vs Thu-Fri, based on this data. Team: '+repStats+'\n\nTop neglected:\n'+top10neg+'\n\nOverdue follow-ups: '+overdue.length,
+
+    neglected: 'You are a B2B sales coach. Create a concrete action plan for re-engaging the top neglected accounts. For each, suggest the best outreach approach (email, phone, LinkedIn) and a one-line message angle. Top accounts:\n'+top10neg,
+
+    coach: (function(){
+      if (!repId) return 'No rep selected.';
+      var rAccs = teamAccs.filter(function(a){ return a.rep===repId; });
+      var rNeg = rAccs.filter(function(a){ return daysSince(a)>90; });
+      var rRisk = rAccs.filter(function(a){ var d=daysSince(a); return d>30&&d<=90; });
+      var rAct = rAccs.filter(function(a){ return daysSince(a)<=30; });
+      var name = getRepDisplayName(repId)||repId;
+      return 'You are a sales manager coaching '+name+'. Their stats: '+rAct.length+' active accounts, '+rRisk.length+' at risk, '+rNeg.length+' neglected out of '+rAccs.length+' total. Top neglected accounts: '+rNeg.slice(0,5).map(function(a){ return a.name.slice(0,25)+'('+daysSince(a)+'d)'; }).join(', ')+'. Write a specific, encouraging but direct coaching message for this rep — what they are doing well, what they need to improve, and 3 specific accounts to call this week. Keep it under 200 words.';
+    })()
+  };
+
+  var prompt = prompts[type] || 'Analyze this sales team outreach data: '+repStats;
+
+  try {
+    var result = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:700,
+      messages:[{role:'user', content:prompt}]
+    });
+    var text = result&&result.content&&result.content[0] ? result.content[0].text : 'Could not generate.';
+    out.innerHTML = '<div style="background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.2);border-radius:var(--r2);padding:14px 16px;font-size:12px;line-height:1.75;color:var(--text-2)">' +
+      '<p>' + text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n\n/g,'</p><p style="margin-top:10px">').replace(/\n/g,'<br>') + '</p></div>';
+  } catch(e) {
+    out.innerHTML = '<span style="color:var(--red);font-size:11px">AI error: '+escHtml(e.message)+'</span>';
+  }
+}
+
+// ── My Outreach Rep Page ──────────────────────────────────────────────────
+
+async function renderMyOutreachView() {
+  var el = document.getElementById('main-content');
+  if (!el) return;
+
+  var repId = state.repId;
+  var isAdm = state.isAdmin && !state.viewAsRep;
+  var viewRep = state.viewAsRep || repId;
+
+  var accs = (state.accounts||[]).filter(function(a){
+    if (isAdm) return true;
+    return a.rep === viewRep;
+  });
+
+  var now = new Date();
+  var today = now.toISOString().slice(0,10);
+
+  function daysSince(a) {
+    var d = a.lastSaleDate || a.lastSale || '';
+    if (!d) return 999;
+    try { return Math.floor((now-new Date(d))/86400000); } catch(e) { return 999; }
+  }
+
+  function attentionScore(a) {
+    var d = daysSince(a);
+    var hasNote = !!(a.repNote && a.repNote.trim());
+    var hasFu = !!(a.followUpDate);
+    var fuOverdue = hasFu && a.followUpDate < today;
+    // Score: lower = needs more attention
+    var s = 100;
+    if (d > 180) s -= 50;
+    else if (d > 90) s -= 30;
+    else if (d > 30) s -= 15;
+    if (!hasNote) s -= 15;
+    if (fuOverdue) s -= 20;
+    return Math.max(0, s);
+  }
+
+  var scored = accs.map(function(a){
+    return { acc: a, score: attentionScore(a), days: daysSince(a) };
+  }).sort(function(a,b){ return a.score - b.score; });
+
+  var needsAttn = scored.filter(function(x){ return x.score < 50; });
+  var moderate  = scored.filter(function(x){ return x.score >= 50 && x.score < 75; });
+  var wellCov   = scored.filter(function(x){ return x.score >= 75; });
+
+  // Gmail status
+  var gmailConnected = !!state.gmailToken;
+  var gmailStatusHtml = gmailConnected
+    ? '<span style="color:#22c55e;font-size:11px;font-family:var(--mono)">&#10003; Gmail connected</span>'
+    : '<span style="color:var(--text-muted);font-size:11px">Gmail not connected &nbsp;</span>' +
+      '<button onclick="requestGmailAccess(function(){ renderMyOutreachView(); })" ' +
+      'style="background:var(--blue-b);border:none;color:#fff;padding:3px 10px;border-radius:3px;font-size:10px;cursor:pointer;font-family:var(--mono)">&#128272; Connect Gmail</button>';
+
+  // Update badge
+  var badgeEl = document.getElementById('badge-my-outreach');
+  if (badgeEl) {
+    badgeEl.textContent = needsAttn.length > 0 ? needsAttn.length : '';
+    badgeEl.style.display = needsAttn.length > 0 ? '' : 'none';
+  }
+
+  function scoreBar(score) {
+    var color = score >= 75 ? '#22c55e' : score >= 50 ? '#f59e0b' : '#ef4444';
+    return '<div style="width:50px;height:6px;background:var(--border);border-radius:3px;display:inline-block;vertical-align:middle">' +
+      '<div style="width:'+(score)+'%;height:100%;background:'+color+';border-radius:3px"></div></div>';
+  }
+
+  function accRow(item) {
+    var a = item.acc;
+    var contacts = state.contactsCache[a.name] || [];
+    var hasEmail = contacts.some(function(c){ return c.email&&c.email.includes('@'); });
+    var di = item.days;
+    var diStr = di >= 999 ? 'never' : di + 'd ago';
+    var diColor = di>90?'#ef4444':di>30?'#f59e0b':'#22c55e';
+    var fuTag = a.followUpDate
+      ? '<span style="font-size:9px;font-family:var(--mono);color:'+(a.followUpDate<today?'#ef4444':'#a78bfa')+'">' +
+        (a.followUpDate<today?'OVERDUE: ':'FU: ')+a.followUpDate+'</span>'
+      : '';
+    var emailTag = !hasEmail
+      ? '<span style="font-size:9px;font-family:var(--mono);color:#6b7280">NO EMAIL</span>'
+      : '';
+    var gmailData = gmailConnected ? (state.gmailActivityCache[a.name]) : null;
+    var gmailBadge = '';
+    if (gmailConnected) {
+      if (!gmailData) {
+        gmailBadge = '<button data-n="'+escHtml(a.name)+'" onclick="gmailLoadForAccount(this.dataset.n).then(renderMyOutreachView)" ' +
+          'style="font-size:9px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);color:#93c5fd;padding:1px 5px;border-radius:2px;cursor:pointer;font-family:var(--mono)">&#9993; LOAD</button>';
+      } else if (gmailData !== 'loading' && gmailData.messages) {
+        var replied = gmailData.messages.filter(function(m){ return m.replied; }).length;
+        var rate = gmailData.messages.length ? Math.round(replied/gmailData.messages.length*100) : 0;
+        var rColor = rate>=50?'#22c55e':rate>=20?'#f59e0b':'#ef4444';
+        gmailBadge = '<span style="font-size:9px;font-family:var(--mono);color:'+rColor+'">&#9993; '+gmailData.messages.length+' sent, '+rate+'% reply</span>';
+      }
+    }
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:11px" ' +
+      'onclick="selectAccountByName(\''+escHtml(a.name).replace(/'/g,"\\'")+'\')" style="cursor:pointer">' +
+      '<div style="flex:1;min-width:0">' +
+      '<div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;color:var(--blue-b)" ' +
+      'data-n="'+escHtml(a.name)+'" onclick="event.stopPropagation();selectAccountByName(this.dataset.n)">' + escHtml(a.name.length>35?a.name.slice(0,35)+'...':a.name) + '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px">' + fuTag + emailTag + gmailBadge + '</div>' +
+      '</div>' +
+      '<div style="text-align:right;flex-shrink:0">' +
+      '<div style="font-size:10px;color:'+diColor+';font-family:var(--mono)">'+diStr+'</div>' +
+      scoreBar(item.score) +
+      '</div></div>';
+  }
+
+  var needsHtml = needsAttn.length === 0
+    ? '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px">&#10003; All accounts are getting good attention!</div>'
+    : needsAttn.map(accRow).join('');
+
+  var wellHtml = wellCov.length === 0
+    ? '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px">No well-covered accounts yet.</div>'
+    : wellCov.map(accRow).join('');
+
+  var modHtml = moderate.length === 0 ? '' : moderate.map(accRow).join('');
+
+  el.innerHTML =
+    '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden">' +
+
+    // Header
+    '<div style="padding:14px 20px 12px;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between">' +
+    '<div style="font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.08em">MY OUTREACH</div>' +
+    gmailStatusHtml + '</div>' +
+    '</div>' +
+
+    '<div style="flex:1;overflow-y:auto;padding:20px">' +
+
+    // KPI bar
+    '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">' +
+    _mgrOKpi('Total Accounts', accs.length, '#3b82f6') +
+    _mgrOKpi('Needs Attention', needsAttn.length, '#ef4444') +
+    _mgrOKpi('Moderate', moderate.length, '#f59e0b') +
+    _mgrOKpi('Well Covered', wellCov.length, '#22c55e') +
+    _mgrOKpi('Overdue Follow-up', scored.filter(function(x){ return x.acc.followUpDate&&x.acc.followUpDate<today; }).length, '#a855f7') +
+    '</div>' +
+
+    // AI Tools panel
+    '<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(59,130,246,0.08));border:1px solid rgba(139,92,246,0.25);padding:18px;margin-bottom:20px;border-radius:var(--r2)">' +
+    '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;color:#a78bfa;margin-bottom:12px">&#129302; AI OUTREACH COACH</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
+    '<button onclick="myOutreachAI(\'weekly\')" style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);color:#86efac;padding:7px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128197; This Week\'s Plan</button>' +
+    '<button onclick="myOutreachAI(\'top5emails\')" style="background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);color:#93c5fd;padding:7px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#9993; Draft Top 5 Emails</button>' +
+    '<button onclick="myOutreachAI(\'opps\')" style="background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.3);color:#fde68a;padding:7px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128200; Revenue Opportunities</button>' +
+    '<button onclick="myOutreachAI(\'phone_list\')" style="background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.3);color:#c4b5fd;padding:7px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128222; Call List</button>' +
+    '<button onclick="myOutreachAI(\'missed\')" style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;padding:7px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128308; Who I\'ve Missed</button>' +
+    (gmailConnected ? '<button onclick="myOutreachAI(\'gmail_insights\')" style="background:rgba(20,184,166,0.15);border:1px solid rgba(20,184,166,0.3);color:#5eead4;padding:7px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128241; Gmail Insights</button>' : '') +
+    '</div>' +
+    '<div id="my-outreach-ai-out" style="min-height:30px"></div>' +
+    '</div>' +
+
+    // Needs Attention section
+    '<div style="background:var(--navy-light);border:1px solid rgba(239,68,68,0.3);padding:16px;margin-bottom:16px;border-radius:var(--r2)">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+    '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;color:#ef4444">&#128308; NEEDS ATTENTION (' + needsAttn.length + ')</div>' +
+    '<button onclick="myOutreachAI(\'needsattn\')" style="background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);color:#a78bfa;padding:3px 10px;border-radius:3px;font-size:10px;cursor:pointer;font-family:var(--mono)">&#129302; AI Action Plan</button>' +
+    '</div>' + needsHtml + '</div>' +
+
+    // Moderate
+    (moderate.length > 0 ? '<div style="background:var(--navy-light);border:1px solid rgba(245,158,11,0.3);padding:16px;margin-bottom:16px;border-radius:var(--r2)">' +
+    '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;color:#f59e0b;margin-bottom:10px">&#9888; COULD USE MORE ATTENTION (' + moderate.length + ')</div>' +
+    modHtml + '</div>' : '') +
+
+    // Well covered
+    '<div style="background:var(--navy-light);border:1px solid rgba(34,197,94,0.2);padding:16px;margin-bottom:16px;border-radius:var(--r2)">' +
+    '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;color:#22c55e;margin-bottom:10px">&#10003; WELL COVERED (' + wellCov.length + ')</div>' +
+    wellHtml + '</div>' +
+
+    '</div></div>';
+}
+
+async function myOutreachAI(type) {
+  var out = document.getElementById('my-outreach-ai-out');
+  if (!out) return;
+  out.innerHTML = '<div style="color:#a78bfa;font-family:var(--mono);font-size:11px">&#9203; Analyzing your accounts...</div>';
+
+  var repId = state.viewAsRep || state.repId;
+  var accs = (state.accounts||[]).filter(function(a){
+    if (state.isAdmin && !state.viewAsRep) return true;
+    return a.rep === repId;
+  });
+  var now = new Date();
+  var today = now.toISOString().slice(0,10);
+
+  function daysSince(a) {
+    var d = a.lastSaleDate || a.lastSale || '';
+    if (!d) return 999;
+    try { return Math.floor((now-new Date(d))/86400000); } catch(e) { return 999; }
+  }
+
+  var neglected = accs.filter(function(a){ return daysSince(a)>90; })
+    .sort(function(a,b){ return (parseFloat(b.ytdRevenue||b.revenue||0)||0)-(parseFloat(a.ytdRevenue||a.revenue||0)||0); });
+  var atRisk = accs.filter(function(a){ var d=daysSince(a); return d>30&&d<=90; });
+  var overdue = accs.filter(function(a){ return a.followUpDate&&a.followUpDate<today; });
+  var repName = getRepDisplayName(repId) || repId;
+
+  var top5neg = neglected.slice(0,5).map(function(a){
+    return a.name.slice(0,30)+' — last sale: '+(a.lastSaleDate||a.lastSale||'unknown')+', YTD: $'+formatNum(parseFloat(a.ytdRevenue||a.revenue||0)||0);
+  }).join('\n');
+
+  // Gmail data summary if available
+  var gmailSummary = '';
+  if (state.gmailToken && state.gmailActivityCache) {
+    var loaded = Object.keys(state.gmailActivityCache).filter(function(k){
+      return state.gmailActivityCache[k] && state.gmailActivityCache[k].messages;
+    });
+    if (loaded.length) {
+      var totalSent = 0; var totalReplied = 0;
+      loaded.forEach(function(k){
+        var msgs = state.gmailActivityCache[k].messages || [];
+        totalSent += msgs.length;
+        totalReplied += msgs.filter(function(m){ return m.replied; }).length;
+      });
+      var overallRate = totalSent ? Math.round(totalReplied/totalSent*100) : 0;
+      gmailSummary = '\nGmail data ('+loaded.length+' accounts tracked): '+totalSent+' emails sent, '+totalReplied+' replies, '+overallRate+'% reply rate.';
+    }
+  }
+
+  var prompts = {
+    weekly: 'You are a sales coach for '+repName+', an industrial parts rep. Create a focused weekly outreach plan. Tell them exactly which 5-7 accounts to contact Mon-Wed and which 3-5 to hit Thu-Fri, with a one-line approach for each. Be specific.\n\nStats: '+accs.length+' accounts, '+neglected.length+' neglected (90d+), '+atRisk.length+' at risk (30-90d), '+overdue.length+' overdue follow-ups.'+gmailSummary+'\n\nTop neglected accounts:\n'+top5neg,
+
+    top5emails: 'You are a sales copywriter. Write 5 short subject lines and opening paragraphs for re-engagement emails to these neglected accounts. Each email should be different — vary the angle (checking in, new product, industry news, past order follow-up). Keep each opening paragraph to 2-3 sentences.\n\nAccounts:\n'+top5neg,
+
+    opps: 'You are a sales strategist. Based on this rep\'s account activity, identify the top 3 revenue opportunities they should focus on in the next 30 days. For each, give a $ estimate of potential recovery and the best action to take.\n\nRep: '+repName+'\nNeglected accounts with prior revenue:\n'+top5neg+'\nAt risk accounts: '+atRisk.length+'\nTotal accounts: '+accs.length+gmailSummary,
+
+    phone_list: 'You are a sales trainer. Create a call list of 8-10 accounts '+repName+' should call this week (not email — phone call). For each, give a specific reason to call and a one-line opening. Focus on highest-value neglected accounts.\n\nTop neglected:\n'+top5neg,
+
+    missed: 'You are a sales accountability coach. Be direct with '+repName+'. Which accounts have been most neglected and what is the likely business cost of that? Give them a wake-up call in plain language, then tell them the 3 most important things to do TODAY.\n\nNeglected (90d+): '+neglected.length+'\n'+top5neg,
+
+    needsattn: 'You are a sales coach. Create a concrete action plan for '+repName+' to re-engage their neglected accounts. For the top 5 below, give: (1) best contact method, (2) one-line message angle, (3) urgency level. Keep it practical.\n\n'+top5neg,
+
+    gmail_insights: 'You are a sales performance analyst. Based on this rep\'s Gmail email activity, give insights on their outreach patterns, which accounts are most responsive, and specific recommendations to improve reply rates.'+gmailSummary+'\n\nRep: '+repName+'. Total accounts: '+accs.length+'.'
+  };
+
+  var prompt = prompts[type] || 'Analyze the outreach performance for '+repName+'. Stats: '+accs.length+' accounts, '+neglected.length+' neglected, '+atRisk.length+' at risk.';
+
+  try {
+    var result = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:700,
+      messages:[{role:'user', content:prompt}]
+    });
+    var text = result&&result.content&&result.content[0] ? result.content[0].text : 'Could not generate.';
+    out.innerHTML = '<div style="background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.2);border-radius:var(--r2);padding:14px 16px;font-size:12px;line-height:1.75;color:var(--text-2)">' +
+      '<p>' + text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n\n/g,'</p><p style="margin-top:10px">').replace(/\n/g,'<br>') + '</p></div>';
+  } catch(e) {
+    out.innerHTML = '<span style="color:var(--red);font-size:11px">AI error: '+escHtml(e.message)+'</span>';
+  }
+}
+
+function _updateMyOutreachBadge() {
+  var badgeEl = document.getElementById('badge-my-outreach');
+  if (!badgeEl) return;
+  var repId = state.viewAsRep || state.repId;
+  var accs = (state.accounts||[]).filter(function(a){ return a.rep===repId; });
+  var now = new Date();
+  var today = now.toISOString().slice(0,10);
+  function daysSince(a){ var d=a.lastSaleDate||a.lastSale||''; if(!d) return 999; try{return Math.floor((now-new Date(d))/86400000);}catch(e){return 999;} }
+  function score(a){ var d=daysSince(a); var s=100; if(d>180)s-=50; else if(d>90)s-=30; else if(d>30)s-=15; if(!(a.repNote&&a.repNote.trim()))s-=15; if(a.followUpDate&&a.followUpDate<today)s-=20; return Math.max(0,s); }
+  var n = accs.filter(function(a){ return score(a)<50; }).length;
+  badgeEl.textContent = n > 0 ? n : '';
+  badgeEl.style.display = n > 0 ? '' : 'none';
+}
+
+// End Outreach pages ───────────────────────────────────────────────────────
 
 //  INTRANSIT IQ — DAILY MISSION + CALENDAR + AI AGENT
 // ══════════════════════════════════════════════════════════
@@ -13110,7 +13638,8 @@ function renderManagerHub() {
     {id:'pipeline',      label:'&#128200; Pipeline'},
     {id:'aibrief',       label:'&#129302; AI Brief'},
     {id:'playbook',      label:'&#128203; Playbook'},
-    {id:'intel',         label:'&#128269; Account Intel'}
+    {id:'intel',         label:'&#128269; Account Intel'},
+    {id:'outreach',       label:'&#128140; Outreach'}
   ].map(function(t){
     var active = tab === t.id;
     return '<button onclick="window._mgrHubTab=\'' + t.id + '\';renderManagerHub()" ' +
@@ -13128,6 +13657,7 @@ function renderManagerHub() {
   else if (tab === 'aibrief')       bodyHtml = _mgrAIBriefHtml(teamReps);
   else if (tab === 'playbook')      bodyHtml = _mgrPlaybookHtml(teamReps);
   else if (tab === 'intel')         bodyHtml = _mgrIntelHtml(teamReps);
+  else if (tab === 'outreach')     bodyHtml = _mgrOutreachHtml(teamReps);
 
   content.innerHTML =
     '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden">' +

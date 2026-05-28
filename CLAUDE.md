@@ -1054,3 +1054,15 @@ Manager-only users (no personal rep accounts): `CMancilla` (carlos.mancilla@intr
 **New state field:** `state.poolManagedCache` (initialized to null, populated by `loadPoolManaged`)
 **New functions:** `loadPoolManaged`, `_updatePoolBadge`, `poolSaveRecord`, `poolMarkAvailable`, `poolMarkHidden`, `poolSetPriority`, `poolAssignTo`, `poolRemoveFromPool`, `poolClaim`, `poolNotInterested`, `renderPoolManagementView`, `renderAvailablePoolView`
 **Commit:** `c2bc937`
+
+### 2026-05-28 (session 31 — Pool Management improvements)
+
+**Pool Management — tabs, filters, audit trail (commit `8b833e5`):**
+- Replaced single-page stacked layout with three tabs: **NEEDS REVIEW** (default), **IN POOL**, **HIDDEN**
+- HIDDEN section is now always visible as a full tab — no longer collapsed in `<details>`; shows who hid each account and when
+- IN POOL cards now show audit info: who added the account to pool and on what date
+- Filter bar on every tab: search box (live), rep dropdown, sort (Revenue / Name / Last Sale / Rep)
+- NEEDS REVIEW paginates at 50 rows with SHOW MORE button (long inactive lists no longer flood the screen)
+- Audit trail: `poolLogAction(action, accName, detail)` — writes POOL_ACTION row to `_REQUEST_LOG` in History sheet with actor (state.repId) and timestamp; called from `poolMarkAvailable`, `poolMarkHidden`, `poolAssignTo`, `poolRemoveFromPool`
+- Filter/sort state stored in `window._poolFilter` (`{ tab, rep, sort, search, page }`)
+- New helper functions: `_poolMgmtState`, `poolMgmtTab`, `poolMgmtRep`, `poolMgmtSort`, `poolMgmtSearch`, `poolMgmtShowMore`, `poolLogAction`

@@ -7801,7 +7801,9 @@ function _mgrOutreachHtml(teamReps) {
     '<div id="mgr-outreach-ai-out" style="min-height:40px"></div>' +
     '</div>';
 
-  return kpiHtml + aiHtml + repTableHtml + neglectedHtml + overdueHtml + noEmailHtml;
+  var perfScoreHtml = _mgrPerfScoreHtml(teamReps);
+  var gmailCovHtml = _mgrGmailCoverageHtml(teamReps);
+  return kpiHtml + perfScoreHtml + gmailCovHtml + aiHtml + repTableHtml + neglectedHtml + overdueHtml + noEmailHtml;
 }
 
 function _mgrOKpi(label, val, color) {
@@ -7899,6 +7901,8 @@ async function renderMyOutreachView() {
     if (isAdm) return true;
     return a.rep === viewRep;
   });
+
+  var _moTab = window._myOutreachTab || 'attention';
 
   var now = new Date();
   var today = now.toISOString().slice(0,10);
@@ -8007,13 +8011,17 @@ async function renderMyOutreachView() {
     '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden">' +
 
     // Header
-    '<div style="padding:14px 20px 12px;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0">' +
-    '<div style="display:flex;align-items:center;justify-content:space-between">' +
+    '<div style="padding:14px 20px 0;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
     '<div style="font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.08em">MY OUTREACH</div>' +
     gmailStatusHtml + '</div>' +
-    '</div>' +
+    '<div style="display:flex;gap:6px;padding-bottom:0">' +
+    '<button onclick="window._myOutreachTab=\'attention\';renderMyOutreachView()" style="padding:7px 14px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r);background:'+((!window._myOutreachTab||window._myOutreachTab==\'attention\')?'\'var(--blue-b)\'':'\'transparent\'')+';color:'+((!window._myOutreachTab||window._myOutreachTab==\'attention\')?'\'#fff\'':'\'var(--text-3)\'')+';border:1px solid '+((!window._myOutreachTab||window._myOutreachTab==\'attention\')?'\'var(--blue-b)\'':'\'var(--border)\'')+';">&#128308; Attention</button>' +
+    '<button onclick="window._myOutreachTab=\'coverage\';renderMyOutreachView()" style="padding:7px 14px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:var(--r);background:'+(window._myOutreachTab==\'coverage\'?'\'var(--blue-b)\'':'\'transparent\'')+';color:'+(window._myOutreachTab==\'coverage\'?'\'#fff\'':'\'var(--text-3)\'')+';border:1px solid '+(window._myOutreachTab==\'coverage\'?'\'var(--blue-b)\'':'\'var(--border)\'')+';">&#9993; Contact Coverage</button>' +
+    '</div></div>' +
 
     '<div style="flex:1;overflow-y:auto;padding:20px">' +
+    (_moTab === 'coverage' ? _renderContactCoveragePanel(accs) :
 
     // KPI bar
     '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">' +
@@ -8148,6 +8156,375 @@ function _updateMyOutreachBadge() {
   badgeEl.textContent = n > 0 ? n : '';
   badgeEl.style.display = n > 0 ? '' : 'none';
 }
+
+
+// ── Gmail Contact Coverage (My Outreach) ─────────────────────────────────
+
+async function loadAllGmail() {
+  var repId = state.viewAsRep || state.repId;
+  var accs = (state.accounts||[]).filter(function(a){
+    if (state.isAdmin && !state.viewAsRep) return true;
+    return a.rep === repId;
+  });
+  // Only load accounts that have at least one email contact
+  var toLoad = accs.filter(function(a){
+    var contacts = state.contactsCache[a.name] || [];
+    return contacts.some(function(c){ return c.email && c.email.includes('@'); });
+  });
+  var btn = document.getElementById('load-all-gmail-btn');
+  if (btn) btn.disabled = true;
+  var prog = document.getElementById('load-all-gmail-prog');
+  if (prog) prog.textContent = '0 / ' + toLoad.length + ' accounts';
+
+  var done = 0;
+  // Load sequentially to avoid rate limits
+  for (var i = 0; i < toLoad.length; i++) {
+    var a = toLoad[i];
+    if (!state.gmailActivityCache[a.name] || state.gmailActivityCache[a.name] === 'error') {
+      try {
+        await loadGmailActivity(a.name);
+      } catch(e) {
+        state.gmailActivityCache[a.name] = { error: e.message };
+      }
+    }
+    done++;
+    if (prog) prog.textContent = done + ' / ' + toLoad.length + ' accounts scanned';
+  }
+  if (btn) btn.disabled = false;
+  if (prog) prog.textContent = 'Done — ' + toLoad.length + ' accounts scanned';
+  renderMyOutreachView();
+}
+
+function _buildContactCoverage(accs) {
+  // Build per-account contact coverage from gmailActivityCache + contactsCache
+  var result = [];
+  accs.forEach(function(a) {
+    var contacts = (state.contactsCache[a.name] || []).filter(function(c){ return c.email && c.email.includes('@'); });
+    if (!contacts.length) return;
+    var gmData = state.gmailActivityCache[a.name];
+    var msgs = (gmData && gmData.messages) ? gmData.messages : null;
+    var loaded = !!msgs;
+
+    var contactRows = contacts.map(function(c) {
+      var emailLow = c.email.toLowerCase().trim();
+      var sent = msgs ? msgs.filter(function(m){ return m.to.toLowerCase().indexOf(emailLow) !== -1; }) : [];
+      var lastMsg = sent.length ? sent[0] : null; // already sorted newest first
+      var lastDate = lastMsg ? lastMsg.date : null;
+      var replied = lastMsg ? lastMsg.replied : false;
+      return {
+        name: c.name || c.email,
+        email: c.email,
+        title: c.title || '',
+        sent: sent.length,
+        lastDate: lastDate,
+        replied: replied,
+        contacted: sent.length > 0
+      };
+    });
+
+    var emailedCount = contactRows.filter(function(c){ return c.contacted; }).length;
+    var coveragePct = contacts.length ? Math.round(emailedCount / contacts.length * 100) : 0;
+    result.push({
+      acc: a,
+      contacts: contactRows,
+      emailedCount: emailedCount,
+      totalWithEmail: contacts.length,
+      coveragePct: coveragePct,
+      loaded: loaded
+    });
+  });
+  return result;
+}
+
+function _renderContactCoveragePanel(accs) {
+  if (!state.gmailToken) {
+    return '<div style="padding:20px;text-align:center">' +
+      '<div style="font-size:13px;font-weight:600;margin-bottom:8px">Connect Gmail to see contact coverage</div>' +
+      '<button onclick="requestGmailAccess(function(){ renderMyOutreachView(); })" ' +
+      'style="background:var(--blue-b);border:none;color:#fff;padding:8px 20px;border-radius:4px;font-size:12px;cursor:pointer;font-family:var(--mono)">&#128272; Connect Gmail</button>' +
+      '</div>';
+  }
+
+  var coverage = _buildContactCoverage(accs);
+  var loadedCount = coverage.filter(function(x){ return x.loaded; }).length;
+  var totalContacts = coverage.reduce(function(s,x){ return s + x.totalWithEmail; }, 0);
+  var emailedContacts = coverage.reduce(function(s,x){ return s + x.emailedCount; }, 0);
+  var neverContacted = coverage.filter(function(x){ return x.emailedCount === 0 && x.loaded; });
+  var fullyCovered = coverage.filter(function(x){ return x.coveragePct === 100 && x.loaded; });
+  var overallCovPct = totalContacts ? Math.round(emailedContacts / totalContacts * 100) : 0;
+
+  var topHtml = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">' +
+    _mgrOKpi('Accounts w/ Contacts', coverage.length, '#3b82f6') +
+    _mgrOKpi('Gmail Loaded', loadedCount, '#22c55e') +
+    _mgrOKpi('Contacts Covered', emailedContacts + ' / ' + totalContacts, overallCovPct>=70?'#22c55e':overallCovPct>=40?'#f59e0b':'#ef4444') +
+    _mgrOKpi('Never Contacted', neverContacted.length, '#ef4444') +
+    _mgrOKpi('Fully Covered', fullyCovered.length, '#22c55e') +
+    '</div>';
+
+  var loadBtnHtml = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">' +
+    '<button id="load-all-gmail-btn" onclick="requestGmailAccess(function(){ loadAllGmail(); })" ' +
+    'style="background:var(--blue-b);border:none;color:#fff;padding:7px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#9993; Scan All Accounts Gmail</button>' +
+    '<span id="load-all-gmail-prog" style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' +
+    (loadedCount > 0 ? loadedCount + ' accounts loaded' : 'Click to scan your sent mail for all accounts') +
+    '</span></div>';
+
+  // Never contacted accounts (sorted by revenue)
+  var neverHtml = '';
+  if (neverContacted.length > 0) {
+    var sorted = neverContacted.slice().sort(function(a,b){
+      return (parseFloat(b.acc.ytdRevenue||b.acc.revenue||0)||0) - (parseFloat(a.acc.ytdRevenue||a.acc.revenue||0)||0);
+    });
+    neverHtml = '<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);padding:14px;margin-bottom:16px;border-radius:var(--r2)">' +
+      '<div style="font-size:11px;font-weight:700;font-family:var(--mono);color:#ef4444;margin-bottom:10px;letter-spacing:0.08em">&#128308; NEVER EMAILED — ' + neverContacted.length + ' ACCOUNTS</div>' +
+      sorted.map(function(x) {
+        var ytd = parseFloat(x.acc.ytdRevenue||x.acc.revenue||0)||0;
+        var contactList = x.contacts.map(function(c){ return escHtml(c.name) + ' (' + escHtml(c.email) + ')'; }).join(', ');
+        return '<div style="padding:7px 0;border-bottom:1px solid rgba(239,68,68,0.15);font-size:11px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
+          '<div>' +
+          '<div style="font-weight:600;color:var(--text)">' + escHtml(x.acc.name.length>35?x.acc.name.slice(0,35)+'...':x.acc.name) + '</div>' +
+          '<div style="color:var(--text-muted);font-size:10px;margin-top:2px">' + contactList + '</div>' +
+          '</div>' +
+          '<div style="text-align:right;flex-shrink:0">' +
+          (ytd>0?'<div style="font-size:11px;font-family:var(--mono)">$'+formatNum(ytd)+'</div>':'') +
+          '</div></div>') ;
+      }).join('') +
+      '</div>';
+  }
+
+  // Per-account contact detail (accounts with some data loaded)
+  var accDetails = coverage.filter(function(x){ return x.loaded; })
+    .sort(function(a,b){ return a.coveragePct - b.coveragePct; })
+    .slice(0, 30); // top 30
+
+  var accDetailHtml = '';
+  if (accDetails.length > 0) {
+    accDetailHtml = '<div style="background:var(--navy-light);border:1px solid var(--border);padding:14px;border-radius:var(--r2)">' +
+      '<div style="font-size:11px;font-weight:700;font-family:var(--mono);color:var(--text-2);margin-bottom:12px;letter-spacing:0.08em">CONTACT DETAIL BY ACCOUNT</div>' +
+      accDetails.map(function(x) {
+        var covColor = x.coveragePct===100?'#22c55e':x.coveragePct>=50?'#f59e0b':'#ef4444';
+        var contactRowsHtml = x.contacts.map(function(c) {
+          var dStr = '';
+          if (c.lastDate) { try { dStr = new Date(c.lastDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); } catch(e) { dStr = c.lastDate; } }
+          var statusBadge = c.contacted
+            ? '<span style="color:#22c55e;font-size:10px">&#10003; ' + c.sent + ' sent' + (dStr?' · '+dStr:'') + (c.replied?' · <span style="color:#86efac">replied</span>':'· no reply') + '</span>'
+            : '<span style="color:#ef4444;font-size:10px">&#10005; Never emailed</span>';
+          return '<div style="display:flex;justify-content:space-between;padding:4px 0 4px 10px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px">' +
+            '<div><span style="color:var(--text-muted)">' + escHtml(c.name) + '</span>' +
+            (c.title?'<span style="color:var(--text-3);font-size:10px"> · '+escHtml(c.title)+'</span>':'') + '</div>' +
+            '<div>' + statusBadge + '</div></div>';
+        }).join('');
+        return '<div style="margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:12px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-weight:600;font-size:12px">' + escHtml(x.acc.name.length>40?x.acc.name.slice(0,40)+'...':x.acc.name) + '</div>' +
+          '<div style="font-size:11px;font-weight:700;color:'+covColor+'">'+x.emailedCount+'/'+x.totalWithEmail+' contacted ('+x.coveragePct+'%)</div>' +
+          '</div>' + contactRowsHtml + '</div>';
+      }).join('') + '</div>';
+  }
+
+  return topHtml + loadBtnHtml + neverHtml + accDetailHtml;
+}
+
+// ── Manager Hub: Performance Score ───────────────────────────────────────
+
+function _calcRepPerfScore(repId, teamAccs, now, today) {
+  var repAccs = teamAccs.filter(function(a){ return a.rep === repId; });
+  if (!repAccs.length) return { score: 0, breakdown: {} };
+
+  function daysSince(a) {
+    var d = a.lastSaleDate || a.lastSale || '';
+    if (!d) return 999;
+    try { return Math.floor((now - new Date(d)) / 86400000); } catch(e) { return 999; }
+  }
+
+  var total = repAccs.length;
+  var active30 = repAccs.filter(function(a){ return daysSince(a) <= 30; }).length;
+  var active90 = repAccs.filter(function(a){ return daysSince(a) <= 90; }).length;
+  var hasNote  = repAccs.filter(function(a){ return !!(a.repNote && a.repNote.trim()); }).length;
+  var hasFu    = repAccs.filter(function(a){ return !!a.followUpDate; }).length;
+  var overdue  = repAccs.filter(function(a){ return a.followUpDate && a.followUpDate < today; }).length;
+
+  // Score components (out of 100)
+  var actScore  = Math.round(active30 / total * 35);   // 35 pts — active accounts last 30d
+  var engScore  = Math.round(active90 / total * 20);   // 20 pts — engaged last 90d
+  var noteScore = Math.round(hasNote  / total * 20);   // 20 pts — notes coverage
+  var fuScore   = Math.round(hasFu    / total * 15);   // 15 pts — follow-up discipline
+  var odPenalty = Math.min(10, Math.round(overdue / Math.max(1,hasFu) * 10)); // up to -10 for overdue
+
+  // Gmail bonus (up to 10 pts if connected and logged-in user's cache has data)
+  var gmailBonus = 0;
+  var gmailDetail = '';
+  var gmailCache = state.gmailActivityCache || {};
+  var repAccNames = repAccs.map(function(a){ return a.name; });
+  var gmLoadedForRep = repAccNames.filter(function(n){ return gmailCache[n] && gmailCache[n].messages; });
+  if (gmLoadedForRep.length > 0) {
+    var totalSent = 0; var totalReplied = 0;
+    gmLoadedForRep.forEach(function(n){
+      var msgs = gmailCache[n].messages || [];
+      totalSent += msgs.length;
+      totalReplied += msgs.filter(function(m){ return m.replied; }).length;
+    });
+    var replyRate = totalSent ? totalReplied / totalSent : 0;
+    var coverage = gmLoadedForRep.length / repAccs.filter(function(a){
+      var c = state.contactsCache[a.name] || [];
+      return c.some(function(x){ return x.email&&x.email.includes('@'); });
+    }).length;
+    gmailBonus = Math.round((replyRate * 0.5 + Math.min(1, coverage) * 0.5) * 10);
+    gmailDetail = gmLoadedForRep.length + ' accs, ' + totalSent + ' sent, ' + Math.round(replyRate*100) + '% reply';
+  }
+
+  var total_score = Math.max(0, Math.min(100, actScore + engScore + noteScore + fuScore - odPenalty + gmailBonus));
+  return {
+    score: total_score,
+    breakdown: {
+      active: actScore, engaged: engScore, notes: noteScore,
+      followup: fuScore, overduePenalty: -odPenalty, gmail: gmailBonus
+    },
+    detail: {
+      active30: active30, active90: active90, hasNote: hasNote,
+      hasFu: hasFu, overdue: overdue, total: total,
+      gmailDetail: gmailDetail
+    }
+  };
+}
+
+function _mgrPerfScoreHtml(teamReps) {
+  var accs = state.accounts || [];
+  var now = new Date();
+  var today = now.toISOString().slice(0,10);
+  var teamAccs = accs.filter(function(a){ return teamReps.indexOf(a.rep) !== -1; });
+  var hasGmail = !!state.gmailToken;
+
+  var rows = teamReps.map(function(repId) {
+    var p = _calcRepPerfScore(repId, teamAccs, now, today);
+    var name = getRepDisplayName(repId) || repId;
+    return { repId: repId, name: name, perf: p };
+  }).sort(function(a,b){ return b.perf.score - a.perf.score; });
+
+  function scoreColor(s) { return s>=75?'#22c55e':s>=50?'#f59e0b':'#ef4444'; }
+  function scoreBadge(s) {
+    var grade = s>=90?'A+':s>=80?'A':s>=70?'B':s>=60?'C':s>=50?'D':'F';
+    var c = scoreColor(s);
+    return '<span style="font-size:18px;font-weight:800;color:'+c+'">'+grade+'</span>' +
+           '<span style="font-size:11px;color:var(--text-muted);margin-left:4px">('+s+')</span>';
+  }
+  function mini(val, max, color) {
+    return '<div style="display:inline-block;width:30px;height:5px;background:var(--border);border-radius:3px;vertical-align:middle">' +
+      '<div style="width:'+Math.round(val/max*100)+'%;height:100%;background:'+color+';border-radius:3px"></div></div> '+val+'/'+max;
+  }
+
+  var tableHtml = '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+    '<tr style="color:var(--text-3);font-family:var(--mono);font-size:10px">' +
+    '<th style="text-align:left;padding:5px 8px">REP</th>' +
+    '<th style="padding:5px 8px;text-align:center">SCORE</th>' +
+    '<th style="padding:5px 8px;text-align:center">ACTIVE 30d</th>' +
+    '<th style="padding:5px 8px;text-align:center">NOTES</th>' +
+    '<th style="padding:5px 8px;text-align:center">FOLLOW-UP</th>' +
+    '<th style="padding:5px 8px;text-align:center">OVERDUE</th>' +
+    (hasGmail ? '<th style="padding:5px 8px;text-align:center">GMAIL</th>' : '') +
+    '<th style="padding:5px 8px;text-align:center">AI</th>' +
+    '</tr>' +
+    rows.map(function(r) {
+      var d = r.perf.detail;
+      var b = r.perf.breakdown;
+      var odColor = d.overdue > 3 ? '#ef4444' : d.overdue > 0 ? '#f59e0b' : '#22c55e';
+      return '<tr style="border-top:1px solid var(--border)">' +
+        '<td style="padding:8px;font-weight:600">' + escHtml(r.name) + '</td>' +
+        '<td style="padding:8px;text-align:center">' + scoreBadge(r.perf.score) + '</td>' +
+        '<td style="padding:8px;text-align:center;color:var(--text-muted)">' + d.active30 + ' / ' + d.total + '</td>' +
+        '<td style="padding:8px;text-align:center;color:var(--text-muted)">' + d.hasNote + ' / ' + d.total + '</td>' +
+        '<td style="padding:8px;text-align:center;color:var(--text-muted)">' + d.hasFu + ' / ' + d.total + '</td>' +
+        '<td style="padding:8px;text-align:center;font-weight:600;color:'+odColor+'">' + d.overdue + '</td>' +
+        (hasGmail ? '<td style="padding:8px;text-align:center;font-size:10px;color:var(--text-muted)">' + (d.gmailDetail || '—') + '</td>' : '') +
+        '<td style="padding:8px;text-align:center"><button data-rep="'+r.repId+'" onclick="mgrOutreachAI(\'coach\',this.dataset.rep)" ' +
+        'style="background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);color:#a78bfa;padding:2px 8px;border-radius:3px;font-size:9px;cursor:pointer;font-family:var(--mono)">&#129302;</button></td>' +
+        '</tr>';
+    }).join('') + '</table>';
+
+  var scoreNote = '<div style="font-size:10px;color:var(--text-3);margin-top:10px;line-height:1.6">' +
+    'Score formula: Active 30d (35pts) + Engaged 90d (20pts) + Notes coverage (20pts) + Follow-up discipline (15pts) − Overdue penalty (up to −10pts)' +
+    (hasGmail ? ' + Gmail reply rate (up to +10pts)' : '') + '</div>';
+
+  return '<div style="background:var(--navy-light);border:1px solid var(--border);padding:16px;margin-bottom:20px;border-radius:var(--r2)">' +
+    '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;margin-bottom:14px;color:var(--text-2)">&#127942; PERFORMANCE SCORE</div>' +
+    tableHtml + scoreNote + '</div>';
+}
+
+function _mgrGmailCoverageHtml(teamReps) {
+  // Shows logged-in user's email coverage across team accounts
+  if (!state.gmailToken) {
+    return '<div style="background:var(--navy-light);border:1px dashed rgba(59,130,246,0.3);padding:16px;border-radius:var(--r2);margin-bottom:16px">' +
+      '<div style="font-size:12px;font-weight:600;margin-bottom:6px">&#9993; Gmail Email Coverage</div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Connect your Gmail to see which team accounts and contacts you\'ve personally been in touch with, and which need outreach.</div>' +
+      '<button onclick="requestGmailAccess(function(){ renderManagerHub(); })" ' +
+      'style="background:var(--blue-b);border:none;color:#fff;padding:6px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128272; Connect Gmail</button>' +
+      '</div>';
+  }
+
+  var accs = state.accounts || [];
+  var teamAccs = accs.filter(function(a){ return teamReps.indexOf(a.rep) !== -1; });
+  var coverage = _buildContactCoverage(teamAccs);
+  var loadedCount = coverage.filter(function(x){ return x.loaded; }).length;
+  var totalContacts = coverage.reduce(function(s,x){ return s + x.totalWithEmail; }, 0);
+  var emailedContacts = coverage.reduce(function(s,x){ return s + x.emailedCount; }, 0);
+  var neverAccs = coverage.filter(function(x){ return x.emailedCount === 0 && x.loaded; });
+  var covPct = totalContacts ? Math.round(emailedContacts/totalContacts*100) : 0;
+
+  var statsHtml = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' +
+    _mgrOKpi('Accs Scanned', loadedCount, '#3b82f6') +
+    _mgrOKpi('Contacts Emailed', emailedContacts+'/'+totalContacts, covPct>=70?'#22c55e':covPct>=40?'#f59e0b':'#ef4444') +
+    _mgrOKpi('Never Contacted', neverAccs.length, '#ef4444') +
+    '</div>';
+
+  var neverHtml = neverAccs.length > 0
+    ? '<div style="margin-bottom:12px"><div style="font-size:10px;font-family:var(--mono);color:#ef4444;margin-bottom:6px">ACCOUNTS — NEVER EMAILED BY YOU</div>' +
+      neverAccs.slice(0,10).map(function(x){
+        var ytd = parseFloat(x.acc.ytdRevenue||x.acc.revenue||0)||0;
+        return '<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--border)">' +
+          '<div><span style="font-weight:600">'+escHtml(x.acc.name.length>30?x.acc.name.slice(0,30)+'...':x.acc.name)+'</span>' +
+          '<span style="color:var(--text-muted);margin-left:6px">'+escHtml(getRepDisplayName(x.acc.rep)||x.acc.rep)+'</span></div>' +
+          (ytd>0?'<span style="font-family:var(--mono);color:var(--text-muted)">$'+formatNum(ytd)+'</span>':'') +
+          '</div>';
+      }).join('') + '</div>'
+    : '';
+
+  var loadBtn = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
+    '<button id="mgr-load-gmail-btn" onclick="mgrLoadAllTeamGmail()" ' +
+    'style="background:var(--blue-b);border:none;color:#fff;padding:5px 12px;border-radius:3px;font-size:10px;cursor:pointer;font-family:var(--mono)">&#9993; Scan Gmail for Team Accounts</button>' +
+    '<span id="mgr-load-gmail-prog" style="font-size:10px;color:var(--text-muted);font-family:var(--mono)">' +
+    (loadedCount > 0 ? loadedCount + ' accounts scanned' : '') + '</span></div>';
+
+  var noteHtml = '<div style="font-size:10px;color:var(--text-3);font-style:italic;margin-top:8px">Note: Shows your personal Gmail sent folder only. To see rep-level email data, each rep must connect Gmail on their own device and data is saved to the app.</div>';
+
+  return '<div style="background:var(--navy-light);border:1px solid rgba(59,130,246,0.3);padding:16px;margin-bottom:20px;border-radius:var(--r2)">' +
+    '<div style="font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.08em;margin-bottom:12px;color:#93c5fd">&#9993; YOUR EMAIL COVERAGE — TEAM ACCOUNTS</div>' +
+    statsHtml + loadBtn + neverHtml + noteHtml + '</div>';
+}
+
+async function mgrLoadAllTeamGmail() {
+  var btn = document.getElementById('mgr-load-gmail-btn');
+  var prog = document.getElementById('mgr-load-gmail-prog');
+  if (btn) btn.disabled = true;
+  var mgrCfg = getManagerConfig();
+  var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[]).filter(function(r){ return r!=='FJohn'; });
+  var teamAccs = (state.accounts||[]).filter(function(a){ return teamReps.indexOf(a.rep)!==-1; });
+  var toLoad = teamAccs.filter(function(a){
+    var c = state.contactsCache[a.name]||[];
+    return c.some(function(x){ return x.email&&x.email.includes('@'); });
+  });
+  var done = 0;
+  for (var i = 0; i < toLoad.length; i++) {
+    var a = toLoad[i];
+    if (!state.gmailActivityCache[a.name] || state.gmailActivityCache[a.name] === 'error') {
+      try { await loadGmailActivity(a.name); } catch(e) { state.gmailActivityCache[a.name] = { error: e.message }; }
+    }
+    done++;
+    if (prog) prog.textContent = done + ' / ' + toLoad.length;
+  }
+  if (btn) btn.disabled = false;
+  if (prog) prog.textContent = done + ' accounts scanned';
+  renderManagerHub();
+}
+
 
 // End Outreach pages ───────────────────────────────────────────────────────
 

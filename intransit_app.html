@@ -1757,7 +1757,7 @@ async function loadSupplementalData() {
     state.ordHistError = null;
     _updateLoadProgress('LOADING CONTACTS...', 50);
     const [contactRows] = await Promise.all([
-      sheetsGet("'_CONTACTS'!A1:K50000").catch(() => []),
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACTS'!A1:K50000").catch(() => []),
     ]);
     // invRows and ordHistRows load in background after app is ready (see _loadHeavyDataBackground)
     const invRows = [];
@@ -1774,7 +1774,7 @@ async function loadSupplementalData() {
     _updateLoadProgress('LOADING COLLECTIONS DATA...', 78);
     const [collInvRows, openOrderRows, sigRowsRaw] = await Promise.all([
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS_INVOICES'!A1:L50000").catch(() => []),
-      sheetsGet("'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_OPEN_ORDERS'!A1:Z2000").catch(() => []),
       sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_SIGNATURES'!A1:D100").catch(() => []),
     ]);
 
@@ -4051,7 +4051,7 @@ async function loadAllAccounts() {
 
   for (const tab of tabs) {
     try {
-      const rows = await sheetsGet(`'${tab}'!A1:Z2000`);
+      const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, `'${tab}'!A1:Z2000`);
       if (rows.length < 5) continue;
 
       // Find header row (has CUSTOMER_NAME)

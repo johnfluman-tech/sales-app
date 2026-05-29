@@ -240,7 +240,8 @@ def push_rep_tab(service, rep, rep_df, year_list, all_tabs):
     if service is None:
         return
     try:
-        ensure_tab_exists(service, rep, all_tabs)
+        h_tabs = get_all_tabs(service, HISTORY_SHEET_ID)
+        ensure_tab_exists(service, rep, h_tabs, sheet_id=HISTORY_SHEET_ID)
 
         year_headers = [str(y) for y in year_list]
         headers = (
@@ -288,11 +289,11 @@ def push_rep_tab(service, rep, rep_df, year_list, all_tabs):
         all_rows = instr_rows + data_rows
 
         service.spreadsheets().values().clear(
-            spreadsheetId=SPREADSHEET_ID,
+            spreadsheetId=HISTORY_SHEET_ID,
             range=f"'{rep}'!A1:Z5000"
         ).execute()
         service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
+            spreadsheetId=HISTORY_SHEET_ID,
             range=f"'{rep}'!A1",
             valueInputOption="RAW",
             body={"values": all_rows}
@@ -300,7 +301,7 @@ def push_rep_tab(service, rep, rep_df, year_list, all_tabs):
 
         # Get sheet_id for formatting
         sheet_id = None
-        meta = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
+        meta = service.spreadsheets().get(spreadsheetId=HISTORY_SHEET_ID).execute()
         for s in meta['sheets']:
             if s['properties']['title'] == rep:
                 sheet_id = s['properties']['sheetId']
@@ -452,11 +453,11 @@ def push_rep_tab(service, rep, rep_df, year_list, all_tabs):
                 }},
             ]
             service.spreadsheets().batchUpdate(
-                spreadsheetId=SPREADSHEET_ID,
+                spreadsheetId=HISTORY_SHEET_ID,
                 body={"requests": requests}
             ).execute()
 
-        print(f"  → Pushed {len(rep_df)} accounts to Sheet tab: {rep}")
+        print(f"  → Pushed {len(rep_df)} accounts to Sheet tab: {rep} (History sheet)")
     except Exception as e:
         print(f"  WARNING: Could not push tab for {rep} — {e}")
 
@@ -579,8 +580,9 @@ def push_open_orders_tab(service, orders_df, all_tabs):
     if service is None or len(orders_df) == 0:
         return
     try:
-        ensure_tab_exists(service, '_OPEN_ORDERS', all_tabs, row_count=len(orders_df))
-        resize_tab(service, '_OPEN_ORDERS', len(orders_df) + 1)
+        h_tabs = get_all_tabs(service, HISTORY_SHEET_ID)
+        ensure_tab_exists(service, '_OPEN_ORDERS', h_tabs, row_count=len(orders_df), sheet_id=HISTORY_SHEET_ID)
+        resize_tab(service, '_OPEN_ORDERS', len(orders_df) + 1, sheet_id=HISTORY_SHEET_ID)
         headers = ['ORDER_NUMBER','CUSTOMER_ID','CUSTOMER_NAME','SALES_REP',
                    'ORDER_DATE','PART_NUMBER','DESCRIPTION','QTY_ORDERED',
                    'QTY_SHIPPED','QTY_NEEDED','PRICE','EXTENDED_PRICE',
@@ -589,17 +591,17 @@ def push_open_orders_tab(service, orders_df, all_tabs):
         for _, r in orders_df.iterrows():
             rows.append([str(r.get(h,'')) for h in headers])
         service.spreadsheets().values().clear(
-            spreadsheetId=SPREADSHEET_ID, range="'_OPEN_ORDERS'!A1:Z200000"
+            spreadsheetId=HISTORY_SHEET_ID, range="'_OPEN_ORDERS'!A1:Z200000"
         ).execute()
         for i in range(0, len(rows), 10000):
             service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
+                spreadsheetId=HISTORY_SHEET_ID,
                 range=f"'_OPEN_ORDERS'!A{i+1}",
                 valueInputOption="RAW",
                 body={"values": rows[i:i+10000]}
             ).execute()
-        _format_header_tab(service, '_OPEN_ORDERS')
-        print(f"  → Pushed {len(rows)-1} open order lines to _OPEN_ORDERS tab.")
+        _format_header_tab(service, '_OPEN_ORDERS', sid=HISTORY_SHEET_ID)
+        print(f"  → Pushed {len(rows)-1} open order lines to _OPEN_ORDERS tab (History sheet).")
     except Exception as e:
         print(f"  WARNING: Could not push _OPEN_ORDERS tab — {e}")
 
@@ -614,7 +616,7 @@ def push_gp_tab(service, gp_df, all_tabs):
         ensure_tab_exists(service, '_GP', h_tabs, row_count=len(gp_df), sheet_id=sid)
         resize_tab(service, '_GP', len(gp_df) + 1, sheet_id=sid)
         headers = ['INVOICE_NUMBER','INVOICE_DATE','SALES_REP','CUSTOMER_NAME',
-                   'EXTENDED_PRICE','GP','PART_NUMBER','INVOICE_MONTH','INVOICE_YEAR']
+                   'EXTENDED_PRICE','GP','PART_NUMBER','INVOICE_MONTH','INVOICE_YEAR','BUYER_NAME']
         rows = [headers]
         for _, r in gp_df.iterrows():
             rows.append([str(r.get(h,'')) for h in headers])
@@ -939,7 +941,9 @@ def push_contacts_tab(service, contacts_all_df, all_tabs):
     if service is None:
         return
     try:
-        ensure_tab_exists(service, '_CONTACTS', all_tabs)
+        sid = HISTORY_SHEET_ID
+        h_tabs = get_all_tabs(service, sid)
+        ensure_tab_exists(service, '_CONTACTS', h_tabs, sheet_id=sid)
 
         AP_KEYWORDS = ['payable', 'accounts pay', 'ap ', 'a/p', 'finance',
                        'controller', 'treasury', 'billing', 'credit', 'collection']
@@ -966,10 +970,10 @@ def push_contacts_tab(service, contacts_all_df, all_tabs):
             ])
 
         service.spreadsheets().values().clear(
-            spreadsheetId=SPREADSHEET_ID, range="'_CONTACTS'!A1:Z50000"
+            spreadsheetId=sid, range="'_CONTACTS'!A1:Z50000"
         ).execute()
         service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
+            spreadsheetId=sid,
             range="'_CONTACTS'!A1",
             valueInputOption="RAW",
             body={"values": rows}
@@ -977,14 +981,14 @@ def push_contacts_tab(service, contacts_all_df, all_tabs):
 
         # Format header
         sheet_id = None
-        meta = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
+        meta = service.spreadsheets().get(spreadsheetId=sid).execute()
         for s in meta['sheets']:
             if s['properties']['title'] == '_CONTACTS':
                 sheet_id = s['properties']['sheetId']
                 break
         if sheet_id is not None:
             service.spreadsheets().batchUpdate(
-                spreadsheetId=SPREADSHEET_ID,
+                spreadsheetId=sid,
                 body={"requests": [
                     {"repeatCell": {
                         "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
@@ -1003,7 +1007,7 @@ def push_contacts_tab(service, contacts_all_df, all_tabs):
             ).execute()
 
         ap_count = sum(1 for r in rows[1:] if r[8] == 'AP/Collections')
-        print(f"  → Pushed {len(rows)-1} contacts to _CONTACTS tab "
+        print(f"  → Pushed {len(rows)-1} contacts to _CONTACTS tab (History sheet) "
               f"({ap_count} AP/Collections contacts flagged).")
     except Exception as e:
         print(f"  WARNING: Could not push _CONTACTS tab — {e}")
@@ -1037,6 +1041,7 @@ def push_invoice_history_tab(service, invoice_history_df, all_tabs):
                 round(float(r.get('LINE_TOTAL', 0) or 0), 2),
             ])
 
+        resize_tab(service, '_INVOICE_HISTORY', len(rows) + 10, sheet_id=sid)
         service.spreadsheets().values().clear(
             spreadsheetId=sid, range="'_INVOICE_HISTORY'!A1:Z200000"
         ).execute()
@@ -2168,7 +2173,8 @@ def main():
                 i.GP,
                 NULL                AS PART_NUMBER,
                 MONTH(i.INVOICE_DATE) AS INVOICE_MONTH,
-                YEAR(i.INVOICE_DATE)  AS INVOICE_YEAR
+                YEAR(i.INVOICE_DATE)  AS INVOICE_YEAR,
+                o.ORDERED_BY        AS BUYER_NAME
             FROM dbo.INVCHEA i
             JOIN dbo.ORDERHEA o    ON o.ORDER_NUMBER = i.ORDER_NUMBER
             JOIN dbo.CUSTOMER c    ON c.ID = o.CUSTOMER_ID
@@ -2283,7 +2289,7 @@ def main():
             if len(rep_df) > 0:
                 push_rep_tab(service, rep, rep_df, year_list, all_tabs)
 
-        push_master_tab(service, summary, year_list, all_tabs)
+        # push_master_tab skipped — MASTER tab not used by app, freeing Main sheet cells
 
         # Push new data tabs
         if len(all_contacts_df) > 0:

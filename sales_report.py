@@ -786,10 +786,27 @@ def push_customer_directory_tab(service, conn, all_tabs):
         print(f"  → _CUSTOMER_DIRECTORY: Tab ensured.")
 
         dir_sql = """
+            WITH rep_by_employee AS (
+                SELECT o.CUSTOMER_ID,
+                       e.USERNAME AS SALES_REP,
+                       ROW_NUMBER() OVER (PARTITION BY o.CUSTOMER_ID ORDER BY o.ORDER_DATE DESC) AS rn
+                FROM dbo.ORDERHEA o
+                JOIN dbo.EMPLOYEE e ON e.LOGIN_ID = o.USERNAME
+                JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
+                WHERE e.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                  AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+            ),
+            owned_accounts AS (
+                SELECT c.ID AS CUSTOMER_ID, c.USERNAME AS SALES_REP
+                FROM dbo.CUSTOMER c
+                WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                UNION ALL
+                SELECT CUSTOMER_ID, SALES_REP FROM rep_by_employee WHERE rn = 1
+            )
             SELECT
                 c.ID            AS CUSTOMER_ID,
                 c.NAME          AS NAME,
-                c.USERNAME      AS USERNAME,
+                oa.SALES_REP    AS USERNAME,
                 c.CITY          AS CITY,
                 c.STATE         AS STATE,
                 c.LAST_ACTIVITY AS LAST_ACTIVITY,
@@ -799,7 +816,8 @@ def push_customer_directory_tab(service, conn, all_tabs):
                 life.LAST_SALE_DATE,
                 ISNULL(life.TOTAL_ORDERS, 0)    AS TOTAL_ORDERS
             FROM dbo.CUSTOMER c
-            -- YTD revenue (current calendar year)
+            JOIN owned_accounts oa ON oa.CUSTOMER_ID = c.ID
+            -- YTD revenue (all orders for this customer, any entry clerk)
             LEFT JOIN (
                 SELECT o.CUSTOMER_ID, SUM(i.INVOICE_TOTAL) AS YTD_REVENUE
                 FROM dbo.INVCHEA i
@@ -807,7 +825,7 @@ def push_customer_directory_tab(service, conn, all_tabs):
                 WHERE YEAR(i.INVOICE_DATE) = YEAR(GETDATE())
                 GROUP BY o.CUSTOMER_ID
             ) ytd ON ytd.CUSTOMER_ID = c.ID
-            -- Lifetime revenue (all years in CCCRM)
+            -- Lifetime revenue (all orders for this customer, any entry clerk)
             LEFT JOIN (
                 SELECT o.CUSTOMER_ID,
                        SUM(i.INVOICE_TOTAL)        AS LIFETIME_REVENUE,
@@ -818,10 +836,9 @@ def push_customer_directory_tab(service, conn, all_tabs):
                 JOIN dbo.ORDERHEA o ON o.ORDER_NUMBER = i.ORDER_NUMBER
                 GROUP BY o.CUSTOMER_ID
             ) life ON life.CUSTOMER_ID = c.ID
-            WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
-              AND c.NAME IS NOT NULL
+            WHERE c.NAME IS NOT NULL
               AND LEN(LTRIM(RTRIM(c.NAME))) > 0
-            ORDER BY c.USERNAME, c.NAME
+            ORDER BY oa.SALES_REP, c.NAME
         """
         print(f"  → _CUSTOMER_DIRECTORY: Running SQL query...")
         dir_df = pd.read_sql(dir_sql, _conn)
@@ -1074,7 +1091,15 @@ def push_collections_invoices_tab(service, all_tabs):
             JOIN dbo.CUSTOMER c ON c.ID = i.CUSTOMER_ID
             WHERE i.BALANCE > 0
               AND i.INVOICE_DATE >= '2020-01-01'
-              AND o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              AND i.CUSTOMER_ID IN (
+                  SELECT c2.ID FROM dbo.CUSTOMER c2
+                  WHERE c2.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                  UNION
+                  SELECT DISTINCT o2.CUSTOMER_ID
+                  FROM dbo.ORDERHEA o2
+                  JOIN dbo.EMPLOYEE e2 ON e2.LOGIN_ID = o2.USERNAME
+                  WHERE e2.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              )
             ORDER BY c.NAME, i.INVOICE_DATE DESC
         """
         inv_df = _pd.read_sql(sql, conn2)
@@ -1680,19 +1705,39 @@ def main():
         "Trusted_Connection=yes;"
     )
     sql = """
+        WITH rep_by_employee AS (
+            -- For accounts not directly assigned (c.USERNAME not a known rep),
+            -- find the most recent known rep via the EMPLOYEE login table.
+            -- This captures accounts like Zebra (c.USERNAME='Imported') entered by dmacdonald→FJohn.
+            SELECT o.CUSTOMER_ID,
+                   e.USERNAME AS SALES_REP,
+                   ROW_NUMBER() OVER (PARTITION BY o.CUSTOMER_ID ORDER BY o.ORDER_DATE DESC) AS rn
+            FROM dbo.ORDERHEA o
+            JOIN dbo.EMPLOYEE e ON e.LOGIN_ID = o.USERNAME
+            JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
+            WHERE e.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+        ),
+        owned_accounts AS (
+            -- Direct assignment: c.USERNAME is a known active rep
+            SELECT c.ID AS CUSTOMER_ID, c.USERNAME AS SALES_REP
+            FROM dbo.CUSTOMER c
+            WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+            UNION ALL
+            -- Indirect: 'Imported'/other accounts whose orders were placed by known reps
+            SELECT CUSTOMER_ID, SALES_REP FROM rep_by_employee WHERE rn = 1
+        )
         SELECT
             i.INVOICE_DATE,
             i.INVOICE_TOTAL,
-            o.USERNAME          AS SALES_REP,
+            oa.SALES_REP,
             c.ID                AS CUSTOMER_ID,
             c.NAME              AS CUSTOMER_NAME
         FROM dbo.INVCHEA i
-        JOIN dbo.ORDERHEA o
-            ON o.ORDER_NUMBER = i.ORDER_NUMBER
-        JOIN dbo.CUSTOMER c
-            ON c.ID = o.CUSTOMER_ID
+        JOIN dbo.ORDERHEA o    ON o.ORDER_NUMBER = i.ORDER_NUMBER
+        JOIN dbo.CUSTOMER c    ON c.ID = o.CUSTOMER_ID
+        JOIN owned_accounts oa ON oa.CUSTOMER_ID = c.ID
         WHERE i.INVOICE_DATE >= '2010-01-01'
-          AND o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
     """
     df = pd.read_sql(sql, conn)
 
@@ -1709,9 +1754,13 @@ def main():
         FROM dbo.CONTACT ct
         WHERE ct.DEAD = 'N'
           AND ct.CUSTOMER_ID IN (
-              SELECT DISTINCT o.CUSTOMER_ID
-              FROM dbo.ORDERHEA o
-              WHERE o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              SELECT c.ID FROM dbo.CUSTOMER c
+              WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              UNION
+              SELECT DISTINCT o2.CUSTOMER_ID
+              FROM dbo.ORDERHEA o2
+              JOIN dbo.EMPLOYEE e2 ON e2.LOGIN_ID = o2.USERNAME
+              WHERE e2.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
           )
     """
     contacts_df = pd.read_sql(contact_sql, conn)
@@ -1764,7 +1813,15 @@ def main():
         FROM dbo.CONTACT ct
         JOIN dbo.CUSTOMER c ON c.ID = ct.CUSTOMER_ID
         WHERE ct.DEAD = 'N'
-          AND c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+          AND ct.CUSTOMER_ID IN (
+              SELECT c2.ID FROM dbo.CUSTOMER c2
+              WHERE c2.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              UNION
+              SELECT DISTINCT o2.CUSTOMER_ID
+              FROM dbo.ORDERHEA o2
+              JOIN dbo.EMPLOYEE e2 ON e2.LOGIN_ID = o2.USERNAME
+              WHERE e2.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+          )
         ORDER BY ct.CUSTOMER_ID, ct.LAST_NAME
     """
     all_contacts_df = pd.read_sql(all_contacts_sql, conn)
@@ -1782,11 +1839,28 @@ def main():
     # ── Pull invoice line items (part numbers) for last 2 years ──────────────
     print("  → Pulling invoice line items...")
     line_items_sql = """
+        WITH rep_by_employee AS (
+            SELECT o.CUSTOMER_ID,
+                   e.USERNAME AS SALES_REP,
+                   ROW_NUMBER() OVER (PARTITION BY o.CUSTOMER_ID ORDER BY o.ORDER_DATE DESC) AS rn
+            FROM dbo.ORDERHEA o
+            JOIN dbo.EMPLOYEE e ON e.LOGIN_ID = o.USERNAME
+            JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
+            WHERE e.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+        ),
+        owned_accounts AS (
+            SELECT c.ID AS CUSTOMER_ID, c.USERNAME AS SALES_REP
+            FROM dbo.CUSTOMER c
+            WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+            UNION ALL
+            SELECT CUSTOMER_ID, SALES_REP FROM rep_by_employee WHERE rn = 1
+        )
         SELECT TOP 100000
             i.INVOICE_NUMBER,
             i.INVOICE_DATE,
             i.INVOICE_TOTAL,
-            c.USERNAME          AS SALES_REP,
+            oa.SALES_REP,
             c.ID                AS CUSTOMER_ID,
             c.NAME              AS CUSTOMER_NAME,
             d.FULLPART          AS PART_NUMBER,
@@ -1796,11 +1870,11 @@ def main():
             d.EXTENDED_PRICE    AS LINE_TOTAL,
             d.CONDITION
         FROM dbo.INVCHEA i
-        JOIN dbo.ORDERHEA o   ON o.ORDER_NUMBER = i.ORDER_NUMBER
-        JOIN dbo.CUSTOMER c   ON c.ID = o.CUSTOMER_ID
-        JOIN dbo.INVCDTL d    ON d.INVOICE_NUMBER = i.INVOICE_NUMBER
+        JOIN dbo.ORDERHEA o    ON o.ORDER_NUMBER = i.ORDER_NUMBER
+        JOIN dbo.CUSTOMER c    ON c.ID = o.CUSTOMER_ID
+        JOIN dbo.INVCDTL d     ON d.INVOICE_NUMBER = i.INVOICE_NUMBER
+        JOIN owned_accounts oa ON oa.CUSTOMER_ID = c.ID
         WHERE i.INVOICE_DATE >= '2010-01-01'
-          AND c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
           AND d.FULLPART IS NOT NULL
           AND d.FULLPART != ''
         ORDER BY i.INVOICE_DATE DESC
@@ -1842,7 +1916,15 @@ def main():
             LEFT JOIN dbo.CUSTBAL cb ON cb.CUSTOMER_ID = i.CUSTOMER_ID
             WHERE i.BALANCE > 0
               AND i.INVOICE_DATE >= '2020-01-01'
-              AND o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              AND i.CUSTOMER_ID IN (
+                  SELECT c2.ID FROM dbo.CUSTOMER c2
+                  WHERE c2.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                  UNION
+                  SELECT DISTINCT o2.CUSTOMER_ID
+                  FROM dbo.ORDERHEA o2
+                  JOIN dbo.EMPLOYEE e2 ON e2.LOGIN_ID = o2.USERNAME
+                  WHERE e2.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              )
             GROUP BY i.CUSTOMER_ID, c.NAME, o.USERNAME, c.AVERAGE_PAY,
                      c.CREDIT_HOLD, c.TERMS
         """
@@ -2077,9 +2159,26 @@ def main():
     print("  → Pulling GP data from invoices...")
     try:
         gp_sql = """
+            WITH rep_by_employee AS (
+                SELECT o.CUSTOMER_ID,
+                       e.USERNAME AS SALES_REP,
+                       ROW_NUMBER() OVER (PARTITION BY o.CUSTOMER_ID ORDER BY o.ORDER_DATE DESC) AS rn
+                FROM dbo.ORDERHEA o
+                JOIN dbo.EMPLOYEE e ON e.LOGIN_ID = o.USERNAME
+                JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
+                WHERE e.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                  AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+            ),
+            owned_accounts AS (
+                SELECT c.ID AS CUSTOMER_ID, c.USERNAME AS SALES_REP
+                FROM dbo.CUSTOMER c
+                WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                UNION ALL
+                SELECT CUSTOMER_ID, SALES_REP FROM rep_by_employee WHERE rn = 1
+            )
             SELECT
                 i.INVOICE_DATE,
-                o.USERNAME          AS SALES_REP,
+                oa.SALES_REP,
                 c.NAME              AS CUSTOMER_NAME,
                 i.INVOICE_NUMBER,
                 i.INVOICE_TOTAL     AS EXTENDED_PRICE,
@@ -2088,10 +2187,10 @@ def main():
                 MONTH(i.INVOICE_DATE) AS INVOICE_MONTH,
                 YEAR(i.INVOICE_DATE)  AS INVOICE_YEAR
             FROM dbo.INVCHEA i
-            JOIN dbo.ORDERHEA o   ON o.ORDER_NUMBER = i.ORDER_NUMBER
-            JOIN dbo.CUSTOMER c   ON c.ID = o.CUSTOMER_ID
+            JOIN dbo.ORDERHEA o    ON o.ORDER_NUMBER = i.ORDER_NUMBER
+            JOIN dbo.CUSTOMER c    ON c.ID = o.CUSTOMER_ID
+            JOIN owned_accounts oa ON oa.CUSTOMER_ID = c.ID
             WHERE i.INVOICE_DATE >= '2010-01-01'
-              AND o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
         """
         gp_df = pd.read_sql(gp_sql, conn)
         gp_df['INVOICE_DATE']   = pd.to_datetime(gp_df['INVOICE_DATE'], errors='coerce').dt.date.astype(str)

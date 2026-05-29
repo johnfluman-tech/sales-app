@@ -7235,44 +7235,183 @@ function renderPoolManagementView() {
     return list;
   }
 
+  function _poolDays(a) {
+    var d = a.lastSaleDate || a.lastSale || '';
+    if (!d) return 9999;
+    try { return Math.floor((new Date() - new Date(d)) / 86400000); } catch(e) { return 9999; }
+  }
+  function _poolYearBars(a) {
+    var yrs = a.years || {};
+    var keys = Object.keys(yrs).filter(function(y){ return parseFloat(yrs[y])||0; }).sort();
+    if (!keys.length) return '';
+    var mx = Math.max.apply(null, keys.map(function(y){ return parseFloat(yrs[y])||0; }));
+    return '<div style="display:flex;gap:6px;align-items:flex-end;margin-top:8px;padding:8px 10px;background:var(--s2);border-radius:var(--r)">' +
+      keys.map(function(y) {
+        var v = parseFloat(yrs[y])||0;
+        var pct = mx > 0 ? Math.max(4, Math.round(v/mx*52)) : 4;
+        var isRecent = parseInt(y) >= new Date().getFullYear() - 1;
+        return '<div style="display:flex;flex-direction:column;align-items:center;gap:2px">' +
+          '<div style="font-size:8px;color:var(--text-3);font-family:var(--mono)">$' + (v>=1000?Math.round(v/1000)+'k':Math.round(v)) + '</div>' +
+          '<div style="width:22px;height:' + pct + 'px;background:' + (isRecent?'#3b82f6':'#374151') + ';border-radius:2px 2px 0 0"></div>' +
+          '<div style="font-size:8px;color:var(--text-3);font-family:var(--mono)">' + y.slice(2) + '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+  function _poolDays(a) {
+    var d = a.lastSaleDate || a.lastSale || '';
+    if (!d) return 9999;
+    try { return Math.floor((new Date() - new Date(d)) / 86400000); } catch(e) { return 9999; }
+  }
+  function _poolYearBars(a) {
+    var yrs = a.years || {};
+    var keys = Object.keys(yrs).filter(function(y){ return parseFloat(yrs[y])||0; }).sort();
+    if (!keys.length) return '';
+    var mx = Math.max.apply(null, keys.map(function(y){ return parseFloat(yrs[y])||0; }));
+    return '<div style="display:flex;gap:6px;align-items:flex-end;margin-top:8px;padding:8px 10px;background:var(--s2);border-radius:var(--r)">' +
+      keys.map(function(y) {
+        var v = parseFloat(yrs[y])||0;
+        var pct = mx > 0 ? Math.max(4, Math.round(v/mx*52)) : 4;
+        var isRecent = parseInt(y) >= new Date().getFullYear() - 1;
+        return '<div style="display:flex;flex-direction:column;align-items:center;gap:2px">' +
+          '<div style="font-size:8px;color:var(--text-3);font-family:var(--mono)">$' + (v>=1000?Math.round(v/1000)+'k':Math.round(v)) + '</div>' +
+          '<div style="width:22px;height:' + pct + 'px;background:' + (isRecent?'#3b82f6':'#374151') + ';border-radius:2px 2px 0 0"></div>' +
+          '<div style="font-size:8px;color:var(--text-3);font-family:var(--mono)">' + y.slice(2) + '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
   function poolCard(a, rec) {
     var pri = (rec && rec.priority) || 'Warm';
     var priC = priColors[pri] || '#888';
     var assignedTo = (rec && rec.assignedTo) || 'ALL';
     var assignedLabel = assignedTo === 'ALL' ? 'All Reps' : (repNames[assignedTo]||assignedTo);
-    var who = (rec && rec.approvedBy) ? ' &middot; added by ' + escHtml(rec.approvedBy) + (rec.approvedDate ? ' on ' + rec.approvedDate.slice(0,10) : '') : '';
-    return '<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid ' + priC + ';border-radius:var(--r2);padding:14px 18px;display:flex;align-items:flex-start;gap:14px;margin-bottom:8px">' +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:14px;font-weight:700;margin-bottom:3px">' + escHtml(a.name) + '</div>' +
-        '<div style="font-size:11px;color:var(--text-3)">Rep: <strong>' + escHtml(a.rep) + '</strong> &middot; $' + formatNum(a.total||0) + ' lifetime &middot; <em>' + escHtml(a.status||'') + '</em></div>' +
-        (a.lastSale ? '<div style="font-size:10px;color:var(--text-3);margin-top:2px">Last sale: ' + escHtml(String(a.lastSale).slice(0,10)) + '</div>' : '') +
-        '<div style="font-size:10px;color:var(--text-3);margin-top:3px;font-style:italic">&#128100; ' + escHtml(assignedLabel) + who + '</div>' +
+    var addedBy = (rec && rec.approvedBy) ? escHtml(rec.approvedBy) : '';
+    var addedOn = (rec && rec.approvedDate) ? rec.approvedDate.slice(0,10) : '';
+    var days = _poolDays(a);
+    var daysCol = days > 365 ? '#ef4444' : days > 180 ? '#f97316' : days > 90 ? '#f59e0b' : '#6b7280';
+    var ytd = parseFloat(a.ytdRevenue||a.revenue||0)||0;
+    var lifetime = parseFloat(a.total||0)||0;
+    var coll = state.collectionsCache ? (state.collectionsCache[a.name]||state.collectionsCache[a.name.trim()]||null) : null;
+    var today = new Date().toISOString().slice(0,10);
+    var lastSaleStr = (a.lastSale||a.lastSaleDate) ? String(a.lastSale||a.lastSaleDate).slice(0,10) : '';
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-left:4px solid ' + priC + ';border-radius:var(--r2);padding:16px 18px;margin-bottom:10px">' +
+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px">' +
+        '<div>' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            '<span style="font-size:8px;font-family:var(--mono);font-weight:700;color:' + priC + ';background:rgba(0,0,0,0.3);border:1px solid ' + priC + ';padding:2px 8px;border-radius:3px">' + pri.toUpperCase() + '</span>' +
+            '<span style="font-size:15px;font-weight:700">' + escHtml(a.name) + '</span>' +
+            '<span style="font-size:9px;font-family:var(--mono);background:rgba(0,0,0,0.25);color:var(--text-3);padding:2px 8px;border-radius:3px">' + escHtml(a.status||'Inactive') + '</span>' +
+          '</div>' +
+          '<div style="margin-top:4px;font-size:11px;color:var(--text-3)">Rep: <strong>' + escHtml(repNames[a.rep]||a.rep) + '</strong>' +
+            (addedBy ? ' &middot; Added by ' + addedBy + (addedOn ? ' on ' + addedOn : '') : '') +
+          '</div>' +
+        '</div>' +
+        '<div style="text-align:right;flex-shrink:0">' +
+          '<div style="font-family:var(--mono);font-size:26px;font-weight:900;color:' + daysCol + ';line-height:1">' + (days<9999?days:'—') + '</div>' +
+          '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono)">' + (days<9999?'DAYS IDLE':'NO HISTORY') + '</div>' +
+        '</div>' +
       '</div>' +
-      '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">' +
-        '<select data-n="' + escHtml(a.name) + '" onchange="poolSetPriority(this.dataset.n,this.value)" style="padding:4px 6px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:9px;border-radius:var(--r);cursor:pointer">' +
-          ['Hot','Warm','Cold'].map(function(p){ return '<option value="' + p + '"' + (p===pri?' selected':'') + '>' + p + '</option>'; }).join('') +
-        '</select>' +
-        '<select data-n="' + escHtml(a.name) + '" onchange="poolAssignTo(this.dataset.n,this.value)" style="padding:4px 6px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:9px;border-radius:var(--r);cursor:pointer">' +
+
+      '<div style="display:flex;gap:0;margin-bottom:8px;border:1px solid var(--border);border-radius:var(--r);overflow:hidden">' +
+        '<div style="flex:1;padding:8px 12px;border-right:1px solid var(--border);text-align:center">' +
+          '<div style="font-family:var(--mono);font-size:14px;font-weight:700;color:' + (ytd>0?'var(--text)':'var(--text-3)') + '">' + (ytd>0?'$'+formatNum(ytd):'$0') + '</div>' +
+          '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono);margin-top:1px">YTD</div>' +
+        '</div>' +
+        '<div style="flex:1;padding:8px 12px;border-right:1px solid var(--border);text-align:center">' +
+          '<div style="font-family:var(--mono);font-size:14px;font-weight:700">' + (lifetime>0?'$'+formatNum(lifetime):'—') + '</div>' +
+          '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono);margin-top:1px">LIFETIME</div>' +
+        '</div>' +
+        '<div style="flex:1;padding:8px 12px;text-align:center">' +
+          '<div style="font-family:var(--mono);font-size:12px;font-weight:700;color:' + (lastSaleStr?daysCol:'var(--text-3)') + '">' + (lastSaleStr||'Unknown') + '</div>' +
+          '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono);margin-top:1px">LAST SALE</div>' +
+        '</div>' +
+      '</div>' +
+
+      _poolYearBars(a) +
+
+      (a.repNote ? '<div style="margin-top:8px;padding:7px 10px;background:rgba(59,130,246,0.06);border-left:2px solid rgba(59,130,246,0.4);border-radius:0 var(--r) var(--r) 0;font-size:10px;color:var(--text-2);line-height:1.5"><span style="font-family:var(--mono);font-size:9px;color:#3b82f6;margin-right:6px">NOTE</span>' + escHtml(a.repNote.slice(0,120)) + (a.repNote.length>120?'…':'') + '</div>' : '') +
+
+      (a.followUpDate ? '<div style="margin-top:6px;font-size:10px;' + (a.followUpDate < today ? 'color:#ef4444' : 'color:#a78bfa') + '">&#128197; Follow-up: ' + escHtml(a.followUpDate) + (a.followUpDate < today ? ' — OVERDUE' : '') + '</div>' : '') +
+
+      (coll && coll.balance > 0 ? '<div style="margin-top:6px;font-size:10px;color:' + (coll.risk&&coll.risk.includes('HIGH')?'#ef4444':'#f59e0b') + '">&#9888; Collections: $' + formatNum(coll.balance) + (coll.daysPastDue ? ' · ' + coll.daysPastDue + 'd past due' : '') + (coll.risk ? ' · ' + escHtml(coll.risk) + ' RISK' : '') + '</div>' : '') +
+
+      (rec && rec.notes ? '<div style="margin-top:6px;font-size:10px;color:var(--text-3);font-style:italic">&#128221; ' + escHtml(rec.notes.split(';')[0].slice(0,100)) + '</div>' : '') +
+
+      '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">' +
+        '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono);margin-right:4px">ASSIGN TO:</div>' +
+        '<select data-n="' + escHtml(a.name) + '" onchange="poolAssignTo(this.dataset.n,this.value)" style="padding:4px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;border-radius:var(--r);cursor:pointer">' +
           '<option value="ALL"' + (assignedTo==='ALL'?' selected':'') + '>All Reps</option>' +
           teamReps.map(function(r){ return '<option value="' + r + '"' + (assignedTo===r?' selected':'') + '>' + (repNames[r]||r) + '</option>'; }).join('') +
         '</select>' +
-        '<span style="background:rgba(20,184,166,0.15);color:#14b8a6;font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:var(--r);font-weight:700">' + ((rec&&rec.status)||'AVAILABLE') + '</span>' +
-        '<button data-n="' + escHtml(a.name) + '" onclick="poolMarkHidden(this.dataset.n)" style="padding:5px 10px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">HIDE</button>' +
-        '<button data-n="' + escHtml(a.name) + '" onclick="poolRemoveFromPool(this.dataset.n)" style="padding:5px 10px;background:rgba(239,68,68,0.1);border:1px solid var(--red);color:var(--red);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">REMOVE</button>' +
+        '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono);margin-left:8px;margin-right:4px">PRIORITY:</div>' +
+        '<select data-n="' + escHtml(a.name) + '" onchange="poolSetPriority(this.dataset.n,this.value)" style="padding:4px 8px;background:var(--s2);border:1px solid ' + priC + ';color:' + priC + ';font-family:var(--mono);font-size:10px;border-radius:var(--r);cursor:pointer;font-weight:700">' +
+          ['Hot','Warm','Cold'].map(function(p){ return '<option value="' + p + '"' + (p===pri?' selected':'') + '>' + p + '</option>'; }).join('') +
+        '</select>' +
+        '<div style="flex:1"></div>' +
+        '<span style="background:rgba(20,184,166,0.12);color:#14b8a6;font-family:var(--mono);font-size:9px;padding:3px 10px;border-radius:var(--r);font-weight:700;border:1px solid rgba(20,184,166,0.3)">' + ((rec&&rec.status)||'AVAILABLE') + '</span>' +
+        '<button data-n="' + escHtml(a.name) + '" onclick="poolMarkHidden(this.dataset.n)" style="padding:5px 12px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">HIDE</button>' +
+        '<button data-n="' + escHtml(a.name) + '" onclick="poolRemoveFromPool(this.dataset.n)" style="padding:5px 12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.5);color:#ef4444;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">REMOVE</button>' +
       '</div>' +
     '</div>';
   }
 
   function reviewCard(a) {
-    return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:14px 18px;display:flex;align-items:flex-start;gap:14px;margin-bottom:8px">' +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:14px;font-weight:700;margin-bottom:3px">' + escHtml(a.name) + '</div>' +
-        '<div style="font-size:11px;color:var(--text-3)">Rep: <strong>' + escHtml(a.rep) + '</strong> &middot; $' + formatNum(a.total||0) + ' lifetime &middot; <em>' + escHtml(a.status||'') + '</em></div>' +
-        (a.lastSale ? '<div style="font-size:10px;color:var(--text-3);margin-top:2px">Last sale: ' + escHtml(String(a.lastSale).slice(0,10)) + '</div>' : '') +
+    var days = _poolDays(a);
+    var daysCol = days > 365 ? '#ef4444' : days > 180 ? '#f97316' : days > 90 ? '#f59e0b' : '#6b7280';
+    var ytd = parseFloat(a.ytdRevenue||a.revenue||0)||0;
+    var lifetime = parseFloat(a.total||0)||0;
+    var lastSaleStr = (a.lastSale||a.lastSaleDate) ? String(a.lastSale||a.lastSaleDate).slice(0,10) : '';
+    var coll = state.collectionsCache ? (state.collectionsCache[a.name]||state.collectionsCache[a.name.trim()]||null) : null;
+    var today = new Date().toISOString().slice(0,10);
+    var yrs = a.years || {};
+    var yrKeys = Object.keys(yrs).filter(function(y){ return parseFloat(yrs[y])||0; }).sort().slice(-4);
+    var yrSummary = yrKeys.map(function(y){ return y + ': $' + formatNum(parseFloat(yrs[y])||0); }).join(' · ');
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:16px 18px;margin-bottom:10px">' +
+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px">' +
+        '<div>' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            '<span style="font-size:9px;font-family:var(--mono);font-weight:700;background:rgba(107,114,128,0.2);color:var(--text-2);padding:2px 8px;border-radius:3px">' + escHtml(a.status||'Inactive') + '</span>' +
+            '<span style="font-size:15px;font-weight:700">' + escHtml(a.name) + '</span>' +
+          '</div>' +
+          '<div style="margin-top:4px;font-size:11px;color:var(--text-3)">Rep: <strong>' + escHtml(repNames[a.rep]||a.rep) + '</strong></div>' +
+        '</div>' +
+        '<div style="text-align:right;flex-shrink:0">' +
+          '<div style="font-family:var(--mono);font-size:30px;font-weight:900;color:' + daysCol + ';line-height:1">' + (days<9999?days:'—') + '</div>' +
+          '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono)">' + (days<9999?'DAYS IDLE':'NO HISTORY') + '</div>' +
+        '</div>' +
       '</div>' +
-      '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
-        '<button data-n="' + escHtml(a.name) + '" data-r="' + escHtml(a.rep) + '" onclick="poolMarkAvailable(this.dataset.n,this.dataset.r,\'Warm\')" style="padding:6px 12px;background:rgba(20,184,166,0.12);border:1px solid #14b8a6;color:#14b8a6;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">+ ADD TO POOL</button>' +
-        '<button data-n="' + escHtml(a.name) + '" onclick="poolMarkHidden(this.dataset.n)" style="padding:6px 10px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">HIDE</button>' +
+
+      '<div style="display:flex;gap:0;margin-bottom:8px;border:1px solid var(--border);border-radius:var(--r);overflow:hidden">' +
+        '<div style="flex:1;padding:8px 12px;border-right:1px solid var(--border);text-align:center">' +
+          '<div style="font-family:var(--mono);font-size:14px;font-weight:700;color:' + (ytd>0?'var(--text)':'var(--text-3)') + '">' + (ytd>0?'$'+formatNum(ytd):'$0') + '</div>' +
+          '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono);margin-top:1px">YTD</div>' +
+        '</div>' +
+        '<div style="flex:1;padding:8px 12px;border-right:1px solid var(--border);text-align:center">' +
+          '<div style="font-family:var(--mono);font-size:14px;font-weight:700">' + (lifetime>0?'$'+formatNum(lifetime):'—') + '</div>' +
+          '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono);margin-top:1px">LIFETIME</div>' +
+        '</div>' +
+        '<div style="flex:1;padding:8px 12px;text-align:center">' +
+          '<div style="font-family:var(--mono);font-size:12px;font-weight:700;color:' + (lastSaleStr?daysCol:'var(--text-3)') + '">' + (lastSaleStr||'Unknown') + '</div>' +
+          '<div style="font-size:9px;color:var(--text-3);font-family:var(--mono);margin-top:1px">LAST SALE</div>' +
+        '</div>' +
+      '</div>' +
+
+      (yrSummary ? '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono);margin-bottom:6px;padding:6px 10px;background:var(--s2);border-radius:var(--r)">' + yrSummary + '</div>' : '') +
+      _poolYearBars(a) +
+
+      (a.repNote ? '<div style="margin-top:8px;padding:7px 10px;background:rgba(59,130,246,0.06);border-left:2px solid rgba(59,130,246,0.4);border-radius:0 var(--r) var(--r) 0;font-size:10px;color:var(--text-2);line-height:1.5"><span style="font-family:var(--mono);font-size:9px;color:#3b82f6;margin-right:6px">REP NOTE</span>' + escHtml(a.repNote.slice(0,140)) + (a.repNote.length>140?'…':'') + '</div>' : '') +
+
+      (a.followUpDate ? '<div style="margin-top:6px;font-size:10px;' + (a.followUpDate < today ? 'color:#ef4444' : 'color:#a78bfa') + '">&#128197; Follow-up: ' + escHtml(a.followUpDate) + (a.followUpDate < today ? ' — OVERDUE' : '') + '</div>' : '') +
+
+      (coll && coll.balance > 0 ? '<div style="margin-top:6px;font-size:10px;color:' + (coll.risk&&coll.risk.includes('HIGH')?'#ef4444':'#f59e0b') + '">&#9888; Collections: $' + formatNum(coll.balance) + ' balance' + (coll.daysPastDue?' · '+coll.daysPastDue+'d past due':'') + (coll.risk?' · '+escHtml(coll.risk)+' RISK':'') + '</div>' : '') +
+
+      '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">' +
+        '<button data-n="' + escHtml(a.name) + '" data-r="' + escHtml(a.rep) + '" data-p="Hot" onclick="poolMarkAvailable(this.dataset.n,this.dataset.r,this.dataset.p)" style="padding:7px 14px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.5);color:#ef4444;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">&#128293; HOT</button>' +
+        '<button data-n="' + escHtml(a.name) + '" data-r="' + escHtml(a.rep) + '" data-p="Warm" onclick="poolMarkAvailable(this.dataset.n,this.dataset.r,this.dataset.p)" style="padding:7px 14px;background:rgba(20,184,166,0.12);border:1px solid #14b8a6;color:#14b8a6;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">+ ADD TO POOL</button>' +
+        '<button data-n="' + escHtml(a.name) + '" onclick="poolMarkHidden(this.dataset.n)" style="padding:7px 12px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">HIDE</button>' +
       '</div>' +
     '</div>';
   }
@@ -7280,17 +7419,32 @@ function renderPoolManagementView() {
   function hiddenCard(a) {
     var rec = getRec(a);
     var who = rec && rec.approvedBy ? 'Hidden by ' + escHtml(rec.approvedBy) + (rec.approvedDate ? ' on ' + rec.approvedDate.slice(0,10) : '') : '';
-    return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:13px 18px;display:flex;align-items:center;gap:14px;margin-bottom:7px">' +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:13px;font-weight:700">' + escHtml(a.name) + '</div>' +
-        '<div style="font-size:11px;color:var(--text-3)">Rep: <strong>' + escHtml(a.rep) + '</strong> &middot; $' + formatNum(a.total||0) + ' lifetime</div>' +
-        (who ? '<div style="font-size:10px;color:var(--text-3);margin-top:2px;font-style:italic">' + who + '</div>' : '') +
+    var days = _poolDays(a);
+    var daysCol = days > 365 ? '#ef4444' : days > 180 ? '#f97316' : '#6b7280';
+    var ytd = parseFloat(a.ytdRevenue||a.revenue||0)||0;
+    var lastSaleStr = (a.lastSale||a.lastSaleDate) ? String(a.lastSale||a.lastSaleDate).slice(0,10) : '';
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-left:3px solid #374151;border-radius:var(--r2);padding:14px 18px;margin-bottom:8px;opacity:0.82">' +
+      '<div style="display:flex;align-items:flex-start;gap:12px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">' +
+            '<span style="font-size:13px;font-weight:700">' + escHtml(a.name) + '</span>' +
+            '<span style="background:rgba(107,114,128,0.15);color:var(--text-3);font-family:var(--mono);font-size:8px;padding:2px 7px;border-radius:var(--r);font-weight:700">HIDDEN</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--text-3)">Rep: <strong>' + escHtml(repNames[a.rep]||a.rep) + '</strong>' +
+            (lastSaleStr ? ' · Last sale: <span style="color:' + daysCol + '">' + lastSaleStr + '</span>' : '') +
+            (ytd > 0 ? ' · $' + formatNum(ytd) + ' YTD' : '') +
+            ' · $' + formatNum(a.total||0) + ' lifetime' +
+          '</div>' +
+          (days < 9999 ? '<div style="font-size:10px;color:' + daysCol + ';font-family:var(--mono);margin-top:3px">' + days + ' days inactive</div>' : '') +
+          (who ? '<div style="font-size:10px;color:var(--text-3);margin-top:3px;font-style:italic">' + who + '</div>' : '') +
+        '</div>' +
+        '<button data-n="' + escHtml(a.name) + '" data-r="' + escHtml(a.rep) + '" data-p="Warm" onclick="poolMarkAvailable(this.dataset.n,this.dataset.r,this.dataset.p)" style="padding:7px 14px;background:rgba(20,184,166,0.12);border:1px solid #14b8a6;color:#14b8a6;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700;flex-shrink:0">RESTORE</button>' +
       '</div>' +
-      '<span style="background:rgba(107,114,128,0.15);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:var(--r)">HIDDEN</span>' +
-      '<button data-n="' + escHtml(a.name) + '" data-r="' + escHtml(a.rep) + '" onclick="poolMarkAvailable(this.dataset.n,this.dataset.r,\'Warm\')" style="padding:6px 12px;background:rgba(20,184,166,0.12);border:1px solid #14b8a6;color:#14b8a6;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">RESTORE TO POOL</button>' +
     '</div>';
   }
 
+  // Filter bar HTML
+  // Filter bar HTML
   // Filter bar HTML
   var repOpts = '<option value="ALL">All Reps</option>' + teamReps.map(function(r){ return '<option value="' + r + '"' + (f.rep===r?' selected':'') + '>' + (repNames[r]||r) + '</option>'; }).join('');
   var sortOpts = [['revenue','Revenue ▼'],['name','Name A→Z'],['lastsale','Last Sale'],['rep','Rep']].map(function(o){ return '<option value="' + o[0] + '"' + (f.sort===o[0]?' selected':'') + '>' + o[1] + '</option>'; }).join('');
@@ -7316,24 +7470,78 @@ function renderPoolManagementView() {
     }).join('') +
   '</div>';
 
+  // ── Stats bar helper ─────────────────────────────────────────────────────
+  function _statsBar(list) {
+    var totalRev = list.reduce(function(s,a){ return s+(parseFloat(a.total||0)||0); },0);
+    var totalYtd = list.reduce(function(s,a){ return s+(parseFloat(a.ytdRevenue||a.revenue||0)||0); },0);
+    var totalColl = list.reduce(function(s,a){
+      var c = state.collectionsCache ? (state.collectionsCache[a.name]||state.collectionsCache[a.name.trim()]||null) : null;
+      return s + (c&&c.balance>0 ? c.balance : 0);
+    },0);
+    var activeDays = list.filter(function(a){ return _poolDays(a)<9999; });
+    var avgDays = activeDays.length ? Math.round(activeDays.reduce(function(s,a){ return s+_poolDays(a); },0)/activeDays.length) : 0;
+    var today = new Date().toISOString().slice(0,10);
+    var overdueCount = list.filter(function(a){ return a.followUpDate && a.followUpDate < today; }).length;
+    var labels = ['ACCOUNTS','LIFETIME REV','YTD REV','AVG IDLE','COLL. BALANCE'];
+    var vals   = [list.length, (totalRev>0?'$'+formatNum(totalRev):'$0'), (totalYtd>0?'$'+formatNum(totalYtd):'$0'), (avgDays?avgDays+'d':'—'), (totalColl>0?'$'+formatNum(totalColl):'—')];
+    var cols   = ['var(--text)','#3b82f6','#22c55e','#f59e0b',(totalColl>0?'#ef4444':'var(--text-3)')];
+    return '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">' +
+      labels.map(function(lbl,i){
+        return '<div style="background:var(--s2);border:1px solid var(--border);border-top:2px solid ' + cols[i] + ';border-radius:var(--r);padding:8px 10px;text-align:center">' +
+          '<div style="font-family:var(--mono);font-size:15px;font-weight:800;color:' + cols[i] + '">' + vals[i] + '</div>' +
+          '<div style="font-size:8px;color:var(--text-3);font-family:var(--mono);margin-top:2px;letter-spacing:0.06em">' + lbl + '</div>' +
+        '</div>';
+      }).join('') +
+      (overdueCount > 0 ? '<div style="grid-column:1/-1;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.3);border-radius:var(--r);padding:6px 12px;font-size:10px;color:#ef4444;font-family:var(--mono)">&#9888; ' + overdueCount + ' account' + (overdueCount>1?'s have':'has') + ' overdue follow-up dates</div>' : '') +
+    '</div>';
+  }
+
+  // ── Stats bar helper ─────────────────────────────────────────────────────
+  function _statsBar(list) {
+    var totalRev = list.reduce(function(s,a){ return s+(parseFloat(a.total||0)||0); },0);
+    var totalYtd = list.reduce(function(s,a){ return s+(parseFloat(a.ytdRevenue||a.revenue||0)||0); },0);
+    var totalColl = list.reduce(function(s,a){
+      var c = state.collectionsCache ? (state.collectionsCache[a.name]||state.collectionsCache[a.name.trim()]||null) : null;
+      return s + (c&&c.balance>0 ? c.balance : 0);
+    },0);
+    var activeDays = list.filter(function(a){ return _poolDays(a)<9999; });
+    var avgDays = activeDays.length ? Math.round(activeDays.reduce(function(s,a){ return s+_poolDays(a); },0)/activeDays.length) : 0;
+    var today = new Date().toISOString().slice(0,10);
+    var overdueCount = list.filter(function(a){ return a.followUpDate && a.followUpDate < today; }).length;
+    var labels = ['ACCOUNTS','LIFETIME REV','YTD REV','AVG IDLE','COLL. BALANCE'];
+    var vals   = [list.length, (totalRev>0?'$'+formatNum(totalRev):'$0'), (totalYtd>0?'$'+formatNum(totalYtd):'$0'), (avgDays?avgDays+'d':'—'), (totalColl>0?'$'+formatNum(totalColl):'—')];
+    var cols   = ['var(--text)','#3b82f6','#22c55e','#f59e0b',(totalColl>0?'#ef4444':'var(--text-3)')];
+    return '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">' +
+      labels.map(function(lbl,i){
+        return '<div style="background:var(--s2);border:1px solid var(--border);border-top:2px solid ' + cols[i] + ';border-radius:var(--r);padding:8px 10px;text-align:center">' +
+          '<div style="font-family:var(--mono);font-size:15px;font-weight:800;color:' + cols[i] + '">' + vals[i] + '</div>' +
+          '<div style="font-size:8px;color:var(--text-3);font-family:var(--mono);margin-top:2px;letter-spacing:0.06em">' + lbl + '</div>' +
+        '</div>';
+      }).join('') +
+      (overdueCount > 0 ? '<div style="grid-column:1/-1;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.3);border-radius:var(--r);padding:6px 12px;font-size:10px;color:#ef4444;font-family:var(--mono)">&#9888; ' + overdueCount + ' account' + (overdueCount>1?'s have':'has') + ' overdue follow-up dates</div>' : '') +
+    '</div>';
+  }
+
   // Render active tab content
   var bodyHtml = '';
   if (f.tab === 'review') {
     var filtered = applyFilters(applySort(needsReview));
     var shown = filtered.slice(0, f.page);
-    bodyHtml = filterBar +
+    bodyHtml = filterBar + _statsBar(needsReview) +
       (shown.length ? shown.map(reviewCard).join('') : '<div style="padding:30px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' + (f.search || f.rep !== 'ALL' ? 'No matches for current filter' : 'All inactive accounts have been reviewed &#10003;') + '</div>') +
       (filtered.length > shown.length ? '<div style="text-align:center;padding:16px"><button onclick="poolMgmtShowMore()" style="padding:9px 28px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">SHOW MORE (' + (filtered.length - shown.length) + ' remaining)</button></div>' : '');
   } else if (f.tab === 'pool') {
     var filteredPool = applyFilters(applySort(inPool));
-    bodyHtml = filterBar +
-      (filteredPool.length ? filteredPool.map(function(a){ return poolCard(a, getRec(a)); }).join('') : '<div style="padding:30px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' + (f.search || f.rep !== 'ALL' ? 'No matches' : 'No accounts in pool yet &mdash; go to Needs Review to add some') + '</div>');
+    bodyHtml = filterBar + _statsBar(inPool) +
+      (filteredPool.length ? filteredPool.map(function(a){ return poolCard(a, getRec(a)); }).join('') : '<div style="padding:30px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' + (f.search || f.rep !== 'ALL' ? 'No matches' : 'No accounts in pool yet — go to Needs Review to add some') + '</div>');
   } else if (f.tab === 'hidden') {
     var filteredHidden = applyFilters(applySort(hiddenFromPool));
-    bodyHtml = filterBar +
+    bodyHtml = filterBar + _statsBar(hiddenFromPool) +
       (filteredHidden.length ? filteredHidden.map(hiddenCard).join('') : '<div style="padding:30px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' + (f.search || f.rep !== 'ALL' ? 'No matches' : 'No hidden accounts') + '</div>');
   }
 
+  el.innerHTML =
+  el.innerHTML =
   el.innerHTML =
     '<div style="padding:24px 32px;max-width:1000px">' +
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">' +

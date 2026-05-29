@@ -7493,7 +7493,7 @@ async function gmailFetch(path, params) {
   return resp.json();
 }
 
-async function loadGmailActivity(accName) {
+async function loadGmailActivity(accName, fastMode) {
   // Get contact emails for this account
   var normName = accName.trim().toLowerCase();
   var contacts = state.contactsCache[accName] || state.contactsCache[normName] || [];
@@ -7513,6 +7513,7 @@ async function loadGmailActivity(accName) {
   var messages = data.messages || [];
 
   // Fetch metadata for each message
+  // fastMode=true skips thread-reply check (halves API calls during bulk scan)
   var details = await Promise.all(messages.slice(0, 30).map(async function(m) {
     try {
       var msg = await gmailFetch('users/me/messages/' + m.id, {
@@ -7523,9 +7524,11 @@ async function loadGmailActivity(accName) {
       (msg.payload && msg.payload.headers || []).forEach(function(h){
         headers[h.name.toLowerCase()] = h.value;
       });
-      // Check if thread has replies (more than 1 message = got a reply)
-      var threadData = await gmailFetch('users/me/threads/' + msg.threadId, { format: 'minimal' });
-      var replied = (threadData.messages && threadData.messages.length > 1);
+      var replied = false;
+      if (!fastMode) {
+        var threadData = await gmailFetch('users/me/threads/' + msg.threadId, { format: 'minimal' });
+        replied = (threadData.messages && threadData.messages.length > 1);
+      }
       return {
         id: m.id,
         threadId: msg.threadId,
@@ -8201,7 +8204,7 @@ function _updateMyOutreachBadge() {
 
 // ── Gmail Contact Coverage (My Outreach) ─────────────────────────────────
 
-async function loadAllGmail() {
+async function loadAllGmail(batchStart) {
   var repId = state.repId;
   var viewRep = state.viewAsRep || window._myOutreachViewRep || (repId === 'ADMIN' ? 'FJohn' : repId);
   var accs = (state.accounts||[]).filter(function(a){ return a.rep === viewRep; });
@@ -8210,31 +8213,36 @@ async function loadAllGmail() {
     var contacts = state.contactsCache[a.name] || [];
     return contacts.some(function(c){ return c.email && c.email.includes('@'); });
   });
-  var btn = document.getElementById('load-all-gmail-btn');
-  if (btn) btn.disabled = true;
-  var prog = document.getElementById('load-all-gmail-prog');
-  if (prog) prog.textContent = '0 / ' + toLoad.length + ' accounts...';
+
+  var start = batchStart || 0;
+  var BATCH = 50;
+  var batch = toLoad.slice(start, start + BATCH);
+  var hasMore = (start + BATCH) < toLoad.length;
+
+  window._gmailScanStatus = { done: 0, total: batch.length, totalAll: toLoad.length, start: start, running: true, errors: 0 };
+  renderMyOutreachView(); // show progress bar immediately
 
   var done = 0;
   var errors = 0;
-  // Load sequentially with small delay to respect Gmail API rate limits
-  for (var i = 0; i < toLoad.length; i++) {
-    var a = toLoad[i];
+  for (var i = 0; i < batch.length; i++) {
+    var a = batch[i];
     if (!state.gmailActivityCache[a.name] || state.gmailActivityCache[a.name] === 'error') {
       try {
-        await loadGmailActivity(a.name);
+        await loadGmailActivity(a.name, true); // fastMode: skip thread-reply checks during bulk scan
       } catch(e) {
         state.gmailActivityCache[a.name] = { error: e.message };
         errors++;
       }
-      // Throttle: 400ms between accounts to avoid Gmail rate limits
-      await new Promise(function(r){ setTimeout(r, 400); });
+      await new Promise(function(r){ setTimeout(r, 350); });
     }
     done++;
-    if (prog) prog.textContent = done + ' / ' + toLoad.length + ' scanned' + (errors ? ' (' + errors + ' errors)' : '');
+    window._gmailScanStatus.done = done;
+    window._gmailScanStatus.errors = errors;
+    // Re-render KPIs every 5 accounts so progress is visible
+    if (done % 5 === 0) renderMyOutreachView();
   }
-  if (btn) btn.disabled = false;
-  if (prog) prog.textContent = '✓ Done — ' + toLoad.length + ' accounts scanned' + (errors ? ', ' + errors + ' errors' : '');
+
+  window._gmailScanStatus = { done: done, total: batch.length, totalAll: toLoad.length, running: false, errors: errors, hasMore: hasMore, nextBatch: start + BATCH };
   renderMyOutreachView();
 }
 
@@ -8296,7 +8304,33 @@ function _renderContactCoveragePanel(accs) {
   var fullyCovered = coverage.filter(function(x){ return x.coveragePct === 100 && x.loaded; });
   var overallCovPct = totalContacts ? Math.round(emailedContacts / totalContacts * 100) : 0;
 
-  var topHtml = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">' +
+  // Progress bar during active scan
+  var scanStatus = window._gmailScanStatus;
+  var progressHtml = '';
+  if (scanStatus && scanStatus.running) {
+    var pct = scanStatus.total ? Math.round(scanStatus.done / scanStatus.total * 100) : 0;
+    var etaAccs = scanStatus.total - scanStatus.done;
+    var etaSec = Math.round(etaAccs * 0.35);
+    var etaStr = etaSec > 60 ? Math.ceil(etaSec/60) + ' min' : etaSec + 's';
+    progressHtml = '<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.3);border-radius:6px;padding:14px 16px;margin-bottom:14px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+      '<span style="font-size:12px;font-weight:600;font-family:var(--mono);color:#3b82f6">&#9993; SCANNING GMAIL...</span>' +
+      '<span style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' + scanStatus.done + ' / ' + scanStatus.total + ' accounts &nbsp;&#183;&nbsp; ~' + etaStr + ' remaining</span>' +
+      '</div>' +
+      '<div style="background:var(--border);border-radius:4px;height:8px;overflow:hidden">' +
+      '<div style="background:#3b82f6;height:100%;width:' + pct + '%;transition:width 0.3s;border-radius:4px"></div>' +
+      '</div>' +
+      (scanStatus.errors ? '<div style="font-size:10px;color:#f59e0b;margin-top:6px">' + scanStatus.errors + ' accounts skipped (API error)</div>' : '') +
+      '</div>';
+  } else if (scanStatus && !scanStatus.running && scanStatus.done > 0) {
+    var doneMsg = '&#10003; Scanned ' + scanStatus.done + ' accounts' + (scanStatus.errors ? ' (' + scanStatus.errors + ' errors)' : '');
+    var nextBtnHtml = scanStatus.hasMore
+      ? ' &nbsp;<button onclick="requestGmailAccess(function(){ loadAllGmail(' + scanStatus.nextBatch + '); })" style="background:var(--blue-b);border:none;color:#fff;padding:4px 12px;border-radius:3px;font-size:10px;cursor:pointer;font-family:var(--mono)">Scan Next 50</button>'
+      : '';
+    progressHtml = '<div style="font-size:11px;color:#22c55e;font-family:var(--mono);margin-bottom:10px">' + doneMsg + nextBtnHtml + '</div>';
+  }
+
+  var topHtml = progressHtml + '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">' +
     _mgrOKpi('Accounts w/ Contacts', coverage.length, '#3b82f6') +
     _mgrOKpi('Gmail Loaded', loadedCount, '#22c55e') +
     _mgrOKpi('Contacts Covered', emailedContacts + ' / ' + totalContacts, overallCovPct>=70?'#22c55e':overallCovPct>=40?'#f59e0b':'#ef4444') +
@@ -8304,12 +8338,15 @@ function _renderContactCoveragePanel(accs) {
     _mgrOKpi('Fully Covered', fullyCovered.length, '#22c55e') +
     '</div>';
 
+  var scanRunning = scanStatus && scanStatus.running;
   var loadBtnHtml = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">' +
     '<button id="load-all-gmail-btn" onclick="requestGmailAccess(function(){ loadAllGmail(); })" ' +
-    'style="background:var(--blue-b);border:none;color:#fff;padding:7px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#9993; Scan All Accounts Gmail</button>' +
-    '<span id="load-all-gmail-prog" style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' +
+    (scanRunning ? 'disabled ' : '') +
+    'style="background:var(--blue-b);border:none;color:#fff;padding:7px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono);' + (scanRunning ? 'opacity:0.5;' : '') + '">&#9993; Scan All Accounts Gmail</button>' +
+    (scanRunning ? '' : '<span id="load-all-gmail-prog" style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' +
     (loadedCount > 0 ? loadedCount + ' accounts loaded' : 'Click to scan your sent mail for all accounts') +
-    '</span></div>';
+    '</span>') +
+    '</div>';
 
   // Never contacted accounts (sorted by revenue)
   var neverHtml = '';

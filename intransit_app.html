@@ -1642,6 +1642,47 @@ const SECURITY = {
 };
 
 // ══════════════════════════════════════════════════════════
+//  BACKGROUND HEAVY DATA LOADER (invoice history + orders history)
+//  Called non-blocking after cacheLoaded=true so app is usable first
+// ══════════════════════════════════════════════════════════
+async function _loadHeavyDataBackground() {
+  try {
+    console.log('[CACHE] Background loading _INVOICE_HISTORY + _ORDERS_HISTORY...');
+    const [invRows, ordHistRows] = await Promise.all([
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L60000").catch(() => []),
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A:I").catch(() => []),
+    ]);
+    // Process invoice history into historyCache
+    if (invRows.length > 1) {
+      const hdrs=invRows[0];
+      const iName=hdrs.indexOf('CUSTOMER_NAME'),iInv=hdrs.indexOf('INVOICE_NUMBER'),iDate=hdrs.indexOf('INVOICE_DATE');
+      const iTotal=hdrs.indexOf('INVOICE_TOTAL'),iPart=hdrs.indexOf('PART_NUMBER'),iDesc=hdrs.indexOf('DESCRIPTION');
+      const iQty=hdrs.indexOf('QTY'),iPrice=hdrs.indexOf('UNIT_PRICE'),iLine=hdrs.indexOf('LINE_TOTAL'),iCond=hdrs.indexOf('CONDITION');
+      for (let r=1;r<invRows.length;r++) {
+        const row=invRows[r]; const key=(row[iName]||'').trim(); if(!key) continue;
+        if(!state.historyCache[key]) state.historyCache[key]={invoices:[],reqs:[],quotes:[]};
+        state.historyCache[key].invoices.push({invoiceNum:row[iInv]||'',date:row[iDate]||'',total:parseFloat(row[iTotal])||0,part:row[iPart]||'',desc:row[iDesc]||'',qty:row[iQty]||'',price:parseFloat(row[iPrice])||0,lineTotal:parseFloat(row[iLine])||0,condition:row[iCond]||''});
+      }
+      // Rebuild normalized lookup after invoice history loads
+      state._historyCacheNorm = {};
+      Object.keys(state.historyCache).forEach(k => {
+        state._historyCacheNorm[k.toLowerCase().replace(/\s+/g,' ').trim()] = k;
+      });
+      console.log('[CACHE] Invoice history loaded:', invRows.length - 1, 'rows');
+    }
+    // Process orders history
+    state._ordHistRaw = ordHistRows.length;
+    if (ordHistRows.length > 1) {
+      const hdrs=ordHistRows[0];
+      state.ordersHistoryCache=ordHistRows.slice(1).map(r=>{const obj={};hdrs.forEach((h,i)=>obj[h]=typeof r[i]==='string'?r[i].trim():(r[i]||''));return obj;});
+      console.log('[CACHE] Orders history loaded:', state.ordersHistoryCache.length, 'rows');
+    }
+  } catch(e) {
+    console.warn('[CACHE] Background heavy data load error:', e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
 //  SUPPLEMENTAL DATA LOADING (Contacts, History, Collections)
 // ══════════════════════════════════════════════════════════
 async function loadSupplementalData() {
@@ -1686,14 +1727,15 @@ async function loadSupplementalData() {
       console.error(state.gpLoadError);
     }
 
-    // ── Fetch in 3 waves of 3 — avoids Worker rate limits ──
+    // ── Fetch in waves — invoice history (58K rows) deferred to background ──
     state.ordHistError = null;
-    _updateLoadProgress('LOADING INVOICES & CONTACTS...', 50);
-    const [contactRows, invRows, ordHistRows] = await Promise.all([
+    _updateLoadProgress('LOADING CONTACTS...', 50);
+    const [contactRows] = await Promise.all([
       sheetsGet("'_CONTACTS'!A1:K50000").catch(() => []),
-      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_INVOICE_HISTORY'!A1:L50000").catch(() => []),
-      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ORDERS_HISTORY'!A:I").catch(e => { state.ordHistError = e.message; return []; }),
     ]);
+    // invRows and ordHistRows load in background after app is ready (see _loadHeavyDataBackground)
+    const invRows = [];
+    const ordHistRows = [];
     state._ordHistRaw = ordHistRows.length;
     await new Promise(r => setTimeout(r, 1000));
     _updateLoadProgress('LOADING ORDERS & QUOTES...', 65);
@@ -1872,6 +1914,9 @@ async function loadSupplementalData() {
 
     // Load schedule
     try { await schedLoadFromSheets(); } catch(e) {}
+
+    // Load heavy data in background — invoice history (58K rows) + orders history
+    _loadHeavyDataBackground().catch(e => console.warn('Heavy data background load failed:', e));
 
     // Load customer directory and prospects (non-blocking)
     loadCustomerDirectory().catch(e => console.warn('Customer directory load failed:', e));
@@ -3128,7 +3173,7 @@ function logSecurityEvent(type, detail) {
       entry.user,
       'SECURITY: ' + type,
       entry.detail,
-    ]]).catch(() => {});
+    ]], CONFIG.HISTORY_SPREADSHEET_ID).catch(() => {});
   }
 }
 
@@ -3652,7 +3697,7 @@ async function forceLogoutAll() {
       state.user?.email || 'admin',
       'FORCE_LOGOUT_ALL',
       'TARGET:ALL BY:' + (state.user?.email || 'admin') + ' IP:' + (state.userIP || 'unknown')
-    ]]);
+    ]], CONFIG.HISTORY_SPREADSHEET_ID);
     ri.textContent = '✅';
     rt.textContent = 'All users have been logged out';
     rb.innerHTML = 'The force logout signal has been sent.<br>All active sessions will be signed out within 2 minutes.';
@@ -3674,7 +3719,7 @@ async function forceLogoutUser(repId, targetEmail) {
       state.user?.email || 'admin',
       'FORCE_LOGOUT_USER',
       'TARGET:' + repId + ' EMAIL:' + (targetEmail || '') + ' BY:' + (state.user?.email || 'admin')
-    ]]);
+    ]], CONFIG.HISTORY_SPREADSHEET_ID);
     showToast('Force logout signal sent for ' + repId, 'success');
   } catch(e) {
     showToast('Force logout failed: ' + e.message, 'error');
@@ -3708,8 +3753,7 @@ async function checkForceLogout() {
   // Admin who issued the command should not be logged out by it
   if (isAdmin() && !state.viewAsRep) return;
   try {
-    // Read from Main sheet (_LOG lives there, not History)
-    const raw = await sheetsGetFrom(CONFIG.SPREADSHEET_ID, "'_LOG'!A1:D5000");
+    const raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_LOG'!A1:D5000");
     if (!raw || raw.length < 2) return;
     const myEmail = state.user?.email || '';
     const myRepId = state.repId || '';
@@ -5308,7 +5352,7 @@ function locationNotMe() {
     state.user?.email || 'unknown',
     'SUSPICIOUS_LOGIN',
     'User clicked This isn\'t me — IP: ' + _ip + ' City: ' + (state.userCity || '?')
-  ]]).catch(() => {});
+  ]], CONFIG.HISTORY_SPREADSHEET_ID).catch(() => {});
   document.getElementById('location-modal').style.display = 'none';
   showToast('Signed out for security. Contact john.fluman@intransittech.com if you need help.', 'error');
   setTimeout(handleSignout, 2500);
@@ -5344,7 +5388,7 @@ async function logLoginEvent(userData) {
         navigator.userAgent.slice(0, 120),
         'NORMAL',
         sessionStorage.getItem('it_session_id') || 'unknown'
-      ]]);
+      ]], CONFIG.HISTORY_SPREADSHEET_ID);
       console.log('Login logged ✓ for', userData.email);
       return;
     } catch(e) {
@@ -7018,7 +7062,7 @@ async function denyTransferRequest(accName, repEmail, adminNote) {
     await sheetsAppend("'_LOG'!A1", [[
       new Date().toISOString(), repEmail || state.user?.email, 'TRANSFER_DENIED',
       'Admin denied transfer of: ' + accName + '. Note: ' + (adminNote || 'none')
-    ]]);
+    ]], CONFIG.HISTORY_SPREADSHEET_ID);
     await resolveRequestLog('TRANSFER', accName, repId, 'DENIED', adminNote);
     showToast('Transfer denied: ' + accName.slice(0, 22) + ' ✓', 'success');
     renderRemovalsView();
@@ -13410,7 +13454,7 @@ async function requestHold(accountName) {
       state.user?.email || state.repId,
       'HOLD_REQUEST',
       'Rep ' + state.repId + ' requests hold for: ' + accountName + '. Reason: ' + reason
-    ]]);
+    ]], CONFIG.HISTORY_SPREADSHEET_ID);
     showToast('Hold request sent to John ✓', 'success');
   } catch(e) {
     showToast('Error sending request: ' + e.message, 'error');
@@ -14445,7 +14489,7 @@ async function requestTransfer(accountName, fromRep) {
   const reason = prompt('Request transfer of "'+accountName+'" to your territory?\n\nNote for John (optional):');
   if (reason===null) return;
   try {
-    await sheetsAppend("'_LOG'!A1", [[new Date().toISOString(), state.user?.email||fromRep, 'TRANSFER_REQUEST', 'Rep '+fromRep+' requests: '+accountName+'. Note: '+(reason||'none')]]);
+    await sheetsAppend("'_LOG'!A1", [[new Date().toISOString(), state.user?.email||fromRep, 'TRANSFER_REQUEST', 'Rep '+fromRep+' requests: '+accountName+'. Note: '+(reason||'none')]], CONFIG.HISTORY_SPREADSHEET_ID);
     showToast('Transfer request sent to John ✓','success');
   } catch(e) { showToast('Error: '+e.message,'error'); }
 }
@@ -16847,7 +16891,7 @@ async function apkDoAssignToMe(name) {
     await sheetsAppend("'_LOG'!A1", [[
       new Date().toISOString(), state.user?.email || state.repId, 'ACCOUNT_ASSIGNED',
       'Manager ' + (state.repId || '') + ' assigned ' + name + ' from ' + oldRep + ' to ' + targetRep
-    ]]);
+    ]], CONFIG.HISTORY_SPREADSHEET_ID);
     acc.rep = targetRep;
     if (canSeeTransferCandidates()) {
       const otherAccs = state.accounts.filter(function(a){ return a.rep !== targetRep && isInactive(a) && !state.globallyRemovedFromPool.has(a.name) && a.hideFromPool !== 'YES'; }).sort(function(a,b){ return (b.total||0)-(a.total||0); }).slice(0,50);

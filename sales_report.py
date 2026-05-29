@@ -1895,10 +1895,27 @@ def main():
     print("  → Pulling collections data...")
     try:
         collections_sql = """
+            WITH rep_by_employee AS (
+                SELECT o.CUSTOMER_ID,
+                       e.USERNAME AS SALES_REP,
+                       ROW_NUMBER() OVER (PARTITION BY o.CUSTOMER_ID ORDER BY o.ORDER_DATE DESC) AS rn
+                FROM dbo.ORDERHEA o
+                JOIN dbo.EMPLOYEE e ON e.LOGIN_ID = o.USERNAME
+                JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
+                WHERE e.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                  AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+            ),
+            owned_accounts AS (
+                SELECT c.ID AS CUSTOMER_ID, c.USERNAME AS SALES_REP
+                FROM dbo.CUSTOMER c
+                WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                UNION ALL
+                SELECT CUSTOMER_ID, SALES_REP FROM rep_by_employee WHERE rn = 1
+            )
             SELECT
                 i.CUSTOMER_ID,
                 c.NAME              AS CUSTOMER_NAME,
-                o.USERNAME          AS SALES_REP,
+                oa.SALES_REP,
                 SUM(i.BALANCE)      AS CURRENT_BALANCE,
                 MAX(cb.CREDIT_LIMIT) AS CREDIT_LIMIT,
                 c.AVERAGE_PAY,
@@ -1911,21 +1928,13 @@ def main():
                 NULL                AS NOTE_DATE,
                 NULL                AS NOTE_BY
             FROM dbo.INVCHEA i
-            JOIN dbo.ORDERHEA o  ON o.ORDER_NUMBER = i.ORDER_NUMBER
-            JOIN dbo.CUSTOMER c  ON c.ID = i.CUSTOMER_ID
+            JOIN dbo.ORDERHEA o    ON o.ORDER_NUMBER = i.ORDER_NUMBER
+            JOIN dbo.CUSTOMER c    ON c.ID = i.CUSTOMER_ID
+            JOIN owned_accounts oa ON oa.CUSTOMER_ID = c.ID
             LEFT JOIN dbo.CUSTBAL cb ON cb.CUSTOMER_ID = i.CUSTOMER_ID
             WHERE i.BALANCE > 0
               AND i.INVOICE_DATE >= '2020-01-01'
-              AND i.CUSTOMER_ID IN (
-                  SELECT c2.ID FROM dbo.CUSTOMER c2
-                  WHERE c2.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
-                  UNION
-                  SELECT DISTINCT o2.CUSTOMER_ID
-                  FROM dbo.ORDERHEA o2
-                  JOIN dbo.EMPLOYEE e2 ON e2.LOGIN_ID = o2.USERNAME
-                  WHERE e2.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
-              )
-            GROUP BY i.CUSTOMER_ID, c.NAME, o.USERNAME, c.AVERAGE_PAY,
+            GROUP BY i.CUSTOMER_ID, c.NAME, oa.SALES_REP, c.AVERAGE_PAY,
                      c.CREDIT_HOLD, c.TERMS
         """
         collections_df = pd.read_sql(collections_sql, conn)

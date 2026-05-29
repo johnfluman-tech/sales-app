@@ -12301,7 +12301,7 @@ function selectCollectionsAccount(name) {
           <div style="display:flex;gap:8px;align-items:center">
             <button onclick="aiGrammarCheck('coll-email-body', this)" style="background:transparent;border:1px solid var(--border-hi);color:var(--blue-b);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;border-radius:var(--r);letter-spacing:0.05em;flex-shrink:0">&#10022; Check</button>
             <button onclick="copyCollectionsEmail()" class="btn btn-secondary">COPY</button>
-            <button onclick="openCollectionsEmailClientFull()" class="btn btn-primary">OPEN IN EMAIL</button>
+            <button onclick="openCollectionsEmailClientFull('${escJs(name)}')" class="btn btn-primary">OPEN IN EMAIL</button>
           </div>
         </div>
       </div>
@@ -12665,7 +12665,7 @@ function copyCollectionsEmail() {
     .catch(() => showToast('Could not copy', 'error'));
 }
 
-function openCollectionsEmailClientFull() {
+function openCollectionsEmailClientFull(accountName) {
   const toSel   = document.getElementById('coll-email-to');
   const toCust  = document.getElementById('coll-email-to-custom');
   const ccSel   = document.getElementById('coll-email-cc');
@@ -12675,10 +12675,29 @@ function openCollectionsEmailClientFull() {
   if (ccExtra && ccExtra.value.trim()) {
     ccExtra.value.split(',').map(function(e){ return e.trim(); }).filter(Boolean).forEach(function(e){ if (!ccList.includes(e)) ccList.push(e); });
   }
-  const subject = encodeURIComponent(document.getElementById('coll-email-subject') ? document.getElementById('coll-email-subject').value : '');
+  const subjectRaw = document.getElementById('coll-email-subject') ? document.getElementById('coll-email-subject').value : '';
+  const subject = encodeURIComponent(subjectRaw);
   const body    = encodeURIComponent(document.getElementById('coll-email-body') ? document.getElementById('coll-email-body').value : '');
   const cc      = ccList.length ? '&cc=' + encodeURIComponent(ccList.join(',')) : '';
   window.open('mailto:'+encodeURIComponent(to)+'?subject='+subject+cc+'&body='+body);
+
+  // Log outreach to _CONTACT_NOTES
+  if (!to || !accountName) return;
+  var toContact = toSel ? (toSel.options[toSel.selectedIndex] ? toSel.options[toSel.selectedIndex].text.split('—')[0].trim() : to) : to;
+  if (toCust && toCust.value.trim()) toContact = toCust.value.trim();
+  var ccNote = ccList.length ? ' (CC: ' + ccList.join(', ') + ')' : '';
+  var noteText = 'Collections outreach email sent to ' + toContact + ' <' + to + '>' + ccNote + (subjectRaw ? ' — Subject: ' + subjectRaw : '');
+  var dateISO = new Date().toISOString().slice(0, 10);
+  var repId = state.repId || '';
+  sheetsAppend("'_CONTACT_NOTES'!A2", [[accountName, toContact, 'CollectionsNote', noteText, dateISO, repId]], CONFIG.HISTORY_SPREADSHEET_ID)
+    .then(function() {
+      if (!state.contactNotesCache || !Array.isArray(state.contactNotesCache)) {
+        state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
+      }
+      state.contactNotesCache.push([accountName, toContact, 'CollectionsNote', noteText, dateISO, repId]);
+      showToast('Outreach logged ✓', 'success');
+    })
+    .catch(function(e) { showToast('Email opened — note not saved: ' + e.message, 'error', 5000); });
 }
 
 function openCollectionsEmailClient(email) {

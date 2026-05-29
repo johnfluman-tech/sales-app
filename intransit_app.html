@@ -1681,6 +1681,11 @@ async function _loadHeavyDataBackground() {
       console.log('[CACHE] Orders history loaded:', state.ordersHistoryCache.length, 'rows');
     }
     state._heavyDataLoaded = true;
+    // If History tab is open on current account, re-render so loading message is replaced
+    if (state.selectedAccount && state.activeDetailTab === 'history') {
+      const _db = document.getElementById('detail-body');
+      if (_db) _db.innerHTML = renderDetailTab(state.selectedAccount, 'history');
+    }
     // If GP failed during initial load, retry now that other requests are done
     if (state.gpCache.length === 0) {
       console.log('[CACHE] GP empty after initial load — retrying...');

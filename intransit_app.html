@@ -7921,13 +7921,10 @@ async function renderMyOutreachView() {
   if (!el) return;
 
   var repId = state.repId;
-  var isAdm = state.isAdmin && !state.viewAsRep;
-  var viewRep = state.viewAsRep || repId;
+  // My Outreach is a personal rep view — admin can pick any rep via _myOutreachViewRep
+  var viewRep = state.viewAsRep || window._myOutreachViewRep || (repId === 'ADMIN' ? 'FJohn' : repId);
 
-  var accs = (state.accounts||[]).filter(function(a){
-    if (isAdm) return true;
-    return a.rep === viewRep;
-  });
+  var accs = (state.accounts||[]).filter(function(a){ return a.rep === viewRep; });
 
   var _moTab = window._myOutreachTab || 'attention';
 
@@ -8040,7 +8037,19 @@ async function renderMyOutreachView() {
     // Header
     '<div style="padding:14px 20px 0;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+    '<div style="display:flex;align-items:center;gap:10px">' +
     '<div style="font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.08em">MY OUTREACH</div>' +
+    (state.isAdmin && !state.viewAsRep ? (function(){
+      var _vr = window._myOutreachViewRep || 'FJohn';
+      var _reps = (CONFIG.REPS||['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan','FJohn']);
+      return '<select onchange="window._myOutreachViewRep=this.value;renderMyOutreachView()" ' +
+        'style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-size:11px;padding:3px 6px;font-family:var(--mono);border-radius:var(--r);cursor:pointer">' +
+        _reps.map(function(r){
+          return '<option value="' + r + '"' + (_vr===r?' selected':'') + '>' + r + '</option>';
+        }).join('') +
+        '</select>';
+    })() : '') +
+    '</div>' +
     gmailStatusHtml + '</div>' +
     (function(){
       var _attn = !window._myOutreachTab || window._myOutreachTab === 'attention';
@@ -8105,11 +8114,9 @@ async function myOutreachAI(type) {
   if (!out) return;
   out.innerHTML = '<div style="color:#a78bfa;font-family:var(--mono);font-size:11px">&#9203; Analyzing your accounts...</div>';
 
-  var repId = state.viewAsRep || state.repId;
-  var accs = (state.accounts||[]).filter(function(a){
-    if (state.isAdmin && !state.viewAsRep) return true;
-    return a.rep === repId;
-  });
+  var repId = state.repId;
+  var viewRep = state.viewAsRep || (repId === 'ADMIN' ? 'FJohn' : repId);
+  var accs = (state.accounts||[]).filter(function(a){ return a.rep === viewRep; });
   var now = new Date();
   var today = now.toISOString().slice(0,10);
 
@@ -8195,11 +8202,9 @@ function _updateMyOutreachBadge() {
 // ── Gmail Contact Coverage (My Outreach) ─────────────────────────────────
 
 async function loadAllGmail() {
-  var repId = state.viewAsRep || state.repId;
-  var accs = (state.accounts||[]).filter(function(a){
-    if (state.isAdmin && !state.viewAsRep) return true;
-    return a.rep === repId;
-  });
+  var repId = state.repId;
+  var viewRep = state.viewAsRep || window._myOutreachViewRep || (repId === 'ADMIN' ? 'FJohn' : repId);
+  var accs = (state.accounts||[]).filter(function(a){ return a.rep === viewRep; });
   // Only load accounts that have at least one email contact
   var toLoad = accs.filter(function(a){
     var contacts = state.contactsCache[a.name] || [];
@@ -8208,10 +8213,11 @@ async function loadAllGmail() {
   var btn = document.getElementById('load-all-gmail-btn');
   if (btn) btn.disabled = true;
   var prog = document.getElementById('load-all-gmail-prog');
-  if (prog) prog.textContent = '0 / ' + toLoad.length + ' accounts';
+  if (prog) prog.textContent = '0 / ' + toLoad.length + ' accounts...';
 
   var done = 0;
-  // Load sequentially to avoid rate limits
+  var errors = 0;
+  // Load sequentially with small delay to respect Gmail API rate limits
   for (var i = 0; i < toLoad.length; i++) {
     var a = toLoad[i];
     if (!state.gmailActivityCache[a.name] || state.gmailActivityCache[a.name] === 'error') {
@@ -8219,13 +8225,16 @@ async function loadAllGmail() {
         await loadGmailActivity(a.name);
       } catch(e) {
         state.gmailActivityCache[a.name] = { error: e.message };
+        errors++;
       }
+      // Throttle: 400ms between accounts to avoid Gmail rate limits
+      await new Promise(function(r){ setTimeout(r, 400); });
     }
     done++;
-    if (prog) prog.textContent = done + ' / ' + toLoad.length + ' accounts scanned';
+    if (prog) prog.textContent = done + ' / ' + toLoad.length + ' scanned' + (errors ? ' (' + errors + ' errors)' : '');
   }
   if (btn) btn.disabled = false;
-  if (prog) prog.textContent = 'Done — ' + toLoad.length + ' accounts scanned';
+  if (prog) prog.textContent = '✓ Done — ' + toLoad.length + ' accounts scanned' + (errors ? ', ' + errors + ' errors' : '');
   renderMyOutreachView();
 }
 

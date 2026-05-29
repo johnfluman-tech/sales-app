@@ -1891,7 +1891,7 @@ def main():
             SELECT
                 i.CUSTOMER_ID,
                 c.NAME              AS CUSTOMER_NAME,
-                oa.SALES_REP,
+                COALESCE(oa.SALES_REP, NULLIF(NULLIF(c.USERNAME,'Imported'),''), '') AS SALES_REP,
                 SUM(i.BALANCE)      AS CURRENT_BALANCE,
                 MAX(cb.CREDIT_LIMIT) AS CREDIT_LIMIT,
                 c.AVERAGE_PAY,
@@ -1904,14 +1904,14 @@ def main():
                 NULL                AS NOTE_DATE,
                 NULL                AS NOTE_BY
             FROM dbo.INVCHEA i
-            JOIN dbo.ORDERHEA o    ON o.ORDER_NUMBER = i.ORDER_NUMBER
             JOIN dbo.CUSTOMER c    ON c.ID = i.CUSTOMER_ID
-            JOIN owned_accounts oa ON oa.CUSTOMER_ID = c.ID
+            LEFT JOIN owned_accounts oa ON oa.CUSTOMER_ID = c.ID
             LEFT JOIN dbo.CUSTBAL cb ON cb.CUSTOMER_ID = i.CUSTOMER_ID
             WHERE i.BALANCE > 0
               AND i.INVOICE_DATE >= '2020-01-01'
-            GROUP BY i.CUSTOMER_ID, c.NAME, oa.SALES_REP, c.AVERAGE_PAY,
-                     c.CREDIT_HOLD, c.TERMS
+            GROUP BY i.CUSTOMER_ID, c.NAME,
+                     COALESCE(oa.SALES_REP, NULLIF(NULLIF(c.USERNAME,'Imported'),''), ''),
+                     c.AVERAGE_PAY, c.CREDIT_HOLD, c.TERMS
         """
         collections_df = pd.read_sql(collections_sql, conn)
 
@@ -1924,9 +1924,7 @@ def main():
                     SUM(p.AMT)               AS LAST_PAYMENT_AMOUNT,
                     AVG(CAST(p.DAYS_OVER AS FLOAT)) AS AVG_DAYS_OVER
                 FROM dbo.PAY p
-                JOIN dbo.CUSTOMER c ON c.ID = p.CUSTOMER_ID
-                WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
-                  AND p.DATE >= DATEADD(year, -2, GETDATE())
+                WHERE p.DATE >= DATEADD(year, -2, GETDATE())
                 GROUP BY p.CUSTOMER_ID
             """
             pay_df = pd.read_sql(pay_sql, conn)
@@ -1956,8 +1954,6 @@ def main():
                     cn.USERNAME         AS NOTE_BY,
                     cn.SUBJECT
                 FROM dbo.COLLNOTE cn
-                JOIN dbo.CUSTOMER c ON c.ID = cn.CUSTOMER_ID
-                WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
                 ORDER BY cn.DATE_TIME DESC
             """
             collnote_df = pd.read_sql(collnote_sql, conn)

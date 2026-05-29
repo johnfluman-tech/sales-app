@@ -26,9 +26,14 @@ NEW = "...background:'+(!w._tab||w._tab==\\'attention\\'?'var(--blue-b)':'transp
 
 **Also:** After any Python script edits the HTML file, always run:
 ```bash
-node --check extracted_js.js
+python _extract_js.py && node --check _check.js
 ```
-to verify no syntax errors before committing.
+to verify no syntax errors before committing. (`_extract_js.py` writes to `_check.js`, not `extracted_js.js`.)
+
+**Additional Python escaping gotchas:**
+- Apostrophes in user-visible strings (e.g. `your team's`) inside JS single-quoted strings need `\\'` → produces `\'` in file → `'` in browser
+- `onmouseover="this.style.X='value'"` — the inner quotes break the outer JS string. Use numeric assignments (`this.style.opacity=0.75`) or data-attribute lookups instead. Never embed CSS var() references inside inline event handlers written from Python scripts.
+- When using `replace_between(start, end, new)` — always normalize CRLF → LF first (`content.replace('\r\n', '\n')`) before doing any find/replace
 
 ---
 
@@ -436,3 +441,31 @@ CRM sync indicator: relative time + auto-refresh every 60s. Account Intel: pre-t
 - `CLAUDE.md` reorganized: all rules/checkpoints moved to front.
 
 **Commit:** `ff60138`
+
+### 2026-05-28 (session 33 — Gmail fixes + UI redesigns + Pool data + Intel targeting)
+**Gmail fixes:**
+- CSP `connect-src` missing `https://gmail.googleapis.com` → "Failed to fetch" on all Gmail API calls. Fixed.
+- `_gmailEnsureToken()`: validates token with ping before scan, silently refreshes if expired/missing — no forced reconnect on every scan.
+- `loadAllGmail()`: removed 50-account batch cap, scans all accounts. Saves slim cache to localStorage (`it_gmail_cache_[viewRep]`), auto-refreshes every 8h via `_gmailAutoScan()`.
+- Collections "Open in Email" now logs outreach to `_CONTACT_NOTES` as `CollectionsNote`.
+
+**My Outreach → Outreach Command Center redesign:**
+- KPI bar (CRITICAL / AT RISK / FU OVERDUE / REPLY RATE), TODAY'S PLAYBOOK (top-5 urgent account cards), AI Coach button grid, Priority Queue with score rings and color-coded left borders.
+- `_ring()`, `_kpi()`, `_aibtn()`, `_tabBtn()` helpers inside `renderMyOutreachView`.
+
+**Pool Management — rich cards:**
+- `_poolDays()`, `_poolYearBars()` helpers: days-idle counter (color-coded), YTD/lifetime/last-sale stat row, year bar chart, rep note, follow-up date, collections balance + risk.
+- `_statsBar()`: 5-tile KPI bar (accounts, lifetime rev, YTD, avg idle, collections) + overdue-FU alert above each tab.
+- NEEDS REVIEW: added 🔥 HOT button (direct hot-priority add). Pool/Hidden cards also enriched.
+
+**Manager Hub Account Intel — dynamic targeting:**
+- `_computeIntelTargets(teamReps, filter)`: scans team accounts for 35%+ revenue declines from peak year + multi-rep transfer history accounts. Respects teamReps permissions.
+- Filter tabs: ALL / MAJOR DECLINE / MULTI-REP. Each button shows drop amount + %. Seeds always shown in ALL view.
+- `_MGR_INTEL_SEEDS` keeps original 6; `_MGR_INTEL_TARGETS` aliased to seeds for backward compat.
+
+**CLAUDE.md rule additions:**
+- `node --check` command corrected: `python _extract_js.py && node --check _check.js`
+- Python escaping: apostrophes in user strings need `\\'`, inline `onmouseover` with CSS vars → use opacity/numeric instead
+- `replace_between()` with CRLF normalization is more reliable than full-string matching
+
+**Commits:** `e59143c`, `3ddfe05`, `0490ec5`

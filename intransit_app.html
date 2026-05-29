@@ -7794,6 +7794,8 @@ async function loadGmailActivity(accName, fastMode) {
 
   var result = details.filter(Boolean);
   state.gmailActivityCache[accName] = { emails: emails, messages: result, loadedAt: Date.now() };
+  // Save incrementally after each account so partial scans survive navigation
+  try { _saveGmailCacheToStorage(); } catch(e) {}
   return state.gmailActivityCache[accName];
 }
 
@@ -8179,6 +8181,14 @@ async function renderMyOutreachView() {
   var _moTab = window._myOutreachTab || 'attention';
   var now = new Date();
   var today = now.toISOString().slice(0,10);
+
+  // Restore Gmail cache from localStorage every time this view opens (not just at login)
+  // This ensures data survives navigation away and back without a full re-scan
+  _loadGmailCacheFromStorage();
+  // Clean up any stale 'loading' sentinels left by a previous partial scan
+  Object.keys(state.gmailActivityCache).forEach(function(k) {
+    if (state.gmailActivityCache[k] === 'loading') delete state.gmailActivityCache[k];
+  });
 
   function _ds(a){ var d=a.lastSaleDate||a.lastSale||''; if(!d) return 999; try{ return Math.floor((now-new Date(d))/86400000); }catch(e){ return 999; } }
   function _score(a){ var d=_ds(a),s=100; if(d>180)s-=50; else if(d>90)s-=30; else if(d>30)s-=15; if(!(a.repNote&&a.repNote.trim()))s-=15; if(a.followUpDate&&a.followUpDate<today)s-=20; return Math.max(0,s); }
@@ -8615,7 +8625,7 @@ async function _gmailAutoScan() {
     return contacts.some(function(c) { return c.email && c.email.includes('@'); });
   });
   if (!toLoad.length) return;
-  var STALE_MS = 8 * 60 * 60 * 1000; // 8 hours
+  var STALE_MS = 24 * 60 * 60 * 1000; // 24 hours — no need to rescan every 8h
   var now = Date.now();
   var stale = toLoad.filter(function(a) {
     var d = state.gmailActivityCache[a.name];
@@ -8725,13 +8735,33 @@ function _renderContactCoveragePanel(accs) {
     '</div>';
 
   var scanRunning = scanStatus && scanStatus.running;
-  var loadBtnHtml = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">' +
+
+  // Find oldest loadedAt among cached accounts to show last-sync time
+  var _oldestLoad = 0;
+  Object.keys(state.gmailActivityCache).forEach(function(k) {
+    var d = state.gmailActivityCache[k];
+    if (d && d.loadedAt && d.loadedAt > _oldestLoad) _oldestLoad = d.loadedAt;
+  });
+  var _cacheAgeStr = '';
+  if (_oldestLoad) {
+    var _ageMs = Date.now() - _oldestLoad;
+    var _ageH = Math.floor(_ageMs / 3600000);
+    var _ageM = Math.floor((_ageMs % 3600000) / 60000);
+    _cacheAgeStr = _ageH > 0 ? _ageH + 'h ' + _ageM + 'm ago' : _ageM + 'm ago';
+  }
+  var _cacheIsFresh = loadedCount > 0 && _oldestLoad && (Date.now() - _oldestLoad) < 24 * 3600000;
+
+  var loadBtnHtml = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">' +
     '<button id="load-all-gmail-btn" onclick="loadAllGmail()" ' +
     (scanRunning ? 'disabled ' : '') +
-    'style="background:var(--blue-b);border:none;color:#fff;padding:7px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono);' + (scanRunning ? 'opacity:0.5;' : '') + '">&#9993; Scan All Accounts Gmail</button>' +
-    (scanRunning ? '' : '<span id="load-all-gmail-prog" style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' +
-    (loadedCount > 0 ? loadedCount + ' accounts loaded' : 'Click to scan your sent mail for all accounts') +
-    '</span>') +
+    'style="background:' + (_cacheIsFresh ? 'var(--s2)' : 'var(--blue-b)') + ';border:1px solid ' + (_cacheIsFresh ? 'var(--border)' : 'var(--blue-b)') + ';color:' + (_cacheIsFresh ? 'var(--text-2)' : '#fff') + ';padding:7px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono);' + (scanRunning ? 'opacity:0.5;' : '') + '">' +
+    (scanRunning ? '&#9993; Scanning...' : (_cacheIsFresh ? '&#8635; Refresh Gmail' : '&#9993; Scan Gmail')) +
+    '</button>' +
+    (scanRunning ? '' :
+      _cacheIsFresh
+        ? '<span style="font-size:11px;color:#22c55e;font-family:var(--mono)">&#10003; ' + loadedCount + ' accounts cached &nbsp;&#183;&nbsp; last synced ' + _cacheAgeStr + '</span>'
+        : '<span style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' + (loadedCount > 0 ? loadedCount + ' partial — click to finish' : 'No Gmail data yet — click to scan') + '</span>'
+    ) +
     '</div>';
 
   // Never contacted accounts (sorted by revenue)

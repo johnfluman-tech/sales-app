@@ -11837,6 +11837,9 @@ function switchViewAs(rep) {
     const _mc = getManagerConfig(); const _tn = _mc ? _mc.teamName.toUpperCase() : 'TEAM';
     label.textContent = (rep === '__TEAM_ALL__' || rep === 'MX_TEAM') ? 'MANAGER — ' + _tn : rep ? 'VIEWING: ' + rep : 'MANAGER — MY ACCOUNTS';
     label.style.color = rep ? 'var(--accent)' : '';
+    // Hide Pool Management when viewing as a specific rep (not team view)
+    const _mgrPoolNav = document.getElementById('nav-pool-management');
+    if (_mgrPoolNav) _mgrPoolNav.style.display = (!rep || rep === '__TEAM_ALL__') ? 'block' : 'none';
   }
   state.selectedAccount = null;
   // Always reset to ALL CRM filter when switching rep view so full account list shows

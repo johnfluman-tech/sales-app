@@ -3526,12 +3526,20 @@ function completeLogin() {
       const _pHidden = await loadHiddenAccountsTab();
       console.log('[HIDDEN] Persistent hidden set size:', _pHidden.size);
       if (_pHidden.size > 0) {
-        const _toHide = state.accounts.filter(function(a){ return _pHidden.has(a.name.toLowerCase().trim()); });
-        state.accounts = state.accounts.filter(function(a){ return !_pHidden.has(a.name.toLowerCase().trim()); });
+        var _normName = function(n){ return (n||'').toLowerCase().trim().replace(/\s+/g,' '); };
+        var _normSet = new Set(Array.from(_pHidden).map(_normName));
+        const _toHide = state.accounts.filter(function(a){ return _normSet.has(_normName(a.name)); });
+        state.accounts = state.accounts.filter(function(a){ return !_normSet.has(_normName(a.name)); });
         _toHide.forEach(function(a){ a.johnApproval = 'YES'; state.hiddenAccounts.push(a); });
         console.log('[HIDDEN] Applied', _toHide.length, 'persistent hidden accounts:', _toHide.map(function(a){ return a.name; }));
         if (_toHide.length === 0 && _pHidden.size > 0) {
-          console.warn('[HIDDEN] WARNING: hidden accounts in tab but none matched state.accounts names — check name case/spacing');
+          // Check if already hidden via JOHN_APPROVAL='YES' in rep tab (normal case — not a warning)
+          var _alreadyHidden = state.hiddenAccounts.filter(function(a){ return _normSet.has(_normName(a.name)); });
+          if (_alreadyHidden.length === 0) {
+            console.warn('[HIDDEN] WARNING: hidden accounts in tab but none matched state.accounts or state.hiddenAccounts — check name case/spacing');
+          } else {
+            console.log('[HIDDEN]', _alreadyHidden.length, 'accounts already hidden via JOHN_APPROVAL — tab is consistent');
+          }
         }
       }
     } catch(e) { console.warn('[HIDDEN] Could not load hidden accounts tab:', e.message); }

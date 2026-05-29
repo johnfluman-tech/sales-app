@@ -792,8 +792,32 @@ def push_customer_directory_tab(service, conn, all_tabs):
                 c.USERNAME      AS USERNAME,
                 c.CITY          AS CITY,
                 c.STATE         AS STATE,
-                c.LAST_ACTIVITY AS LAST_ACTIVITY
+                c.LAST_ACTIVITY AS LAST_ACTIVITY,
+                ISNULL(ytd.YTD_REVENUE, 0)      AS YTD_REVENUE,
+                ISNULL(life.LIFETIME_REVENUE, 0) AS LIFETIME_REVENUE,
+                life.FIRST_SALE_DATE,
+                life.LAST_SALE_DATE,
+                ISNULL(life.TOTAL_ORDERS, 0)    AS TOTAL_ORDERS
             FROM dbo.CUSTOMER c
+            -- YTD revenue (current calendar year)
+            LEFT JOIN (
+                SELECT o.CUSTOMER_ID, SUM(i.INVOICE_TOTAL) AS YTD_REVENUE
+                FROM dbo.INVCHEA i
+                JOIN dbo.ORDERHEA o ON o.ORDER_NUMBER = i.ORDER_NUMBER
+                WHERE YEAR(i.INVOICE_DATE) = YEAR(GETDATE())
+                GROUP BY o.CUSTOMER_ID
+            ) ytd ON ytd.CUSTOMER_ID = c.ID
+            -- Lifetime revenue (all years in CCCRM)
+            LEFT JOIN (
+                SELECT o.CUSTOMER_ID,
+                       SUM(i.INVOICE_TOTAL)        AS LIFETIME_REVENUE,
+                       MIN(i.INVOICE_DATE)          AS FIRST_SALE_DATE,
+                       MAX(i.INVOICE_DATE)          AS LAST_SALE_DATE,
+                       COUNT(DISTINCT i.INVOICE_NUMBER) AS TOTAL_ORDERS
+                FROM dbo.INVCHEA i
+                JOIN dbo.ORDERHEA o ON o.ORDER_NUMBER = i.ORDER_NUMBER
+                GROUP BY o.CUSTOMER_ID
+            ) life ON life.CUSTOMER_ID = c.ID
             WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
               AND c.NAME IS NOT NULL
               AND LEN(LTRIM(RTRIM(c.NAME))) > 0
@@ -807,7 +831,8 @@ def push_customer_directory_tab(service, conn, all_tabs):
             print(f"  WARNING: SQL returned 0 rows — check USERNAME values in dbo.CUSTOMER")
             return
 
-        headers = ['CUSTOMER_ID', 'NAME', 'USERNAME', 'CITY', 'STATE', 'LAST_ACTIVITY']
+        headers = ['CUSTOMER_ID', 'NAME', 'USERNAME', 'CITY', 'STATE', 'LAST_ACTIVITY',
+                   'YTD_REVENUE', 'LIFETIME_REVENUE', 'FIRST_SALE_DATE', 'LAST_SALE_DATE', 'TOTAL_ORDERS']
         rows = [headers]
         for _, r in dir_df.iterrows():
             rows.append([
@@ -817,11 +842,16 @@ def push_customer_directory_tab(service, conn, all_tabs):
                 str(r.get('CITY', '') or '').strip(),
                 str(r.get('STATE', '') or '').strip(),
                 str(r.get('LAST_ACTIVITY', '') or '').strip(),
+                round(float(r.get('YTD_REVENUE', 0) or 0), 2),
+                round(float(r.get('LIFETIME_REVENUE', 0) or 0), 2),
+                str(r.get('FIRST_SALE_DATE', '') or '')[:10],
+                str(r.get('LAST_SALE_DATE', '') or '')[:10],
+                int(r.get('TOTAL_ORDERS', 0) or 0),
             ])
 
         resize_tab(service, '_CUSTOMER_DIRECTORY', len(rows) + 100, sheet_id=sid)
         service.spreadsheets().values().clear(
-            spreadsheetId=sid, range="'_CUSTOMER_DIRECTORY'!A1:F50000"
+            spreadsheetId=sid, range="'_CUSTOMER_DIRECTORY'!A1:K50000"
         ).execute()
         chunk_size = 10000
         for i in range(0, len(rows), chunk_size):
@@ -1661,7 +1691,7 @@ def main():
             ON o.ORDER_NUMBER = i.ORDER_NUMBER
         JOIN dbo.CUSTOMER c
             ON c.ID = o.CUSTOMER_ID
-        WHERE i.INVOICE_DATE >= '2020-01-01'
+        WHERE i.INVOICE_DATE >= '2010-01-01'
           AND o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
     """
     df = pd.read_sql(sql, conn)
@@ -1769,7 +1799,7 @@ def main():
         JOIN dbo.ORDERHEA o   ON o.ORDER_NUMBER = i.ORDER_NUMBER
         JOIN dbo.CUSTOMER c   ON c.ID = o.CUSTOMER_ID
         JOIN dbo.INVCDTL d    ON d.INVOICE_NUMBER = i.INVOICE_NUMBER
-        WHERE i.INVOICE_DATE >= DATEADD(year, -2, GETDATE())
+        WHERE i.INVOICE_DATE >= '2010-01-01'
           AND c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
           AND d.FULLPART IS NOT NULL
           AND d.FULLPART != ''
@@ -2060,7 +2090,7 @@ def main():
             FROM dbo.INVCHEA i
             JOIN dbo.ORDERHEA o   ON o.ORDER_NUMBER = i.ORDER_NUMBER
             JOIN dbo.CUSTOMER c   ON c.ID = o.CUSTOMER_ID
-            WHERE i.INVOICE_DATE >= '2020-01-01'
+            WHERE i.INVOICE_DATE >= '2010-01-01'
               AND o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
         """
         gp_df = pd.read_sql(gp_sql, conn)

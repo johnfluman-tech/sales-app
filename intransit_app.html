@@ -15783,7 +15783,7 @@ function mgrIntelLookup(query) {
   var gpRevCol  = gpHdrs.find(function(h){ return /EXTENDED_PRICE|INVOICE_TOTAL/i.test(h); }) || 'EXTENDED_PRICE';
   var gpDateCol = gpHdrs.find(function(h){ return /INVOICE_DATE/i.test(h); }) || 'INVOICE_DATE';
   var gpRepCol  = gpHdrs.find(function(h){ return /SALES_REP/i.test(h); }) || 'SALES_REP';
-  var gpBuyerCol= gpHdrs.find(function(h){ return /BUYER_NAME/i.test(h); }) || 'BUYER_NAME';
+  var gpBuyerCol= gpHdrs.find(function(h){ return /BUYER_NAME|CUSTOMER_NAME/i.test(h); }) || 'CUSTOMER_NAME';
 
   var gpRows = (state.gpCache||[]).filter(function(r){ return matchAll(r[gpBuyerCol]||''); });
   var usedAnyGP = false;
@@ -16358,7 +16358,7 @@ async function mgrIntelAI(query) {
   var gpRevCol  = gpHdrs.find(function(h){ return /EXTENDED_PRICE|INVOICE_TOTAL/i.test(h); }) || 'EXTENDED_PRICE';
   var gpDateCol = gpHdrs.find(function(h){ return /INVOICE_DATE/i.test(h); }) || 'INVOICE_DATE';
   var gpRepCol  = gpHdrs.find(function(h){ return /SALES_REP/i.test(h); }) || 'SALES_REP';
-  var gpBuyerCol= gpHdrs.find(function(h){ return /BUYER_NAME/i.test(h); }) || 'BUYER_NAME';
+  var gpBuyerCol= gpHdrs.find(function(h){ return /BUYER_NAME|CUSTOMER_NAME/i.test(h); }) || 'CUSTOMER_NAME';
   var norm = function(s){ return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim(); };
   var qWords = norm(query).split(/\s+/).filter(function(w){ return w.length>2; });
   var gpRows = (state.gpCache||[]).filter(function(r){ var b=norm(r[gpBuyerCol]||''); return qWords.every(function(w){ return b.indexOf(w)>-1; }); });
@@ -16404,7 +16404,7 @@ async function mgrPortfolioReview() {
   var gpRevCol  = gpHdrs.find(function(h){ return /EXTENDED_PRICE|INVOICE_TOTAL/i.test(h); }) || 'EXTENDED_PRICE';
   var gpDateCol = gpHdrs.find(function(h){ return /INVOICE_DATE/i.test(h); }) || 'INVOICE_DATE';
   var gpRepCol  = gpHdrs.find(function(h){ return /SALES_REP/i.test(h); }) || 'SALES_REP';
-  var gpBuyerCol= gpHdrs.find(function(h){ return /BUYER_NAME/i.test(h); }) || 'BUYER_NAME';
+  var gpBuyerCol= gpHdrs.find(function(h){ return /BUYER_NAME|CUSTOMER_NAME/i.test(h); }) || 'CUSTOMER_NAME';
   var allAccs   = state.accounts || [];  // use full list so managers find team rep accounts
   var currentYear = new Date().getFullYear();
 
@@ -21063,23 +21063,33 @@ function _updateCRMSyncDisplay() {
 async function loadCustomerDirectory(force) {
   if (!force && state.customerDirectory && state.customerDirectory.length > 0) return;
   try {
-    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CUSTOMER_DIRECTORY'!A1:F50000");
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CUSTOMER_DIRECTORY'!A1:K50000");
     if (!rows || rows.length < 2) { state.customerDirectory = []; state._directoryLoadedAt = Date.now(); return; }
     const hdrs = rows[0].map(function(h){ return (h||'').trim(); });
-    const iId = hdrs.indexOf('CUSTOMER_ID');
+    const iId   = hdrs.indexOf('CUSTOMER_ID');
     const iName = hdrs.indexOf('NAME');
-    const iRep = hdrs.indexOf('USERNAME');
+    const iRep  = hdrs.indexOf('USERNAME');
     const iCity = hdrs.indexOf('CITY');
-    const iState = hdrs.indexOf('STATE');
+    const iState= hdrs.indexOf('STATE');
     const iLast = hdrs.indexOf('LAST_ACTIVITY');
+    const iYtd  = hdrs.indexOf('YTD_REVENUE');
+    const iLife = hdrs.indexOf('LIFETIME_REVENUE');
+    const iFirst= hdrs.indexOf('FIRST_SALE_DATE');
+    const iLastS= hdrs.indexOf('LAST_SALE_DATE');
+    const iOrds = hdrs.indexOf('TOTAL_ORDERS');
     state.customerDirectory = rows.slice(1).map(function(r){
       return {
-        id: (r[iId]||'').trim(),
-        name: (r[iName]||'').trim(),
-        rep: (r[iRep]||'').trim(),
-        city: (r[iCity]||'').trim(),
-        state: (r[iState]||'').trim(),
+        id:           (r[iId]||'').trim(),
+        name:         (r[iName]||'').trim(),
+        rep:          (r[iRep]||'').trim(),
+        city:         (r[iCity]||'').trim(),
+        state:        (r[iState]||'').trim(),
         lastActivity: (r[iLast]||'').trim(),
+        ytdRevenue:   parseFloat(r[iYtd]||0)||0,
+        total:        parseFloat(r[iLife]||0)||0,
+        firstSale:    (r[iFirst]||'').trim().slice(0,10),
+        lastSale:     (r[iLastS]||'').trim().slice(0,10),
+        totalOrders:  parseInt(r[iOrds]||0)||0,
       };
     }).filter(function(c){ return c.name; });
     state._directoryLoadedAt = Date.now();

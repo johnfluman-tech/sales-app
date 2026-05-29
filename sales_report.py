@@ -508,18 +508,20 @@ def push_master_tab(service, summary, year_list, all_tabs):
 
 
 def log_run_to_sheet(service, stats, all_tabs):
-    """Append a run record to the _LOG tab."""
+    """Append a run record to the _LOG tab (History sheet)."""
     if service is None:
         return
     try:
-        ensure_tab_exists(service, '_LOG', all_tabs)
+        sid = HISTORY_SHEET_ID
+        h_tabs = get_all_tabs(service, sid)
+        ensure_tab_exists(service, '_LOG', h_tabs, sheet_id=sid)
         # Write header if empty
         existing = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID, range="'_LOG'!A1:A1"
+            spreadsheetId=sid, range="'_LOG'!A1:A1"
         ).execute()
         if not existing.get('values'):
             service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
+                spreadsheetId=sid,
                 range="'_LOG'!A1",
                 valueInputOption="RAW",
                 body={"values": [['RUN_DATE', 'TOTAL_ACCOUNTS', 'INACTIVE', 'AT_RISK', 'ACTIVE', 'NOTE']]}
@@ -531,13 +533,13 @@ def log_run_to_sheet(service, stats, all_tabs):
             stats.get('note', '')
         ]
         service.spreadsheets().values().append(
-            spreadsheetId=SPREADSHEET_ID,
+            spreadsheetId=sid,
             range="'_LOG'!A1",
             valueInputOption="RAW",
             insertDataOption="INSERT_ROWS",
             body={"values": [row]}
         ).execute()
-        print("  → Run logged to _LOG tab.")
+        print("  → Run logged to _LOG tab (History sheet).")
     except Exception as e:
         print(f"  WARNING: Could not write to _LOG — {e}")
 

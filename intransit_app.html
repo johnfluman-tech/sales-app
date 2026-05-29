@@ -21086,7 +21086,7 @@ function _updateProspectsBadge() {
 
 async function loadLastRunTime() {
   try {
-    var raw = await sheetsGetFrom(CONFIG.SPREADSHEET_ID, "'_LOG'!A1:F5000");
+    var raw = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_LOG'!A1:F5000");
     if (!raw || raw.length < 2) return;
     // Python script rows have a number in col B (TOTAL_ACCOUNTS); security event rows have a string (LOGIN, etc.)
     var lastRun = null;

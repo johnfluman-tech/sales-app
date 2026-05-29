@@ -16016,12 +16016,16 @@ function mgrIntelLookup(query) {
   // Top parts from historyCache — try matched account names too
   var hKey = null;
   var searchNorms = [normQ].concat(accMatches.slice(0,3).map(function(a){ return norm(a.name||''); }));
+  var _gwHP = /^(inc|llc|ltd|corp|co|sa|de|cv|srl|bv|ag|gmbh|mex|the|and|for|technologies|manufacturing|engineering|systems|solutions|international|industries|corporation|company|services|group|holdings|partners|enterprises|consulting|distribution|logistics|products|global|mexico|america)$/i;
   Object.keys(state.historyCache||{}).forEach(function(k) {
     var nk=norm(k);
     var hit=searchNorms.some(function(sq){
-      var sw=sq.split(/\s+/).filter(function(w){ return w.length>3; });
+      // Strip stop-words first; AND-only — every distinctive word must be present in the key.
+      // No OR fallback: prevents "technologies" alone matching "Neros Technologies" when searching "Zebra Technologies".
+      var sw=sq.split(/\s+/).filter(function(w){ return w.length>3 && !_gwHP.test(w); });
+      if (!sw.length) sw=sq.split(/\s+/).filter(function(w){ return w.length>3; }); // all generic words — use raw
       if (!sw.length) sw=[sq];
-      return sw.every(function(w){ return nk.indexOf(w)>-1; }) || sw.some(function(w){ return nk.indexOf(w)>-1; });
+      return sw.every(function(w){ return nk.indexOf(w)>-1; });
     });
     if (hit && (!hKey || norm(k).length<norm(hKey).length)) hKey=k;
   });

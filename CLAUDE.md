@@ -469,3 +469,27 @@ CRM sync indicator: relative time + auto-refresh every 60s. Account Intel: pre-t
 - `replace_between()` with CRLF normalization is more reliable than full-string matching
 
 **Commits:** `e59143c`, `3ddfe05`, `0490ec5`
+
+### 2026-05-28 (session 34 — permissions, Activity Log, Pool enhancements)
+**Bugs fixed:**
+- Dashboard + Prospects: manager-only users (CMancilla, MPerezfreye) not in REP_EMAIL_MAP → repId=null → saw all data. Fixed: added both to REP_EMAIL_MAP.
+- `_permissionScope()` checkpoint function added — returns `{repFilter, teamReps, isTeam, matchFn, isAdm, isMgr}`. Used in `refreshDashboard` and `loadProspects`.
+- `renderProspectsView`: scope invalidation added — clears prospect cache when viewAsRep changes.
+- Pool Management: scroll broken (no overflow wrapper) — fixed with `height:100%;overflow-y:auto` outer div.
+- Pool Management: notes overwritten when moving accounts to AVAILABLE/HIDDEN — fixed by reading existing cache record and carrying forward `notes`, `sourceRep`, `assignedTo`.
+
+**Features added:**
+- **Activity Log** (`nav-activity-log`, admin only, 📊 nav): unified event timeline from `_LOG` + `_REQUEST_LOG` + `_ACCESS_LOG`. Filter by type/period/rep. KPI bar. Color-coded event badges.
+- **Pool Management expanded criteria**: inactive accounts OR accounts with notes from any app user AND 180d idle.
+- **5 new Pool filters**: idle-days range (0-89/90-179/180-364/365+), lifetime revenue tier (zero/$1-9K/$10K-99K/$100K+), YTD (yes/no), collections (has balance), status text.
+- **Bidirectional sort**: `poolMgmtSortDir()` toggles ▲/▼; sort keys: revenue, ytd, idle, coll.
+- **AI Pool Advisor** (`poolAIAdvisor()`): scans unreviewed accounts, sends top 30 to Haiku, modal with recommendations.
+- **AI Rep Match** (`poolAIRepMatch(accName)`): per-rep stats + account summary → best rep recommendation with 5 reasons + secondary choice. Button on NEEDS REVIEW + IN POOL cards.
+
+**New functions:** `_permissionScope`, `renderActivityLogView`, `poolAIAdvisor`, `poolAIRepMatch`, `poolMgmtSortDir`, `poolMgmtIdle`, `poolMgmtTier`, `poolMgmtStatus`, `poolMgmtColl`, `poolMgmtYtd`
+
+**New rules learned:**
+- Literal LF bytes in Python-generated JS strings (from `'\n'` in triple-quoted strings) → SyntaxError. Fix with byte-level replacement: find `[39,10,39]` (quote+LF+quote) → `[39,92,110,39]` (quote+backslash+n+quote). Same for regex literals `[47,10,47]` → `[47,92,110,47]`.
+- `data-mid="modal-id"` + `document.getElementById(this.dataset.mid)` pattern avoids single-quote nesting in onclick handlers for modal close buttons.
+
+**Commits:** `5c758f1` (permissions), `1af2cb0` (scroll+notes+activity log), `3d6ecb9` (pool enhancements)

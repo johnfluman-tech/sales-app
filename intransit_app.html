@@ -15019,14 +15019,133 @@ async function mgrAIBrief(type, repId) {
 }
 
 // ── MANAGER HUB — ACCOUNT INTEL TAB ─────────────────────────────────────
-var _MGR_INTEL_TARGETS = ['San Luis Metal','Siemens','Martinrea','Porta Systems','Navistar','Thyssenkrupp'];
+// Seed accounts — always shown in ALL filter
+var _MGR_INTEL_SEEDS = ['San Luis Metal','Siemens','Martinrea','Porta Systems','Navistar','Thyssenkrupp'];
+// Keep alias so old references still work
+var _MGR_INTEL_TARGETS = _MGR_INTEL_SEEDS;
+
+// Dynamically surface the most critical accounts scoped to this manager's teamReps
+function _computeIntelTargets(teamReps, filter) {
+  filter = filter || 'all';
+  var now = new Date();
+  var allAccs = state.accounts || [];
+  var scopedAccs = (teamReps && teamReps.length)
+    ? allAccs.filter(function(a){ return teamReps.indexOf(a.rep) !== -1; })
+    : allAccs;
+
+  var results = [];
+  var seen = {};
+
+  scopedAccs.forEach(function(a) {
+    var yrs = a.years || {};
+    var yrKeys = Object.keys(yrs).filter(function(y){ return (parseFloat(yrs[y])||0) > 0; }).sort();
+    if (!yrKeys.length) return;
+    var peak = Math.max.apply(null, yrKeys.map(function(y){ return parseFloat(yrs[y])||0; }));
+    var peakYear = yrKeys.reduce(function(best,y){ return (parseFloat(yrs[y])||0)>(parseFloat(yrs[best])||0)?y:best; }, yrKeys[0]);
+    var cur = parseFloat(a.ytdRevenue||a.revenue||0)||0;
+    var drop = peak - cur;
+    var dropPct = peak > 0 ? drop/peak : 0;
+
+    // Check transfer history for multi-rep status
+    var isMultiRep = false;
+    var thDisplay = null;
+    if (state.transferHistoryCache) {
+      var nWords = (a.name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').trim().split(' ').filter(function(w){ return w.length > 3; });
+      if (!nWords.length) nWords = [(a.name||'').toLowerCase().slice(0,8)];
+      var bestScore = 0;
+      Object.keys(state.transferHistoryCache).forEach(function(k) {
+        var score = nWords.filter(function(w){ return k.indexOf(w) > -1; }).length;
+        if (score > bestScore) { bestScore = score; thDisplay = state.transferHistoryCache[k].displayName; }
+      });
+      isMultiRep = bestScore > 0;
+    }
+
+    var isDecline = dropPct >= 0.35 && drop >= 5000;
+    if (!isDecline && !isMultiRep) return;
+    if (filter === 'decline' && !isDecline) return;
+    if (filter === 'multirep' && !isMultiRep) return;
+
+    var key = (a.name||'').toLowerCase();
+    if (seen[key]) return;
+    seen[key] = true;
+
+    results.push({ name: a.name, displayName: thDisplay||a.name, drop: drop, dropPct: dropPct,
+                   peak: peak, peakYear: peakYear, cur: cur, rep: a.rep,
+                   isMultiRep: isMultiRep, isDecline: isDecline });
+  });
+
+  results.sort(function(a,b){ return b.drop - a.drop; });
+  return results.slice(0, 24);
+}
 
 function _mgrIntelHtml(teamReps) {
-  var quickBtns = _MGR_INTEL_TARGETS.map(function(name) {
-    return '<button data-iname="' + escHtml(name) + '" onclick="mgrIntelLookup(this.dataset.iname)" ' +
-      'style="background:var(--s2);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono);font-size:10px;padding:6px 12px;cursor:pointer;border-radius:var(--r)" ' +
-      'onmouseover="this.style.borderColor=\'var(--blue-b)\'" onmouseout="this.style.borderColor=\'var(--border)\'">' + escHtml(name) + '</button>';
+  var _iFilter = window._intelFilter || 'all';
+
+  // Build dynamic button list
+  var dynamicTargets = _computeIntelTargets(teamReps, _iFilter);
+  var allButtons = [];
+  var seenBtn = {};
+
+  // In ALL mode, always show seeds first
+  if (_iFilter === 'all') {
+    _MGR_INTEL_SEEDS.forEach(function(name) {
+      var k = name.toLowerCase();
+      if (!seenBtn[k]) { seenBtn[k] = true; allButtons.push({ name: name, isSeed: true }); }
+    });
+  }
+  dynamicTargets.forEach(function(t) {
+    var k = (t.name||'').toLowerCase();
+    if (!seenBtn[k]) { seenBtn[k] = true; allButtons.push(t); }
+  });
+
+  // Build filter tab counts
+  var declineCount = _computeIntelTargets(teamReps, 'decline').length;
+  var multiRepCount = _computeIntelTargets(teamReps, 'multirep').length;
+  var allCount = allButtons.length;
+
+  var filterTabs = [
+    { id:'all',      label:'ALL',          count: allCount },
+    { id:'decline',  label:'MAJOR DECLINE',count: declineCount },
+    { id:'multirep', label:'MULTI-REP',    count: multiRepCount }
+  ].map(function(ft) {
+    var active = _iFilter === ft.id;
+    return '<button data-f="' + ft.id + '" onclick="window._intelFilter=this.dataset.f;renderManagerHub()" ' +
+      'style="padding:4px 10px;font-family:var(--mono);font-size:9px;font-weight:700;cursor:pointer;border-radius:var(--r);' +
+      'background:' + (active ? 'var(--blue-b)' : 'transparent') + ';' +
+      'color:' + (active ? '#fff' : 'var(--text-3)') + ';' +
+      'border:1px solid ' + (active ? 'var(--blue-b)' : 'var(--border)') + '">' +
+      ft.label + (ft.count > 0 ? ' <span style="opacity:0.75">(' + ft.count + ')</span>' : '') +
+    '</button>';
   }).join('');
+
+  var quickBtns = allButtons.map(function(t) {
+    var name = t.name || t;
+    var dropPct = t.dropPct || 0;
+    var drop = t.drop || 0;
+    var isMultiRep = t.isMultiRep;
+    var isDecline  = t.isDecline;
+    var isSeed = t.isSeed;
+    var borderCol = (isDecline && dropPct >= 0.70) ? 'rgba(239,68,68,0.55)'
+                  : (isDecline && dropPct >= 0.40) ? 'rgba(249,115,22,0.45)'
+                  : isMultiRep ? 'rgba(59,130,246,0.40)'
+                  : 'var(--border)';
+    var labelCol = (isDecline && dropPct >= 0.70) ? '#ef4444'
+                 : (isDecline && dropPct >= 0.40) ? '#f97316'
+                 : isMultiRep ? '#60a5fa'
+                 : 'var(--text-2)';
+    var dropStr = (isDecline && drop > 0)
+      ? ('down $' + (drop >= 1000 ? Math.round(drop/1000) + 'k' : Math.round(drop)) + ' (' + Math.round(dropPct*100) + '%)')
+      : (isMultiRep ? 'multi-rep' : '');
+    var sub = dropStr ? '<div style="font-size:8px;color:' + labelCol + ';font-family:var(--mono);margin-top:1px;opacity:0.85">' + dropStr + '</div>' : '';
+    var displayName = name.length > 22 ? name.slice(0,21) + '…' : name;
+    return '<button data-iname="' + escHtml(name) + '" onclick="mgrIntelLookup(this.dataset.iname)" ' +
+      'style="background:var(--s2);border:1px solid ' + borderCol + ';color:' + labelCol + ';font-family:var(--mono);font-size:10px;padding:7px 12px;cursor:pointer;border-radius:var(--r);text-align:left;line-height:1.3" ' +
+      'onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">' +
+      escHtml(displayName) + sub +
+    '</button>';
+  }).join('');
+
+
   return '<div style="max-width:860px">' +
 
     // ── AI Portfolio Review ──────────────────────────────────────────────────
@@ -15056,8 +15175,13 @@ function _mgrIntelHtml(teamReps) {
       '<div id="mgr-intel-ac" style="display:none;position:absolute;top:100%;left:0;right:48px;background:var(--s1);border:1px solid var(--blue-b);border-top:none;border-radius:0 0 var(--r) var(--r);z-index:200;max-height:260px;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,0.4)"></div>' +
     '</div>' +
     '<div style="margin-bottom:20px">' +
-      '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:8px">TRANSFERRED ACCOUNTS — QUICK ACCESS</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:6px">' + quickBtns + '</div>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
+        '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-3)">CRITICAL ACCOUNTS — QUICK ACCESS</div>' +
+        '<div style="display:flex;gap:4px">' + filterTabs + '</div>' +
+      '</div>' +
+      (allButtons.length
+        ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' + quickBtns + '</div>'
+        : '<div style="font-size:11px;color:var(--text-3);padding:8px 0">No critical accounts found — account data may still be loading.</div>') +
     '</div>' +
     '<div id="mgr-intel-result"></div>' +
     '</div>';
@@ -18982,7 +19106,7 @@ function academyGetLessonContent(lessonId, progress) {
 'tm2-5': function() {
   return acadLessonWrap('Account Intel — Pre-Transfer History', 'tm2-5', progress,
     acadSection('What Account Intel is', 'Account Intel is a manager-only research tool inside Manager Hub. Open it from the Account Intel tab (🔍). It is designed to answer one specific question: what was this account buying before the current rep took it over? Use it when you need to build re-engagement outreach for accounts your team recently inherited.') +
-    acadSection('Quick access buttons', 'Six buttons at the top of the panel target the key transferred accounts: San Luis Metal, Siemens, Martinrea, Porta Systems, Navistar, Thyssenkrupp. Click any one to instantly load that account\'s full history. You can also type any account name in the search box.') +
+    acadSection('Quick access buttons', 'Quick-access buttons automatically surface your team\'s most critical accounts — accounts with 35%+ revenue declines from peak and multi-rep transferred accounts. Use the ALL / MAJOR DECLINE / MULTI-REP filters to focus. Click any one to instantly load that account\'s full history. You can also type any account name in the search box.') +
     acadTipCards([
       { color: 'var(--blue-b)', label: 'UNDER PRIOR REP vs UNDER CURRENT REP', text: 'A two-column comparison showing total revenue, years of history, and rep names for both eras. An arrow shows whether business grew or declined after the transfer.' },
       { color: 'var(--gold)', label: 'CURRENT REP PERFORMANCE', text: 'Year-by-year bar chart for the current rep showing revenue and GP% per year, plus trend vs prior year.' },

@@ -275,10 +275,12 @@ Manager-only (no personal rep accounts): `CMancilla` (carlos.mancilla@intransitt
 ---
 
 ## Pending / Known Issues
+- **REQUIRES RDS02 SCRIPT RUN** — commit `e4bd54b` moved rep tabs, contacts, open orders to History sheet. RDS02 must run `sales_report.py` to populate these tabs in the History sheet. Until then, accounts show 0 and contacts/open orders are empty.
+  - RDS02 command: `python -c "import urllib.request; urllib.request.urlretrieve('https://raw.githubusercontent.com/johnfluman-tech/sales-app/main/sales_report.py', 'sales_report.py'); print('Downloaded')"` then `python sales_report.py`
 - Dashboard loads slowly (30s+) — Supabase migration not yet complete
 - `sales_report.py` target: every 30 min on INTRANSIT-RDS02, log to `C:\scripts\logs\sales_report.log`
 - `saveContactNoteFromView` (~line 8508) does not update `state.contactNotesCache` after save — notes only appear in Notes Feed after next reload
-- **`_CUSTOMER_DIRECTORY` confirmed working** — 2,487 accounts as of 2026-05-22. Re-run `sales_report.py` to refresh.
+- **`_CUSTOMER_DIRECTORY` confirmed working** — 2,948 accounts as of 2026-05-29. Re-run `sales_report.py` to refresh.
 - `_POOL_MANAGED` tab must be created manually in History sheet with header row before first use
 - `_REQUEST_LOG` tab auto-creates on first write (but create manually if issues: `TIMESTAMP, TYPE, ACCOUNT, REP, REASON, STATUS, ADMIN_NOTE`)
 - Gmail API setup required per Google Cloud Console: enable Gmail API + add `gmail.readonly` scope
@@ -517,3 +519,34 @@ CRM sync indicator: relative time + auto-refresh every 60s. Account Intel: pre-t
 - `data-mid="modal-id"` + `document.getElementById(this.dataset.mid)` pattern avoids single-quote nesting in onclick handlers for modal close buttons.
 
 **Commits:** `5c758f1` (permissions), `1af2cb0` (scroll+notes+activity log), `3d6ecb9` (pool enhancements)
+
+### 2026-05-29 (session 35 — Main sheet migration to History sheet)
+**Root cause diagnosed:** Main Google Sheet hit 10M cell limit — ALL per-rep tab writes failing silently, causing stale/missing account data, 0 accounts under FJohn view, collections at $714K (stale) instead of $1.54M, `_INVOICE_HISTORY` truncated at 9,999 rows, and `_LOG` writes failing so CRM timestamp showed "Loading...".
+
+**sales_report.py fixes:**
+- `push_rep_tab`: all writes moved from `SPREADSHEET_ID` to `HISTORY_SHEET_ID`. Gets own `h_tabs` via `get_all_tabs(service, HISTORY_SHEET_ID)` internally.
+- `push_contacts_tab`: moved to `HISTORY_SHEET_ID`
+- `push_open_orders_tab`: moved to `HISTORY_SHEET_ID`
+- `push_master_tab` call disabled — MASTER tab not used by app, was consuming ~1M cells
+- `push_invoice_history_tab`: added `resize_tab()` call before write so 58K+ rows fit (was hard-limited to 10K)
+- `gp_sql`: added `o.ORDERED_BY AS BUYER_NAME` to SELECT
+- `push_gp_tab`: added `BUYER_NAME` to headers + row builder — fixes "Buyer revenue built: 0 accounts"
+- `push_collections_tab` + `log_run_to_sheet`: already on History sheet (fixed in prior session)
+
+**intransit_app.html fixes:**
+- `loadAllAccounts()`: `sheetsGet("'${tab}'!A1:Z2000")` → `sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, ...)` — rep tabs now read from History
+- Contacts read: `sheetsGet("'_CONTACTS'!...")` → `sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, ...)`
+- Open orders read: `sheetsGet("'_OPEN_ORDERS'!...")` → `sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, ...)`
+- Background loading state: `state._heavyDataLoaded` flag + "⏳ Invoice history loading..." message while 58K invoice rows load async
+- `_loadHeavyDataBackground()`: auto-retries GP on failure; re-renders History tab when load completes
+- Collections cache: accumulates `balance` across multiple rows per account (was last-write-wins)
+- `renderCollectionsView`: uses `c.salesRep` from cache for rep column (not `acc.rep`)
+- `toggleAppHold`: reads/writes `_COLLECTIONS` from History sheet
+
+**Pending — requires RDS02 script run after this commit:**
+- Rep tabs (CKaren, BillP, PIan, etc.) will be created fresh in History sheet
+- All 58,210 invoice lines will write successfully
+- BUYER_NAME will populate in _GP tab → buyer revenue dashboard will work
+- FJohn simulate view will show accounts once FJohn tab exists in History sheet
+
+**Commit:** `e4bd54b`

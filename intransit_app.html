@@ -7481,6 +7481,38 @@ function _gmailSilentReconnect() {
   }
 }
 
+async function _gmailEnsureToken() {
+  // If token exists, do a quick ping to verify it's still valid
+  if (state.gmailToken) {
+    try {
+      await gmailFetch('users/me/profile');
+      return true;
+    } catch(e) {
+      if (e.message !== 'gmail_401') throw e; // non-401 (403 etc) — re-throw
+      state.gmailToken = null; // expired — fall through to silent refresh
+    }
+  }
+  // Try silent token refresh (no popup) if previously authorized
+  var linked = localStorage.getItem('it_gmail_linked_' + (state.repId||''));
+  if (!linked) return false; // never authorized — need popup
+  var refreshed = await new Promise(function(resolve) {
+    try {
+      var _tc = google.accounts.oauth2.initTokenClient({
+        client_id: CONFIG.CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/gmail.readonly',
+        hint: state.user ? state.user.email : '',
+        callback: function(resp) {
+          if (resp && resp.access_token) { state.gmailToken = resp.access_token; resolve(true); }
+          else { resolve(false); }
+        }
+      });
+      _tc.requestAccessToken({ prompt: '' });
+      setTimeout(function(){ resolve(false); }, 8000); // 8s timeout
+    } catch(e) { resolve(false); }
+  });
+  return refreshed;
+}
+
 async function gmailFetch(path, params) {
   var url = 'https://gmail.googleapis.com/gmail/v1/' + path;
   if (params) {
@@ -8205,6 +8237,26 @@ function _updateMyOutreachBadge() {
 // ── Gmail Contact Coverage (My Outreach) ─────────────────────────────────
 
 async function loadAllGmail(batchStart) {
+  // Ensure valid Gmail token — silently refresh if expired, popup only as last resort
+  var tokenOk = false;
+  try {
+    tokenOk = await _gmailEnsureToken();
+  } catch(e) {
+    // Non-401 error (e.g. 403 = Gmail API not enabled)
+    var errMsg = e.message.indexOf('403') !== -1
+      ? 'Gmail API 403 — make sure Gmail API is enabled in Google Cloud Console and gmail.readonly scope is on the OAuth consent screen.'
+      : 'Gmail API error: ' + e.message;
+    window._gmailScanStatus = { done: 0, total: 0, running: false, errors: 1, lastError: errMsg };
+    renderMyOutreachView();
+    showToast(errMsg, 'error', 9000);
+    return;
+  }
+  if (!tokenOk) {
+    // Need to show Google popup — requestGmailAccess checks token first, shows popup if null
+    requestGmailAccess(function(){ loadAllGmail(batchStart); });
+    return;
+  }
+
   var repId = state.repId;
   var viewRep = state.viewAsRep || window._myOutreachViewRep || (repId === 'ADMIN' ? 'FJohn' : repId);
   var accs = (state.accounts||[]).filter(function(a){ return a.rep === viewRep; });
@@ -8224,6 +8276,7 @@ async function loadAllGmail(batchStart) {
 
   var done = 0;
   var errors = 0;
+  var firstError = '';
   for (var i = 0; i < batch.length; i++) {
     var a = batch[i];
     if (!state.gmailActivityCache[a.name] || state.gmailActivityCache[a.name] === 'error') {
@@ -8232,6 +8285,13 @@ async function loadAllGmail(batchStart) {
       } catch(e) {
         state.gmailActivityCache[a.name] = { error: e.message };
         errors++;
+        if (!firstError) firstError = e.message;
+        // If 401, token expired mid-scan — stop and ask user to retry
+        if (e.message === 'gmail_401') {
+          window._gmailScanStatus = { done: done, total: batch.length, running: false, errors: errors, lastError: 'Gmail session expired mid-scan. Click Scan again to reconnect.' };
+          renderMyOutreachView();
+          return;
+        }
       }
       await new Promise(function(r){ setTimeout(r, 350); });
     }
@@ -8242,7 +8302,7 @@ async function loadAllGmail(batchStart) {
     if (done % 5 === 0) renderMyOutreachView();
   }
 
-  window._gmailScanStatus = { done: done, total: batch.length, totalAll: toLoad.length, running: false, errors: errors, hasMore: hasMore, nextBatch: start + BATCH };
+  window._gmailScanStatus = { done: done, total: batch.length, totalAll: toLoad.length, running: false, errors: errors, hasMore: hasMore, nextBatch: start + BATCH, lastError: firstError };
   renderMyOutreachView();
 }
 
@@ -8323,11 +8383,16 @@ function _renderContactCoveragePanel(accs) {
       (scanStatus.errors ? '<div style="font-size:10px;color:#f59e0b;margin-top:6px">' + scanStatus.errors + ' accounts skipped (API error)</div>' : '') +
       '</div>';
   } else if (scanStatus && !scanStatus.running && scanStatus.done > 0) {
-    var doneMsg = '&#10003; Scanned ' + scanStatus.done + ' accounts' + (scanStatus.errors ? ' (' + scanStatus.errors + ' errors)' : '');
+    var doneMsg = (scanStatus.errors && !scanStatus.lastError)
+      ? '&#10003; Scanned ' + scanStatus.done + ' — ' + scanStatus.errors + ' errors'
+      : '&#10003; Scanned ' + scanStatus.done + ' accounts';
     var nextBtnHtml = scanStatus.hasMore
-      ? ' &nbsp;<button onclick="requestGmailAccess(function(){ loadAllGmail(' + scanStatus.nextBatch + '); })" style="background:var(--blue-b);border:none;color:#fff;padding:4px 12px;border-radius:3px;font-size:10px;cursor:pointer;font-family:var(--mono)">Scan Next 50</button>'
+      ? ' &nbsp;<button onclick="loadAllGmail(' + scanStatus.nextBatch + ')" style="background:var(--blue-b);border:none;color:#fff;padding:4px 12px;border-radius:3px;font-size:10px;cursor:pointer;font-family:var(--mono)">Scan Next 50 &#10148;</button>'
       : '';
-    progressHtml = '<div style="font-size:11px;color:#22c55e;font-family:var(--mono);margin-bottom:10px">' + doneMsg + nextBtnHtml + '</div>';
+    var errDetail = scanStatus.lastError ? '<div style="font-size:10px;color:#f59e0b;margin-top:4px">&#9888; ' + escHtml(scanStatus.lastError) + '</div>' : '';
+    progressHtml = '<div style="font-size:11px;font-family:var(--mono);margin-bottom:10px;color:' + (scanStatus.errors ? '#f59e0b' : '#22c55e') + '">' + doneMsg + nextBtnHtml + errDetail + '</div>';
+  } else if (scanStatus && !scanStatus.running && scanStatus.lastError && scanStatus.done === 0) {
+    progressHtml = '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:4px;padding:10px 14px;margin-bottom:10px;font-size:11px;color:#ef4444;font-family:var(--mono)">&#10060; ' + escHtml(scanStatus.lastError) + '</div>';
   }
 
   var topHtml = progressHtml + '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">' +
@@ -8340,7 +8405,7 @@ function _renderContactCoveragePanel(accs) {
 
   var scanRunning = scanStatus && scanStatus.running;
   var loadBtnHtml = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">' +
-    '<button id="load-all-gmail-btn" onclick="requestGmailAccess(function(){ loadAllGmail(); })" ' +
+    '<button id="load-all-gmail-btn" onclick="loadAllGmail()" ' +
     (scanRunning ? 'disabled ' : '') +
     'style="background:var(--blue-b);border:none;color:#fff;padding:7px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono);' + (scanRunning ? 'opacity:0.5;' : '') + '">&#9993; Scan All Accounts Gmail</button>' +
     (scanRunning ? '' : '<span id="load-all-gmail-prog" style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">' +

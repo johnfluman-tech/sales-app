@@ -1149,7 +1149,9 @@ def push_collections_tab(service, collections_df, all_tabs):
     if service is None:
         return
     try:
-        ensure_tab_exists(service, '_COLLECTIONS', all_tabs)
+        sid = HISTORY_SHEET_ID
+        h_tabs = get_all_tabs(service, sid)
+        ensure_tab_exists(service, '_COLLECTIONS', h_tabs, sheet_id=sid)
 
         headers = ['CUSTOMER_ID', 'CUSTOMER_NAME', 'SALES_REP',
                    'CURRENT_BALANCE', 'CREDIT_LIMIT', 'AVG_DAYS_TO_PAY',
@@ -1228,41 +1230,15 @@ def push_collections_tab(service, collections_df, all_tabs):
             ])
 
         service.spreadsheets().values().clear(
-            spreadsheetId=SPREADSHEET_ID, range="'_COLLECTIONS'!A1:Z10000"
+            spreadsheetId=sid, range="'_COLLECTIONS'!A1:Z10000"
         ).execute()
         service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
+            spreadsheetId=sid,
             range="'_COLLECTIONS'!A1",
             valueInputOption="RAW",
             body={"values": rows}
         ).execute()
-
-        # Format header + highlight risk column
-        sheet_id = None
-        meta = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
-        for s in meta['sheets']:
-            if s['properties']['title'] == '_COLLECTIONS':
-                sheet_id = s['properties']['sheetId']
-                break
-        if sheet_id is not None:
-            service.spreadsheets().batchUpdate(
-                spreadsheetId=SPREADSHEET_ID,
-                body={"requests": [
-                    {"repeatCell": {
-                        "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
-                        "cell": {"userEnteredFormat": {
-                            "backgroundColor": {"red": 0.122, "green": 0.22, "blue": 0.392},
-                            "textFormat": {"foregroundColor": {"red": 1, "green": 1, "blue": 1},
-                                           "bold": True, "fontSize": 9},
-                        }},
-                        "fields": "userEnteredFormat(backgroundColor,textFormat)"
-                    }},
-                    {"updateSheetProperties": {
-                        "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRowCount": 1}},
-                        "fields": "gridProperties.frozenRowCount"
-                    }},
-                ]}
-            ).execute()
+        _format_header_tab(service, '_COLLECTIONS', sid=sid)
 
         high_risk = sum(1 for r in rows[1:] if '🔴' in str(r[11]))
         watch = sum(1 for r in rows[1:] if '🟠' in str(r[11]))

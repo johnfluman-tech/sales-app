@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src https://fonts.gstatic.com data:; connect-src 'self' https://intransit-worker.intransit-sales.workers.dev https://hutmehcaijdxbqchuivh.supabase.co https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://sheets.googleapis.com https://gmail.googleapis.com; frame-src https://accounts.google.com https://www.youtube.com https://content.googleapis.com; img-src 'self' data: https: blob:; object-src 'none'; base-uri 'self';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Intransit Sales Intelligence v1.50</title>
@@ -1677,8 +1680,26 @@ async function _loadHeavyDataBackground() {
       state.ordersHistoryCache=ordHistRows.slice(1).map(r=>{const obj={};hdrs.forEach((h,i)=>obj[h]=typeof r[i]==='string'?r[i].trim():(r[i]||''));return obj;});
       console.log('[CACHE] Orders history loaded:', state.ordersHistoryCache.length, 'rows');
     }
+    state._heavyDataLoaded = true;
+    // If GP failed during initial load, retry now that other requests are done
+    if (state.gpCache.length === 0) {
+      console.log('[CACHE] GP empty after initial load — retrying...');
+      try {
+        const gpRetry = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_GP'");
+        if (gpRetry && gpRetry.length > 1) {
+          const hdrs = gpRetry[0].map(h => (h||'').trim());
+          state.gpCache = gpRetry.slice(1).map(r => {
+            const obj = {}; hdrs.forEach((h,i) => obj[h] = typeof r[i]==='string'?r[i].trim():(r[i]||'')); return obj;
+          });
+          state.gpLoadError = null;
+          console.log('[CACHE] GP retry succeeded:', state.gpCache.length, 'rows');
+          if (state.activeView === 'dashboard') refreshDashboard();
+        }
+      } catch(e2) { console.warn('[CACHE] GP retry failed:', e2.message); }
+    }
   } catch(e) {
     console.warn('[CACHE] Background heavy data load error:', e.message);
+    state._heavyDataLoaded = true;
   }
 }
 
@@ -1742,7 +1763,7 @@ async function loadSupplementalData() {
     const [reqRows, quoteRows, collRows] = await Promise.all([
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_REQS'!A1:P50000").catch(() => []),
       sheetsGetFrom(CONFIG.ACTIVITY_SPREADSHEET_ID, "'_QUOTES'!A1:P50000").catch(() => []),
-      sheetsGet("'_COLLECTIONS'!A1:P5000").catch(() => []),
+      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS'!A1:P5000").catch(() => []),
     ]);
     await new Promise(r => setTimeout(r, 1000));
     _updateLoadProgress('LOADING COLLECTIONS DATA...', 78);
@@ -1833,10 +1854,16 @@ async function loadSupplementalData() {
       const iName=hdrs.indexOf('CUSTOMER_NAME'),iBal=hdrs.indexOf('CURRENT_BALANCE'),iCred=hdrs.indexOf('CREDIT_LIMIT');
       const iPay=hdrs.indexOf('AVG_DAYS_TO_PAY'),iTerms=hdrs.indexOf('PAYMENT_TERMS'),iDaysPast=hdrs.indexOf('DAYS_PAST_DUE');
       const iNote=hdrs.indexOf('COLLECTION_NOTE'),iRisk=hdrs.indexOf('RISK_FLAG'),iAppHold=hdrs.indexOf('APP_HOLD');
+      const iCollRep=hdrs.indexOf('SALES_REP');
       for (let r=1;r<collRows.length;r++) {
         const row=collRows[r]; const key=(row[iName]||'').trim(); if(!key) continue;
         if(!state.collectionsCache) state.collectionsCache={};
-        state.collectionsCache[key]={balance:parseFloat(row[iBal])||0,credit:parseFloat(row[iCred])||0,avgPay:parseFloat(row[iPay])||0,terms:row[iTerms]||'',daysPastDue:(()=>{const d=parseInt(row[iDaysPast])||0;return d>3650?0:d;})(),note:row[iNote]||'',risk:row[iRisk]||'',appHold:row[iAppHold]||''};
+        const _cbal=parseFloat(row[iBal])||0;
+        if(state.collectionsCache[key]) {
+          state.collectionsCache[key].balance += _cbal;
+        } else {
+          state.collectionsCache[key]={balance:_cbal,credit:parseFloat(row[iCred])||0,avgPay:parseFloat(row[iPay])||0,terms:row[iTerms]||'',daysPastDue:(()=>{const d=parseInt(row[iDaysPast])||0;return d>3650?0:d;})(),note:row[iNote]||'',risk:row[iRisk]||'',appHold:row[iAppHold]||'',salesRep:iCollRep>=0?(row[iCollRep]||''):''};
+        }
       }
     }
 
@@ -2431,7 +2458,9 @@ function renderHistoryTab(acc) {
     + '</div>';
 
   if (invCount === 0) {
-    invHtml += '<div style="font-size:11px;color:var(--text-muted);padding:8px 0">None on record</div>';
+    invHtml += state._heavyDataLoaded
+      ? '<div style="font-size:11px;color:var(--text-muted);padding:8px 0">None on record</div>'
+      : '<div style="font-size:12px;color:#f59e0b;padding:12px 0">&#8987; Invoice history is loading in the background — switch to another tab and come back in a moment.</div>';
   } else {
     invHtml += invoiceSlice.map(function(inv) {
       const gp = gpByInv[inv.invoiceNum] || null;
@@ -3207,6 +3236,7 @@ let state = {
   ordersHistoryCache: [], // orders placed by date (for booked calc)
   ordHistError: null,
   _ordHistRaw: null,
+  _heavyDataLoaded: false,
   gpCache: [],            // GP records
   gpLoadError: null,
   reqsCache: [],          // flat reqs for dashboard counting
@@ -11623,12 +11653,14 @@ async function refreshDashboard() {
 
   const gpColor = gpPct >= 30 ? 'green' : gpPct >= 15 ? 'gold' : gpPct > 0 ? 'red' : '';
   const inactRatio = accs.length > 0 ? inactive.length / accs.length : 0;
+  const _gpLoadWarn = state.gpCache.length === 0 ? '<div style="color:#f59e0b;font-size:10px;margin-top:3px">&#9888; Revenue data loading &mdash; refresh in a moment</div>' : '';
 
   kpiEl.innerHTML = `
     <div class="stat-card">
       <div class="stat-label">Total Shipped</div>
       <div class="stat-value ${shipped > 0 ? 'green' : ''}">$${formatNum(shipped)}</div>
       <div class="stat-sub">${gpFiltered.length} invoices · ${from.slice(5)} → ${to.slice(5)}</div>
+      ${_gpLoadWarn}
     </div>
     <div class="stat-card">
       <div class="stat-label">${bookedLabel}</div>
@@ -12778,7 +12810,7 @@ function renderCollectionsView() {
   // Build collections list from cache, filtered by rep
   let collList = Object.entries(state.collectionsCache).map(([name, c]) => {
     const acc = state.accounts.find(a => a.name.trim() === name.trim());
-    return { name, ...c, rep: acc?.rep || '', accObj: acc };
+    return { name, ...c, rep: c.salesRep || acc?.rep || '', accObj: acc };
   }).filter(c => c.balance > 0);
 
   if (!state.isAdmin) {
@@ -13473,8 +13505,8 @@ async function requestHold(accountName) {
 async function toggleAppHold(name, setHold) {
   if (!state.isAdmin) { showToast('Only admins can manage holds', 'error'); return; }
   try {
-    // Update in sheet _COLLECTIONS tab
-    const rows = await sheetsGet("'_COLLECTIONS'!A1:P5000");
+    // Update in sheet _COLLECTIONS tab (History sheet)
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_COLLECTIONS'!A1:P5000");
     if (rows.length < 2) { showToast('Could not load collections data', 'error'); return; }
     const hdrs = rows[0];
     const iName    = hdrs.indexOf('CUSTOMER_NAME');
@@ -13485,7 +13517,7 @@ async function toggleAppHold(name, setHold) {
     const row = [...rows[rowIdx]];
     while (row.length <= iAppHold) row.push('');
     row[iAppHold] = setHold ? 'YES' : '';
-    await sheetsUpdate(`'_COLLECTIONS'!A${rowIdx+1}:P${rowIdx+1}`, [row]);
+    await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, `'_COLLECTIONS'!A${rowIdx+1}:P${rowIdx+1}`, [row]);
     // Update local cache
     if (state.collectionsCache[name]) state.collectionsCache[name].appHold = setHold ? 'YES' : '';
     showToast(setHold ? `${name} placed on hold ✓` : `Hold removed for ${name} ✓`, 'success');

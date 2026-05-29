@@ -7423,7 +7423,8 @@ async function poolNotInterested(accName) {
 }
 
 function _poolMgmtState() {
-  if (!window._poolFilter) window._poolFilter = { tab: 'review', rep: 'ALL', sort: 'revenue', search: '', page: 50 };
+  if (!window._poolFilter) window._poolFilter = { tab:'review', rep:'ALL', sort:'revenue', search:'', page:50, dir:'desc', idle:'any', tier:'any', coll:false, status:'ALL', ytd:'any' };
+  if (!window._poolFilter.dir) { window._poolFilter.dir='desc'; window._poolFilter.idle='any'; window._poolFilter.tier='any'; window._poolFilter.coll=false; window._poolFilter.status='ALL'; window._poolFilter.ytd='any'; }
   return window._poolFilter;
 }
 function poolMgmtTab(t) { _poolMgmtState().tab = t; _poolMgmtState().page = 50; renderPoolManagementView(); }
@@ -7436,6 +7437,122 @@ function poolMgmtSearch() {
   renderPoolManagementView();
 }
 function poolMgmtShowMore() { _poolMgmtState().page += 50; renderPoolManagementView(); }
+function poolMgmtSortDir() { var f=_poolMgmtState(); f.dir = f.dir==='asc' ? 'desc' : 'asc'; renderPoolManagementView(); }
+function poolMgmtIdle(v)   { _poolMgmtState().idle=v; _poolMgmtState().page=50; renderPoolManagementView(); }
+function poolMgmtTier(v)   { _poolMgmtState().tier=v; _poolMgmtState().page=50; renderPoolManagementView(); }
+function poolMgmtStatus(v) { _poolMgmtState().status=v; _poolMgmtState().page=50; renderPoolManagementView(); }
+function poolMgmtColl()    { var f=_poolMgmtState(); f.coll=!f.coll; f.page=50; renderPoolManagementView(); }
+function poolMgmtYtd(v)    { _poolMgmtState().ytd=v; _poolMgmtState().page=50; renderPoolManagementView(); }
+
+async function poolAIAdvisor() {
+  var f = _poolMgmtState();
+  var mgrCfg = getManagerConfig();
+  var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[]).filter(function(r){ return r !== 'FJohn'; });
+  var repNames = CONFIG.REP_DISPLAY_NAMES || {};
+  var poolCache = state.poolManagedCache || [];
+
+  function _days(a){ var d=a.lastSaleDate||a.lastSale||''; if(!d) return 9999; try{return Math.floor((new Date()-new Date(d))/86400000);}catch(e){return 9999;} }
+
+  var candidates = (state.accounts||[]).filter(function(a){
+    if (teamReps.indexOf(a.rep) < 0) return false;
+    var rec = poolCache.find(function(p){ return p.name.toLowerCase()===a.name.toLowerCase(); });
+    if (rec && rec.status !== 'REMOVED') return false; // already managed
+    return isInactive(a) || isDeclining(a);
+  }).sort(function(a,b){ return (parseFloat(b.total||0)||0)-(parseFloat(a.total||0)||0); }).slice(0,40);
+
+  if (!candidates.length) { showToast('No unreviewed accounts to analyze.', 'info'); return; }
+
+  var modal = document.createElement('div');
+  modal.id = 'pool-ai-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML =
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:28px;max-width:640px;width:90%;max-height:80vh;overflow-y:auto">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">' +
+        '<span style="font-size:20px">&#127775;</span>' +
+        '<div style="font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.08em">AI POOL ADVISOR</div>' +
+        '<button data-mid="pool-ai-modal" onclick="var _m=document.getElementById(this.dataset.mid);if(_m)_m.remove()" style="margin-left:auto;background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:16px">&#10005;</button>' +
+      '</div>' +
+      '<div id="pool-ai-body" style="font-size:12px;color:var(--text-2);line-height:1.7">Analyzing ' + candidates.length + ' accounts...</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+
+  var summaries = candidates.slice(0,30).map(function(a){
+    var coll = state.collectionsCache ? (state.collectionsCache[a.name]||null) : null;
+    var collStr = coll && coll.balance > 0 ? ' | Collections: $' + Math.round(coll.balance) : '';
+    return a.name + ' | Rep: ' + (repNames[a.rep]||a.rep) + ' | Status: ' + (a.status||'?') + ' | Lifetime: $' + Math.round(parseFloat(a.total||0)||0) + ' | YTD: $' + Math.round(parseFloat(a.ytdRevenue||a.revenue||0)||0) + ' | Idle: ' + _days(a) + 'd' + collStr;
+  }).join('\n');
+
+  var prompt = 'You are a sales manager at an industrial distribution company. Review these inactive accounts and recommend the TOP 8 to add to an Available Accounts pool where reps can claim new business. ACCOUNTS: ' + summaries.replace(/\n/g,'; ') + ' For each of the top 8: state the account name, priority (HOT/WARM/COLD), and 2-3 bullet reasons. Focus on revenue potential and recoverability.';;
+
+  try {
+    var resp = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:900,
+      system:'Sales intelligence assistant. Be concise and specific.',
+      messages:[{role:'user',content:prompt}] });
+    var txt = resp && resp.content && resp.content[0] ? resp.content[0].text : (resp && resp.text ? resp.text : 'No response.');
+    var body = document.getElementById('pool-ai-body');
+    if (body) body.innerHTML = '<div style="white-space:pre-wrap;font-size:12px;line-height:1.7;color:var(--text)">' + escHtml(txt) + '</div>';
+  } catch(e) {
+    var body2 = document.getElementById('pool-ai-body');
+    if (body2) body2.innerHTML = '<div style="color:var(--red)">AI error: ' + escHtml(e.message) + '</div>';
+  }
+}
+
+async function poolAIRepMatch(accName) {
+  var mgrCfg = getManagerConfig();
+  var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[]).filter(function(r){ return r !== 'FJohn'; });
+  var repNames = CONFIG.REP_DISPLAY_NAMES || {};
+  var acc = (state.accounts||[]).find(function(a){ return a.name === accName; });
+  if (!acc) { showToast('Account data not found.', 'error'); return; }
+
+  function _days(a){ var d=a.lastSaleDate||a.lastSale||''; if(!d) return 9999; try{return Math.floor((new Date()-new Date(d))/86400000);}catch(e){return 9999;} }
+
+  // Compute per-rep stats from state.accounts
+  var repStats = {};
+  teamReps.forEach(function(r){ repStats[r] = { count:0, ytd:0, total:0, activeCount:0, industries:[] }; });
+  (state.accounts||[]).forEach(function(a){
+    if (!a.rep || !repStats[a.rep]) return;
+    repStats[a.rep].count++;
+    repStats[a.rep].ytd += parseFloat(a.ytdRevenue||a.revenue||0)||0;
+    repStats[a.rep].total += parseFloat(a.total||0)||0;
+    if ((a.status||'').indexOf('Active') > -1) repStats[a.rep].activeCount++;
+  });
+
+  var coll = state.collectionsCache ? (state.collectionsCache[accName]||null) : null;
+  var accSummary = accName + ' | Status: ' + (acc.status||'?') + ' | Lifetime: $' + Math.round(parseFloat(acc.total||0)||0) + ' | YTD: $' + Math.round(parseFloat(acc.ytdRevenue||acc.revenue||0)||0) + ' | Idle: ' + _days(acc) + ' days | Current rep: ' + (repNames[acc.rep]||acc.rep||'unassigned') + (coll&&coll.balance>0?' | Collections balance: $'+Math.round(coll.balance):'') + (acc.repNote?' | Rep note: '+acc.repNote.slice(0,80):'');
+  var repsSummary = teamReps.map(function(r){
+    var st = repStats[r] || {};
+    return (repNames[r]||r) + ' (' + r + ') | Accounts: ' + (st.count||0) + ' | YTD: $' + Math.round((st.ytd||0)) + ' | Active: ' + (st.activeCount||0);
+  }).join('\n');
+
+  var modal = document.createElement('div');
+  modal.id = 'pool-rep-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML =
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:28px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+        '<span style="font-size:20px">&#129302;</span>' +
+        '<div style="font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.08em">AI REP MATCH</div>' +
+        '<button data-mid="pool-rep-modal" onclick="var _m=document.getElementById(this.dataset.mid);if(_m)_m.remove()" style="margin-left:auto;background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:16px">&#10005;</button>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--text-3);margin-bottom:16px;font-family:var(--mono)">' + escHtml(accName) + '</div>' +
+      '<div id="pool-rep-body" style="font-size:12px;color:var(--text-2);line-height:1.7">Finding best rep match...</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+
+  var prompt = 'You are a sales manager assigning an available account to the best rep on your team. ACCOUNT: ' + accSummary.replace(/\n/g,'; ') + ' AVAILABLE REPS: ' + repsSummary.replace(/\n/g,'; ') + ' Recommend the BEST rep. Give: 1) Recommended Rep name. 2) Confidence: HIGH/MEDIUM/LOW. 3) 5 specific reasons why (workload capacity, YTD performance, account type fit, portfolio balance, recovery likelihood). Also mention secondary choice.';
+
+  try {
+    var resp = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:700,
+      system:'Sales territory management expert. Be specific and use the data provided.',
+      messages:[{role:'user',content:prompt}] });
+    var txt = resp && resp.content && resp.content[0] ? resp.content[0].text : (resp && resp.text ? resp.text : 'No response.');
+    var body = document.getElementById('pool-rep-body');
+    if (body) body.innerHTML = '<div style="white-space:pre-wrap;font-size:12px;line-height:1.7;color:var(--text)">' + escHtml(txt) + '</div>';
+  } catch(e) {
+    var body2 = document.getElementById('pool-rep-body');
+    if (body2) body2.innerHTML = '<div style="color:var(--red)">AI error: ' + escHtml(e.message) + '</div>';
+  }
+}
 
 function poolLogAction(action, accName, detail) {
   var ts = new Date().toISOString();
@@ -7454,10 +7571,18 @@ function renderPoolManagementView() {
   var repNames  = CONFIG.REP_DISPLAY_NAMES || {};
   var priColors = { Hot: '#ef4444', Warm: '#f59e0b', Cold: '#3b82f6' };
 
-  // All inactive/declining accounts for the team
+  // Build note-name index: any account referenced in any rep's notes
+  var _notedNames = {};
+  (state.noteHistoryCache||[]).forEach(function(n){
+    if (n.accountName) _notedNames[(n.accountName||'').toLowerCase().trim()] = true;
+  });
+
+  // Criteria: inactive/declining status OR noted by any rep but idle 180+ days
   var poolSource = (state.accounts||[]).filter(function(a){
     if (teamReps.indexOf(a.rep) === -1) return false;
-    return isInactive(a) || isDeclining(a);
+    if (isInactive(a) || isDeclining(a)) return true;
+    if (_notedNames[(a.name||'').toLowerCase().trim()] && _poolDays(a) > 180) return true;
+    return false;
   });
 
   var poolCache = state.poolManagedCache || [];
@@ -7468,22 +7593,64 @@ function renderPoolManagementView() {
   var hiddenFromPool= poolSource.filter(function(a){ var r=getRec(a); return r && r.status==='HIDDEN'; });
   var needsReview   = poolSource.filter(function(a){ var r=getRec(a); return !r || r.status==='REMOVED'; });
 
-  // Apply rep filter + search to visible list
+  // Apply rep filter + all creative search criteria
   function applyFilters(list) {
     var rep = f.rep, srch = f.search;
     if (rep !== 'ALL') list = list.filter(function(a){ return a.rep === rep; });
-    if (srch) list = list.filter(function(a){ return a.name.toLowerCase().indexOf(srch) > -1; });
+    if (srch) {
+      list = list.filter(function(a){
+        return (a.name||'').toLowerCase().indexOf(srch) > -1 ||
+               (a.city||'').toLowerCase().indexOf(srch) > -1 ||
+               (a.status||'').toLowerCase().indexOf(srch) > -1 ||
+               (repNames[a.rep]||a.rep||'').toLowerCase().indexOf(srch) > -1 ||
+               (a.repNote||'').toLowerCase().indexOf(srch) > -1;
+      });
+    }
+    // Idle days range
+    if (f.idle !== 'any') {
+      var idleMap = { lt90:[0,89], d90:[90,179], d180:[180,364], d365:[365,9999] };
+      var ir = idleMap[f.idle];
+      if (ir) list = list.filter(function(a){ var d=_poolDays(a); return d>=ir[0]&&d<=ir[1]; });
+    }
+    // Revenue tier (lifetime)
+    if (f.tier !== 'any') {
+      var tierMap = { zero:[0,0], low:[1,9999], mid:[10000,99999], high:[100000,1e9] };
+      var tr = tierMap[f.tier];
+      if (tr) list = list.filter(function(a){ var v=parseFloat(a.total||0)||0; return v>=tr[0]&&v<=tr[1]; });
+    }
+    // Collections balance flag
+    if (f.coll) {
+      list = list.filter(function(a){
+        var c = state.collectionsCache ? (state.collectionsCache[a.name]||state.collectionsCache[(a.name||'').trim()]||null) : null;
+        return c && c.balance > 0;
+      });
+    }
+    // Status text filter
+    if (f.status !== 'ALL') {
+      list = list.filter(function(a){ return (a.status||'').indexOf(f.status) > -1; });
+    }
+    // YTD revenue flag
+    if (f.ytd === 'yes') list = list.filter(function(a){ return (parseFloat(a.ytdRevenue||a.revenue||0)||0) > 0; });
+    if (f.ytd === 'no')  list = list.filter(function(a){ return (parseFloat(a.ytdRevenue||a.revenue||0)||0) === 0; });
     return list;
   }
 
-  // Sort
+  // Sort — bidirectional
   function applySort(list) {
     var s = f.sort;
     list = list.slice();
-    if (s === 'revenue') list.sort(function(a,b){ return (b.total||0)-(a.total||0); });
+    if (s === 'revenue') list.sort(function(a,b){ return (parseFloat(b.total||0)||0)-(parseFloat(a.total||0)||0); });
+    else if (s === 'ytd')  list.sort(function(a,b){ return (parseFloat(b.ytdRevenue||b.revenue||0)||0)-(parseFloat(a.ytdRevenue||a.revenue||0)||0); });
     else if (s === 'name') list.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
-    else if (s === 'lastsale') list.sort(function(a,b){ return (b.lastSale||'').localeCompare(a.lastSale||''); });
-    else if (s === 'rep') list.sort(function(a,b){ return (a.rep||'').localeCompare(b.rep||''); });
+    else if (s === 'idle') list.sort(function(a,b){ return _poolDays(b)-_poolDays(a); });
+    else if (s === 'lastsale') list.sort(function(a,b){ return _poolDays(a)-_poolDays(b); });
+    else if (s === 'rep')  list.sort(function(a,b){ return (a.rep||'').localeCompare(b.rep||''); });
+    else if (s === 'coll') list.sort(function(a,b){
+      var ca = state.collectionsCache ? (state.collectionsCache[a.name]||null) : null;
+      var cb = state.collectionsCache ? (state.collectionsCache[b.name]||null) : null;
+      return ((cb&&cb.balance)||0)-((ca&&ca.balance)||0);
+    });
+    if (f.dir === 'asc') list.reverse();
     return list;
   }
 
@@ -7603,6 +7770,7 @@ function renderPoolManagementView() {
         '</select>' +
         '<div style="flex:1"></div>' +
         '<span style="background:rgba(20,184,166,0.12);color:#14b8a6;font-family:var(--mono);font-size:9px;padding:3px 10px;border-radius:var(--r);font-weight:700;border:1px solid rgba(20,184,166,0.3)">' + ((rec&&rec.status)||'AVAILABLE') + '</span>' +
+        '<button data-n="' + escHtml(a.name) + '" onclick="poolAIRepMatch(this.dataset.n)" style="padding:5px 10px;background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.4);color:#a855f7;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">&#129302; AI REP</button>' +
         '<button data-n="' + escHtml(a.name) + '" onclick="poolMarkHidden(this.dataset.n)" style="padding:5px 12px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">HIDE</button>' +
         '<button data-n="' + escHtml(a.name) + '" onclick="poolRemoveFromPool(this.dataset.n)" style="padding:5px 12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.5);color:#ef4444;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">REMOVE</button>' +
       '</div>' +
@@ -7661,6 +7829,7 @@ function renderPoolManagementView() {
       (coll && coll.balance > 0 ? '<div style="margin-top:6px;font-size:10px;color:' + (coll.risk&&coll.risk.includes('HIGH')?'#ef4444':'#f59e0b') + '">&#9888; Collections: $' + formatNum(coll.balance) + ' balance' + (coll.daysPastDue?' · '+coll.daysPastDue+'d past due':'') + (coll.risk?' · '+escHtml(coll.risk)+' RISK':'') + '</div>' : '') +
 
       '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">' +
+        '<button data-n="' + escHtml(a.name) + '" onclick="poolAIRepMatch(this.dataset.n)" style="padding:7px 12px;background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.4);color:#a855f7;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">&#129302; AI MATCH REP</button>' +
         '<button data-n="' + escHtml(a.name) + '" data-r="' + escHtml(a.rep) + '" data-p="Hot" onclick="poolMarkAvailable(this.dataset.n,this.dataset.r,this.dataset.p)" style="padding:7px 14px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.5);color:#ef4444;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">&#128293; HOT</button>' +
         '<button data-n="' + escHtml(a.name) + '" data-r="' + escHtml(a.rep) + '" data-p="Warm" onclick="poolMarkAvailable(this.dataset.n,this.dataset.r,this.dataset.p)" style="padding:7px 14px;background:rgba(20,184,166,0.12);border:1px solid #14b8a6;color:#14b8a6;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">+ ADD TO POOL</button>' +
         '<button data-n="' + escHtml(a.name) + '" onclick="poolMarkHidden(this.dataset.n)" style="padding:7px 12px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">HIDE</button>' +
@@ -7695,17 +7864,40 @@ function renderPoolManagementView() {
     '</div>';
   }
 
-  // Filter bar HTML
-  // Filter bar HTML
-  // Filter bar HTML
+  // Filter bar HTML — row 1: search + rep + sort + dir, row 2: creative filters
   var repOpts = '<option value="ALL">All Reps</option>' + teamReps.map(function(r){ return '<option value="' + r + '"' + (f.rep===r?' selected':'') + '>' + (repNames[r]||r) + '</option>'; }).join('');
-  var sortOpts = [['revenue','Revenue ▼'],['name','Name A→Z'],['lastsale','Last Sale'],['rep','Rep']].map(function(o){ return '<option value="' + o[0] + '"' + (f.sort===o[0]?' selected':'') + '>' + o[1] + '</option>'; }).join('');
+  var sortOpts = [['revenue','Revenue'],['ytd','YTD Rev'],['idle','Idle Days'],['lastsale','Last Sale'],['name','Name'],['rep','Rep'],['coll','Collections']].map(function(o){ return '<option value="' + o[0] + '"' + (f.sort===o[0]?' selected':'') + '>' + o[1] + '</option>'; }).join('');
 
-  var filterBar = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">' +
-    '<input id="pool-search-input" type="text" placeholder="Search accounts..." value="' + escHtml(f.search) + '" oninput="poolMgmtSearch()" style="padding:7px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--mono);font-size:11px;min-width:180px;flex:1">' +
-    '<select onchange="poolMgmtRep(this.value)" style="padding:7px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:var(--r);cursor:pointer">' + repOpts + '</select>' +
-    '<select onchange="poolMgmtSort(this.value)" style="padding:7px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:var(--r);cursor:pointer">' + sortOpts + '</select>' +
-  '</div>';
+  var _dirBtn = '<button onclick="poolMgmtSortDir()" title="Reverse sort direction" style="padding:7px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;border-radius:var(--r);cursor:pointer;line-height:1">' + (f.dir==='asc' ? '&#9650;' : '&#9660;') + '</button>';
+
+  function _pill(label, fn, val, active) {
+    return '<button data-pv="' + escHtml(String(val)) + '" onclick="' + fn + '(this.dataset.pv)" style="padding:3px 9px;font-family:var(--mono);font-size:9px;cursor:pointer;border-radius:var(--r);background:' + (active?'var(--blue-b)':'transparent') + ';color:' + (active?'#fff':'var(--text-3)') + ';border:1px solid ' + (active?'var(--blue-b)':'var(--border)') + '">' + escHtml(label) + '</button>';
+  }
+
+  var _idlePills = [['Any','any'],['< 90d','lt90'],['90-180d','d90'],['180-365d','d180'],['365d +','d365']].map(function(iv){ return _pill(iv[0],'poolMgmtIdle',iv[1],f.idle===iv[1]); }).join('');
+  var _tierPills = [['Any','any'],['$0','zero'],['$1-$10K','low'],['$10-$100K','mid'],['$100K+','high']].map(function(iv){ return _pill(iv[0],'poolMgmtTier',iv[1],f.tier===iv[1]); }).join('');
+  var _ytdPills  = [['Any','any'],['Has YTD','yes'],['No YTD','no']].map(function(iv){ return _pill(iv[0],'poolMgmtYtd',iv[1],f.ytd===iv[1]); }).join('');
+
+  var _allStatuses = ['ALL','Dormant','High Value','At Risk','Monitor','Decline','Stalled'];
+  var _statusOpts = _allStatuses.map(function(s){ return '<option value="' + s + '"' + (f.status===s?' selected':'') + '>' + s + '</option>'; }).join('');
+
+  var _collBtn = '<button onclick="poolMgmtColl()" style="padding:4px 10px;font-family:var(--mono);font-size:9px;cursor:pointer;border-radius:var(--r);background:' + (f.coll?'#ef4444':'transparent') + ';color:' + (f.coll?'#fff':'var(--text-3)') + ';border:1px solid ' + (f.coll?'#ef4444':'var(--border)') + '">&#9888; Has Collections</button>';
+
+  var filterBar =
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">' +
+      '<input id="pool-search-input" type="text" placeholder="Search by name, city, status, rep, or note..." value="' + escHtml(f.search) + '" oninput="poolMgmtSearch()" style="padding:7px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--mono);font-size:11px;min-width:200px;flex:1">' +
+      '<select onchange="poolMgmtRep(this.value)" style="padding:7px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:var(--r);cursor:pointer">' + repOpts + '</select>' +
+      '<select onchange="poolMgmtSort(this.value)" style="padding:7px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:var(--r);cursor:pointer">' + sortOpts + '</select>' +
+      _dirBtn +
+    '</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:8px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px">' +
+      '<span style="font-family:var(--mono);font-size:8px;letter-spacing:0.1em;color:var(--text-3)">IDLE:</span>' + _idlePills +
+      '<span style="margin-left:8px;font-family:var(--mono);font-size:8px;letter-spacing:0.1em;color:var(--text-3)">LIFETIME REV:</span>' + _tierPills +
+      '<span style="margin-left:8px;font-family:var(--mono);font-size:8px;letter-spacing:0.1em;color:var(--text-3)">YTD:</span>' + _ytdPills +
+      '<span style="margin-left:8px;font-family:var(--mono);font-size:8px;letter-spacing:0.1em;color:var(--text-3)">STATUS:</span>' +
+      '<select onchange="poolMgmtStatus(this.value)" style="padding:3px 8px;background:var(--s1);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:9px;border-radius:var(--r);cursor:pointer">' + _statusOpts + '</select>' +
+      '<span style="margin-left:4px"></span>' + _collBtn +
+    '</div>';
 
   // Tab bar
   var tabs = [
@@ -7801,7 +7993,12 @@ function renderPoolManagementView() {
         '<span style="background:var(--s2);color:var(--text-3);font-size:10px;font-family:var(--mono);padding:2px 10px;border-radius:10px">' + needsReview.length + ' to review</span>' +
         (hiddenFromPool.length ? '<span style="background:var(--s2);color:var(--text-3);font-size:10px;font-family:var(--mono);padding:2px 10px;border-radius:10px">' + hiddenFromPool.length + ' hidden</span>' : '') +
       '</div>' +
-      '<div style="font-size:12px;color:var(--text-3);margin-bottom:20px">Curate which inactive accounts are visible to reps in <strong>Available Accounts</strong>. All actions are logged with who made them and when.</div>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">' +
+        '<div style="font-size:12px;color:var(--text-3)">Curate which inactive accounts are visible to reps in <strong>Available Accounts</strong>. All actions are logged.</div>' +
+        '<div style="display:flex;gap:8px;flex-shrink:0">' +
+          '<button onclick="poolAIAdvisor()" style="padding:7px 14px;background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.5);color:#a855f7;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">&#127775; AI POOL ADVISOR</button>' +
+        '</div>' +
+      '</div>' +
       tabHtml +
       bodyHtml +
     '</div>' +

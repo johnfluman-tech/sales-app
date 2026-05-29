@@ -1876,6 +1876,13 @@ async function loadSupplementalData() {
     loadPoolManaged().catch(e => console.warn('Pool managed load failed:', e));
     // Silently restore Gmail token if rep approved it in a previous session
     setTimeout(function(){ if (typeof _gmailSilentReconnect === 'function') _gmailSilentReconnect(); }, 3000);
+    // Restore Gmail activity cache from previous session
+    setTimeout(function() {
+      var restored = _loadGmailCacheFromStorage();
+      if (restored > 0) { console.log('[GMAIL] Restored', restored, 'accounts from cache'); }
+      // Auto-refresh stale cache after token has time to settle (30s)
+      setTimeout(function() { _gmailAutoScan().catch(function(){}); }, 30000);
+    }, 1000);
 
     // Auto-render Daily Mission now that all core data is ready
     if (state.activeView === 'followup') {
@@ -8175,38 +8182,48 @@ async function myOutreachAI(type) {
     return a.name.slice(0,30)+' — last sale: '+(a.lastSaleDate||a.lastSale||'unknown')+', YTD: $'+formatNum(parseFloat(a.ytdRevenue||a.revenue||0)||0);
   }).join('\n');
 
-  // Gmail data summary if available
+  // Rich Gmail summary with subject lines + RFQ detection
   var gmailSummary = '';
-  if (state.gmailToken && state.gmailActivityCache) {
-    var loaded = Object.keys(state.gmailActivityCache).filter(function(k){
-      return state.gmailActivityCache[k] && state.gmailActivityCache[k].messages;
+  var gmailLoaded = Object.keys(state.gmailActivityCache || {}).filter(function(k){
+    return state.gmailActivityCache[k] && state.gmailActivityCache[k].messages;
+  });
+  if (gmailLoaded.length) {
+    var totalSent = 0, totalReplied = 0;
+    var rfqAccounts = [], neverEmailed = [], subjectSamples = [];
+    gmailLoaded.forEach(function(k) {
+      var msgs = state.gmailActivityCache[k].messages || [];
+      totalSent += msgs.length;
+      totalReplied += msgs.filter(function(m){ return m.replied; }).length;
+      var subjects = msgs.slice(0, 3).map(function(m){ return m.subject || ''; }).filter(Boolean);
+      var hasRfq = subjects.some(function(s){ return /rfq|quote|request.*price|rq\s*#|pricing|bid/i.test(s); });
+      if (hasRfq) rfqAccounts.push(k.slice(0, 25));
+      if (msgs.length === 0) neverEmailed.push(k.slice(0, 25));
+      if (subjects.length) subjectSamples.push(k.slice(0, 20) + ': "' + subjects[0] + '"');
     });
-    if (loaded.length) {
-      var totalSent = 0; var totalReplied = 0;
-      loaded.forEach(function(k){
-        var msgs = state.gmailActivityCache[k].messages || [];
-        totalSent += msgs.length;
-        totalReplied += msgs.filter(function(m){ return m.replied; }).length;
-      });
-      var overallRate = totalSent ? Math.round(totalReplied/totalSent*100) : 0;
-      gmailSummary = '\nGmail data ('+loaded.length+' accounts tracked): '+totalSent+' emails sent, '+totalReplied+' replies, '+overallRate+'% reply rate.';
-    }
+    var overallRate = totalSent ? Math.round(totalReplied / totalSent * 100) : 0;
+    gmailSummary = '\n\nGmail outreach data (' + gmailLoaded.length + ' accounts scanned):\n' +
+      '- ' + totalSent + ' emails sent, ' + totalReplied + ' replies (' + overallRate + '% reply rate)\n' +
+      (rfqAccounts.length
+        ? '- RFQ/Quote email threads found at: ' + rfqAccounts.slice(0, 6).join(', ') + '\n'
+        : '- No RFQ or quote follow-up emails detected — possible gap in quoting outreach\n') +
+      (neverEmailed.length ? '- ' + neverEmailed.length + ' accounts with contacts but zero emails sent\n' : '') +
+      '- Recent email subject samples:\n' + subjectSamples.slice(0, 8).map(function(s){ return '  ' + s; }).join('\n');
   }
 
   var prompts = {
-    weekly: 'You are a sales coach for '+repName+', an industrial parts rep. Create a focused weekly outreach plan. Tell them exactly which 5-7 accounts to contact Mon-Wed and which 3-5 to hit Thu-Fri, with a one-line approach for each. Be specific.\n\nStats: '+accs.length+' accounts, '+neglected.length+' neglected (90d+), '+atRisk.length+' at risk (30-90d), '+overdue.length+' overdue follow-ups.'+gmailSummary+'\n\nTop neglected accounts:\n'+top5neg,
+    weekly: 'You are a sales coach for '+repName+', an industrial parts rep at an industrial distribution company. Create a focused weekly outreach plan. Tell them exactly which 5-7 accounts to contact Mon-Wed and which 3-5 to hit Thu-Fri, with a one-line approach for each. Be specific and practical.\n\nStats: '+accs.length+' accounts, '+neglected.length+' neglected (90d+), '+atRisk.length+' at risk (30-90d), '+overdue.length+' overdue follow-ups.\n\nTop neglected accounts:\n'+top5neg+gmailSummary,
 
-    top5emails: 'You are a sales copywriter. Write 5 short subject lines and opening paragraphs for re-engagement emails to these neglected accounts. Each email should be different — vary the angle (checking in, new product, industry news, past order follow-up). Keep each opening paragraph to 2-3 sentences.\n\nAccounts:\n'+top5neg,
+    top5emails: 'You are a sales copywriter for an industrial parts distributor. Write 5 short subject lines and opening paragraphs for re-engagement emails to these neglected accounts. Each email should be different — vary the angle (RFQ follow-up, new product availability, checking open orders, industry news). Keep each opening paragraph to 2-3 sentences.\n\nAccounts:\n'+top5neg+gmailSummary,
 
-    opps: 'You are a sales strategist. Based on this rep\'s account activity, identify the top 3 revenue opportunities they should focus on in the next 30 days. For each, give a $ estimate of potential recovery and the best action to take.\n\nRep: '+repName+'\nNeglected accounts with prior revenue:\n'+top5neg+'\nAt risk accounts: '+atRisk.length+'\nTotal accounts: '+accs.length+gmailSummary,
+    opps: 'You are a sales strategist for an industrial parts distributor. Based on this rep\'s account activity, identify the top 3 revenue opportunities they should focus on in the next 30 days. For each, give a $ estimate of potential and the best action.\n\nRep: '+repName+'\nNeglected accounts:\n'+top5neg+'\nAt risk (30-90d): '+atRisk.length+'\nTotal accounts: '+accs.length+gmailSummary,
 
-    phone_list: 'You are a sales trainer. Create a call list of 8-10 accounts '+repName+' should call this week (not email — phone call). For each, give a specific reason to call and a one-line opening. Focus on highest-value neglected accounts.\n\nTop neglected:\n'+top5neg,
+    phone_list: 'You are a sales trainer. Create a call list of 8-10 accounts '+repName+' should call this week (not email — phone). For each, give a specific reason and a one-line opening. Focus on highest-value neglected accounts and any with open RFQs.\n\nTop neglected:\n'+top5neg+gmailSummary,
 
-    missed: 'You are a sales accountability coach. Be direct with '+repName+'. Which accounts have been most neglected and what is the likely business cost of that? Give them a wake-up call in plain language, then tell them the 3 most important things to do TODAY.\n\nNeglected (90d+): '+neglected.length+'\n'+top5neg,
+    missed: 'You are a sales accountability coach. Be direct with '+repName+'. Which accounts have been most neglected and what is the likely revenue cost? Give a wake-up call in plain language, then the 3 most important actions TODAY.\n\nNeglected (90d+): '+neglected.length+'\n'+top5neg+gmailSummary,
 
-    needsattn: 'You are a sales coach. Create a concrete action plan for '+repName+' to re-engage their neglected accounts. For the top 5 below, give: (1) best contact method, (2) one-line message angle, (3) urgency level. Keep it practical.\n\n'+top5neg,
+    needsattn: 'You are a sales coach. Create a concrete action plan for '+repName+' to re-engage their neglected accounts. For the top 5 below, give: (1) best contact method, (2) one-line message angle, (3) urgency level. Flag any with open RFQs.\n\n'+top5neg+gmailSummary,
 
-    gmail_insights: 'You are a sales performance analyst. Based on this rep\'s Gmail email activity, give insights on their outreach patterns, which accounts are most responsive, and specific recommendations to improve reply rates.'+gmailSummary+'\n\nRep: '+repName+'. Total accounts: '+accs.length+'.'
+    gmail_insights: 'You are a sales performance analyst for an industrial parts distributor. Analyze this rep\'s email outreach patterns. Focus on: (1) Are they following up on RFQs and quotes? (2) Which accounts are engaging (replying) vs. going dark? (3) Are there accounts with contacts where no emails have been sent at all? Give 3-5 specific, actionable recommendations.\n\nRep: '+repName+'. Total accounts: '+accs.length+'.\n'+gmailSummary
   };
 
   var prompt = prompts[type] || 'Analyze the outreach performance for '+repName+'. Stats: '+accs.length+' accounts, '+neglected.length+' neglected, '+atRisk.length+' at risk.';
@@ -8270,19 +8287,14 @@ async function loadAllGmail(batchStart) {
     return contacts.some(function(c){ return c.email && c.email.includes('@'); });
   });
 
-  var start = batchStart || 0;
-  var BATCH = 50;
-  var batch = toLoad.slice(start, start + BATCH);
-  var hasMore = (start + BATCH) < toLoad.length;
-
-  window._gmailScanStatus = { done: 0, total: batch.length, totalAll: toLoad.length, start: start, running: true, errors: 0 };
+  window._gmailScanStatus = { done: 0, total: toLoad.length, running: true, errors: 0 };
   renderMyOutreachView(); // show progress bar immediately
 
   var done = 0;
   var errors = 0;
   var firstError = '';
-  for (var i = 0; i < batch.length; i++) {
-    var a = batch[i];
+  for (var i = 0; i < toLoad.length; i++) {
+    var a = toLoad[i];
     if (!state.gmailActivityCache[a.name] || state.gmailActivityCache[a.name] === 'error') {
       try {
         await loadGmailActivity(a.name, true); // fastMode: skip thread-reply checks during bulk scan
@@ -8290,9 +8302,8 @@ async function loadAllGmail(batchStart) {
         state.gmailActivityCache[a.name] = { error: e.message };
         errors++;
         if (!firstError) firstError = e.message;
-        // If 401, token expired mid-scan — stop and ask user to retry
         if (e.message === 'gmail_401') {
-          window._gmailScanStatus = { done: done, total: batch.length, running: false, errors: errors, lastError: 'Gmail session expired mid-scan. Click Scan again to reconnect.' };
+          window._gmailScanStatus = { done: done, total: toLoad.length, running: false, errors: errors, lastError: 'Gmail session expired mid-scan. Click Scan again to reconnect.' };
           renderMyOutreachView();
           return;
         }
@@ -8302,12 +8313,76 @@ async function loadAllGmail(batchStart) {
     done++;
     window._gmailScanStatus.done = done;
     window._gmailScanStatus.errors = errors;
-    // Re-render KPIs every 5 accounts so progress is visible
     if (done % 5 === 0) renderMyOutreachView();
   }
 
-  window._gmailScanStatus = { done: done, total: batch.length, totalAll: toLoad.length, running: false, errors: errors, hasMore: hasMore, nextBatch: start + BATCH, lastError: firstError };
+  window._gmailScanStatus = { done: done, total: toLoad.length, running: false, errors: errors, lastError: firstError };
+  _saveGmailCacheToStorage();
   renderMyOutreachView();
+}
+
+function _saveGmailCacheToStorage() {
+  try {
+    var repId = state.repId || '';
+    var viewRep = state.viewAsRep || window._myOutreachViewRep || (repId === 'ADMIN' ? 'FJohn' : repId);
+    var slim = {};
+    Object.keys(state.gmailActivityCache).forEach(function(k) {
+      var d = state.gmailActivityCache[k];
+      if (!d || !d.messages) return;
+      slim[k] = {
+        emails: d.emails || [],
+        messages: d.messages.slice(0, 15).map(function(m) {
+          return { subject: m.subject || '', to: m.to || '', date: m.date || '', replied: !!m.replied, snippet: (m.snippet || '').slice(0, 150) };
+        }),
+        loadedAt: d.loadedAt
+      };
+    });
+    localStorage.setItem('it_gmail_cache_' + viewRep, JSON.stringify(slim));
+    console.log('[GMAIL] Cache saved:', Object.keys(slim).length, 'accounts for', viewRep);
+  } catch(e) { console.log('[GMAIL] Cache save failed:', e.message); }
+}
+
+function _loadGmailCacheFromStorage() {
+  try {
+    var repId = state.repId || '';
+    var viewRep = state.viewAsRep || window._myOutreachViewRep || (repId === 'ADMIN' ? 'FJohn' : repId);
+    var raw = localStorage.getItem('it_gmail_cache_' + viewRep);
+    if (!raw) return 0;
+    var slim = JSON.parse(raw);
+    var loaded = 0;
+    Object.keys(slim).forEach(function(k) {
+      if (state.gmailActivityCache[k] && state.gmailActivityCache[k].loadedAt) return; // keep fresher in-memory data
+      state.gmailActivityCache[k] = slim[k];
+      loaded++;
+    });
+    console.log('[GMAIL] Cache restored from storage:', loaded, 'accounts');
+    return loaded;
+  } catch(e) { console.log('[GMAIL] Cache load failed:', e.message); return 0; }
+}
+
+async function _gmailAutoScan() {
+  var repId = state.repId || '';
+  if (!localStorage.getItem('it_gmail_linked_' + repId)) return; // never authorized
+  var viewRep = state.viewAsRep || window._myOutreachViewRep || (repId === 'ADMIN' ? 'FJohn' : repId);
+  var accs = (state.accounts || []).filter(function(a) { return a.rep === viewRep; });
+  var toLoad = accs.filter(function(a) {
+    var contacts = state.contactsCache[a.name] || [];
+    return contacts.some(function(c) { return c.email && c.email.includes('@'); });
+  });
+  if (!toLoad.length) return;
+  var STALE_MS = 8 * 60 * 60 * 1000; // 8 hours
+  var now = Date.now();
+  var stale = toLoad.filter(function(a) {
+    var d = state.gmailActivityCache[a.name];
+    return !d || !d.loadedAt || (now - d.loadedAt) > STALE_MS;
+  }).length;
+  if (stale === 0) { console.log('[GMAIL] Cache fresh, skipping auto-scan'); return; }
+  console.log('[GMAIL] Auto-scan:', stale, 'stale accounts');
+  try {
+    var ok = await _gmailEnsureToken();
+    if (!ok) { console.log('[GMAIL] Auto-scan: no token, skipping'); return; }
+    await loadAllGmail();
+  } catch(e) { console.log('[GMAIL] Auto-scan error:', e.message); }
 }
 
 function _buildContactCoverage(accs) {
@@ -8389,12 +8464,9 @@ function _renderContactCoveragePanel(accs) {
   } else if (scanStatus && !scanStatus.running && scanStatus.done > 0) {
     var doneMsg = (scanStatus.errors && !scanStatus.lastError)
       ? '&#10003; Scanned ' + scanStatus.done + ' — ' + scanStatus.errors + ' errors'
-      : '&#10003; Scanned ' + scanStatus.done + ' accounts';
-    var nextBtnHtml = scanStatus.hasMore
-      ? ' &nbsp;<button onclick="loadAllGmail(' + scanStatus.nextBatch + ')" style="background:var(--blue-b);border:none;color:#fff;padding:4px 12px;border-radius:3px;font-size:10px;cursor:pointer;font-family:var(--mono)">Scan Next 50 &#10148;</button>'
-      : '';
+      : '&#10003; Scanned ' + scanStatus.done + ' accounts — saved, auto-refreshes every 8 hours';
     var errDetail = scanStatus.lastError ? '<div style="font-size:10px;color:#f59e0b;margin-top:4px">&#9888; ' + escHtml(scanStatus.lastError) + '</div>' : '';
-    progressHtml = '<div style="font-size:11px;font-family:var(--mono);margin-bottom:10px;color:' + (scanStatus.errors ? '#f59e0b' : '#22c55e') + '">' + doneMsg + nextBtnHtml + errDetail + '</div>';
+    progressHtml = '<div style="font-size:11px;font-family:var(--mono);margin-bottom:10px;color:' + (scanStatus.errors ? '#f59e0b' : '#22c55e') + '">' + doneMsg + errDetail + '</div>';
   } else if (scanStatus && !scanStatus.running && scanStatus.lastError && scanStatus.done === 0) {
     progressHtml = '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:4px;padding:10px 14px;margin-bottom:10px;font-size:11px;color:#ef4444;font-family:var(--mono)">&#10060; ' + escHtml(scanStatus.lastError) + '</div>';
   }

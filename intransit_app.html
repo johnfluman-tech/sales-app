@@ -1561,9 +1561,8 @@ const CONFIG = {
     'lmancera@intransittech.com':   'LMancera',
     'brandonar@intransittech.com':  'bcastor',
     'anolan@intransittech.com':     'Anolan',
-    'john.fluman@intransittech.com':'FJohn',
-    // 'bill.xxx@intransittech.com': 'BillP',
-    // etc — add each rep's email below
+    'carlos.mancilla@intransittech.com': 'CMancilla',
+    'manuel.perezfreyre@intransittech.com': 'MPerezfreye',
   },
   API_BASE: 'http://localhost:5050',
   REPS_DISPLAY: {'CKaren':'Karen','BillP':'Bill','PIan':'Ian','RMauricio':'Mauricio','LMancera':'Lizeth','bcastor':'Brandon','FJohn':'John','Anolan':'Anolan'},  // Local Python API on the server
@@ -3751,6 +3750,45 @@ function isAdmin() { return state.isAdmin || state.repId === 'FJohn'; }
 function isManager() { return !!(MANAGERS[state.repId]) || !!(state.managerRole); }
 function getManagerConfig() { return state.managerRole ? (MANAGER_CONFIG[state.managerRole] || null) : null; }
 function getManagerTeam() { return MANAGERS[state.repId] || []; }
+
+// ── Permission checkpoint — call at the top of every data-rendering function ──
+// Returns { repFilter, teamReps, isTeam, matchFn, isAdm, isMgr }
+// matchFn(repId) → true if that rep's data is visible to the current user
+function _permissionScope() {
+  var isAdm = isAdmin();
+  var isMgr = !!state.managerRole;
+  var viewAs = state.viewAsRep;
+  var repFilter, teamReps = null, isTeam = false;
+  if (isAdm) {
+    if (!viewAs) {
+      repFilter = null; // admin all-view
+    } else if (viewAs === '__TEAM_ALL__') {
+      var mc = getManagerConfig();
+      teamReps = mc ? mc.teamReps : null;
+      repFilter = '__TEAM_ALL__'; isTeam = true;
+    } else {
+      repFilter = viewAs;
+    }
+  } else if (isMgr) {
+    // Managers always scope to their team (or a specific team member)
+    if (!viewAs || viewAs === '__TEAM_ALL__') {
+      var mc2 = getManagerConfig();
+      teamReps = mc2 ? mc2.teamReps : [];
+      repFilter = '__TEAM_ALL__'; isTeam = true;
+    } else {
+      repFilter = viewAs;
+    }
+  } else {
+    // Regular rep: own data only — no override possible
+    repFilter = state.repId;
+  }
+  var matchFn = !repFilter
+    ? function() { return true; }
+    : (isTeam
+        ? function(r) { return !!(teamReps && teamReps.indexOf(r) !== -1); }
+        : function(r) { return r === repFilter; });
+  return { repFilter: repFilter, teamReps: teamReps, isTeam: isTeam, matchFn: matchFn, isAdm: isAdm, isMgr: isMgr };
+}
 
 async function checkAuth() {
   const savedToken = localStorage.getItem('it_token');
@@ -11011,11 +11049,10 @@ async function refreshDashboard() {
   // cache retry handled inside loadSupplementalData
   const from = document.getElementById('dash-from')?.value || '';
   const to   = document.getElementById('dash-to')?.value   || '';
-  const repFilter = state.isAdmin ? (state.viewAsRep || null) : state.repId;
-  const _teamRepsFilter = (repFilter === '__TEAM_ALL__') ?
-    (function(){ const mc = getManagerConfig(); return mc ? mc.teamReps : null; })() : null;
-  const repMatchesFn = !repFilter ? function(){ return true; } :
-    (_teamRepsFilter ? function(r){ return _teamRepsFilter.includes(r); } : function(r){ return r === repFilter; });
+  var _ps = _permissionScope();
+  const repFilter = _ps.repFilter;
+  const _teamRepsFilter = _ps.teamReps;
+  const repMatchesFn = _ps.matchFn;
 
   if (state.accounts.length === 0) {
     const kpiEl = document.getElementById('dash-kpis');
@@ -20724,11 +20761,18 @@ async function loadProspects() {
     const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_PROSPECTS'!A1:O5000");
     if (!rows || rows.length < 2) { state._prospectsLoaded = true; _updateProspectsBadge(); return; }
     const hdrs = rows[0].map(function(h){ return (h||'').trim(); });
+    var _psp = _permissionScope();
     state.prospectCache = rows.slice(1).map(function(r){
       const obj = {};
       hdrs.forEach(function(h,i){ obj[h] = (r[i]||'').trim(); });
       return obj;
-    }).filter(function(p){ return p.PROSPECT_ID && (p.REP_ID === state.repId || state.isAdmin); });
+    }).filter(function(p){
+      if (!p.PROSPECT_ID) return false;
+      if (_psp.isAdm && !_psp.repFilter) return true; // admin all-view
+      if (_psp.isTeam) return !!(_psp.teamReps && _psp.teamReps.indexOf(p.REP_ID) !== -1);
+      return p.REP_ID === (_psp.repFilter || state.repId);
+    });
+    state._prospectsLoadedFor = _psp.repFilter || state.repId || '_all_';
     state._prospectsLoaded = true;
     _updateProspectsBadge();
     if (state.activeView === 'prospects') renderProspectsView();
@@ -20745,6 +20789,13 @@ async function loadProspects() {
 function renderProspectsView() {
   const el = document.getElementById('main-content');
   if (!el) return;
+
+  // Invalidate cache if rep scope changed since last load (e.g. admin switched viewAsRep)
+  var _curPScope = state.viewAsRep || state.repId || '_all_';
+  if (state._prospectsLoadedFor !== undefined && state._prospectsLoadedFor !== _curPScope) {
+    state._prospectsLoaded = false;
+    state.prospectCache = [];
+  }
 
   if (!state._prospectsLoaded) {
     el.innerHTML = '<div class="loading-spinner">LOADING PROSPECTS...</div>';

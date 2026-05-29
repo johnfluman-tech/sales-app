@@ -2,6 +2,30 @@
 
 ---
 
+# 🔐 RULE 0 — PERMISSIONS CHECKPOINT (CHECK THIS BEFORE EVERY CHANGE)
+
+**Before implementing ANY feature that reads or displays data, verify it is scoped correctly.**
+
+Use `_permissionScope()` — returns `{ repFilter, teamReps, isTeam, matchFn, isAdm, isMgr }`.
+
+| Who | `repFilter` | `isTeam` | What they see |
+|-----|-------------|----------|---------------|
+| Admin (no viewAs) | `null` | false | ALL data |
+| Admin viewing as rep | `'BillP'` | false | that rep only |
+| Admin simulating manager | `'__TEAM_ALL__'` | true | manager's teamReps |
+| Manager (team view) | `'__TEAM_ALL__'` | true | their teamReps only |
+| Manager viewing as rep | `'BillP'` | false | that rep only |
+| Regular rep | `state.repId` | false | **self only — never others** |
+
+**Nav visibility rules — enforce in `switchViewAs` AND at login:**
+- Pool Management, Manager Hub, Activity Log: admin + managers only. Hide when viewing as a specific rep.
+- Suggestions Board: admin native view only — hide in ALL view-as modes.
+- Activity Log: admin only, always.
+
+**The `matchFn` from `_permissionScope()` is the single source of truth for filtering.** Never write manual `if (isAdmin())` / `if (repId === ...)` chains in data filters — call `_permissionScope()` instead.
+
+---
+
 # 🚨 RULE 1 — NEVER BREAK THE APP WITH PYTHON-GENERATED JS
 
 **The #1 cause of blank-page / syntax-error crashes:**

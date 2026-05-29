@@ -7985,7 +7985,8 @@ function renderPoolManagementView() {
   }
 
   el.innerHTML =
-    '<div style="height:100%;overflow-y:auto">' +
+    '<style>#pool-mgmt-scroll::-webkit-scrollbar{width:10px}#pool-mgmt-scroll::-webkit-scrollbar-track{background:var(--s2)}#pool-mgmt-scroll::-webkit-scrollbar-thumb{background:var(--s3);border-radius:5px;border:2px solid var(--s2)}</style>' +
+    '<div id="pool-mgmt-scroll" style="height:100%;overflow-y:auto">' +
     '<div style="padding:24px 32px;max-width:1000px">' +
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">' +
         '<div style="font-size:18px;font-weight:700">&#127946; Pool Management</div>' +

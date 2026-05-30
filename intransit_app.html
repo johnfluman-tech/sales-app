@@ -22389,6 +22389,8 @@ function confirmFollowUp(accName, contactName) {
       _diagRow('accounts', accts, accts > 0 ? '#86efac' : '#f87171') +
       _diagRow('hiddenAccounts', hidden) +
       _diagRow('collectionsCache', collKeys + ' entries, ' + collBal + ' with balance') +
+      _diagRow('SALES_REP breakdown', collRepBreakdown || '(empty — salesRep not loading)', collRepBreakdown ? '#e2e8f0' : '#f87171') +
+      _diagRow('Cache sample', collSample, '#94a3b8') +
       _diagRow('gpCache rows', gpRecs) +
       _diagRow('contactsCache accounts', contacts) +
       _diagRow('Loading screen', loadVisible, loadVisible.indexOf('VISIBLE') >= 0 ? '#f87171' : '#86efac') +

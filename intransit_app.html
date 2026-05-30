@@ -12908,7 +12908,31 @@ function renderCollectionsView() {
               </div>
               ${hasNote ? `<div style="font-size:10px;color:var(--accent);margin-top:4px;font-style:italic">📝 ${escHtml(collNote.note.slice(0,60))}${collNote.note.length>60?'…':''}</div>` : ''}
             </div>`;
-          }).join('') || '<div style="color:var(--text-muted);font-size:12px;padding:20px">No accounts with open balances.</div>'}
+          }).join('') || (function(){
+    var _cTotal = Object.keys(state.collectionsCache||{}).length;
+    var _cRep   = state.repId || 'NOT SET';
+    var _cAccts = (state.accounts||[]).length;
+    var _sample = Object.entries(state.collectionsCache||{}).slice(0,3).map(function(e){ return e[0] + ' → ' + (e[1].salesRep||'NO REP'); }).join(', ');
+    var _balCount = Object.values(state.collectionsCache||{}).filter(function(c){ return c.balance > 0; }).length;
+    if (_cTotal === 0) {
+      return '<div style="color:var(--text-muted);font-size:12px;padding:20px">' +
+             '<b>Collections data not loaded.</b><br><br>' +
+             'The _COLLECTIONS tab returned no data.<br>' +
+             'Check that the Google Sheet is accessible and the tab exists.' +
+             '</div>';
+    }
+    return '<div style="color:var(--text-muted);font-size:12px;padding:20px;line-height:1.8">' +
+           '<b style="color:var(--gold)">&#9432; No open balances matched your account.</b><br><br>' +
+           '<table style="font-family:var(--font-mono);font-size:11px;border-collapse:collapse">' +
+           '<tr><td style="color:var(--text-3);padding-right:16px">Your Rep ID</td><td>' + escHtml(_cRep) + '</td></tr>' +
+           '<tr><td style="color:var(--text-3);padding-right:16px">Your Accounts Loaded</td><td>' + _cAccts + '</td></tr>' +
+           '<tr><td style="color:var(--text-3);padding-right:16px">Total in _COLLECTIONS</td><td>' + _cTotal + ' entries (' + _balCount + ' with balance)</td></tr>' +
+           '<tr><td style="color:var(--text-3);padding-right:16px">Sample (name → SALES_REP)</td><td style="font-size:10px">' + escHtml(_sample||'none') + '</td></tr>' +
+           '</table><br>' +
+           '<span style="font-size:10px;color:var(--text-3)">If your Rep ID does not match the SALES_REP values above, ask John to re-run the sales report.</span>' +
+           '</div>';
+  })()
+}
         </div>
 
         <!-- Detail panel -->

@@ -1241,8 +1241,8 @@ def push_collections_tab(service, collections_df, all_tabs):
         high_risk = sum(1 for r in rows[1:] if '🔴' in str(r[11]))
         watch = sum(1 for r in rows[1:] if '🟠' in str(r[11]))
         print("  → Pushing unowned accounts (no rep in CRM)...")
-    push_unowned_accounts_tab(service, h_tabs, collections_df, sid)
-    print(f"  → Pushed {len(rows)-1} accounts to _COLLECTIONS tab "
+        push_unowned_accounts_tab(service, h_tabs, collections_df, sid)
+        print(f"  → Pushed {len(rows)-1} accounts to _COLLECTIONS tab "
               f"({high_risk} high risk, {watch} watch).")
     except Exception as e:
         print(f"  WARNING: Could not push _COLLECTIONS tab — {e}")

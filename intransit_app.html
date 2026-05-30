@@ -7608,7 +7608,7 @@ async function poolAIAdvisor() {
       '<div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">' +
         '<input id="pool-ai-input" type="text" placeholder="Ask about pool accounts..." ' +
           'style="flex:1;padding:9px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--mono);font-size:12px;outline:none" ' +
-          'onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_poolAIChat();}" />' +
+          'onkeydown="if(event.keyCode===13&&!event.shiftKey){event.preventDefault();_poolAIChat();}" />' +
         '<button onclick="_poolAIChat()" style="padding:9px 16px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;border-radius:var(--r);cursor:pointer;white-space:nowrap">ASK &#10148;</button>' +
       '</div>' +
     '</div>';

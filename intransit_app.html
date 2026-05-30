@@ -3592,15 +3592,26 @@ function completeLogin() {
     // Let browser paint the count message before we block the thread with rendering
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => requestAnimationFrame(r));
-    renderAccountsView();
-    updateBadges();
-    initSecurity();
-    setLoading(false);
+    try {
+      renderAccountsView();
+      updateBadges();
+      initSecurity();
+    } catch(renderErr) {
+      console.error('[RENDER] renderAccountsView failed:', renderErr);
+      document.getElementById('main-content').innerHTML =
+        '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:12px;color:var(--red)">' +
+        '&#9888; Render error: ' + escHtml(renderErr.message || 'unknown') + '<br>' +
+        '<span style="color:var(--text-muted);font-size:10px">Open browser console (F12) for the full error.</span>' +
+        '</div>';
+    } finally {
+      setLoading(false);
+    }
   }).catch(function(e) {
     console.error('[ACCOUNTS] loadAllAccounts failed:', e);
+    setLoading(false);
     document.getElementById('main-content').innerHTML =
       '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:12px;color:var(--red)">' +
-      '&#9888; Failed to load accounts — ' + (e.message || 'unknown error') + '<br>' +
+      '&#9888; Failed to load accounts: ' + (e.message || 'unknown error') + '<br>' +
       '<span style="color:var(--text-muted);font-size:10px">Try signing out and signing back in. If this keeps happening, contact John.</span>' +
       '</div>';
   });

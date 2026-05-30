@@ -3587,12 +3587,15 @@ function completeLogin() {
       console.warn('[ACCOUNTS] state.accounts is empty — repId:', state.repId, '| check tab load errors above');
       showToast('No accounts loaded. If your data is missing, sign out and back in or contact John.', 'error');
     }
-    setLoading(true, 'RENDERING...', 99);
-    await new Promise(r => setTimeout(r, 50));
-    setLoading(false);
+    var _acctCount = state.accounts ? state.accounts.length : 0;
+    setLoading(true, 'RENDERING ' + _acctCount + ' ACCOUNTS...', 99);
+    // Let browser paint the count message before we block the thread with rendering
+    await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => requestAnimationFrame(r));
     renderAccountsView();
     updateBadges();
     initSecurity();
+    setLoading(false);
   }).catch(function(e) {
     console.error('[ACCOUNTS] loadAllAccounts failed:', e);
     document.getElementById('main-content').innerHTML =

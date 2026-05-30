@@ -22349,6 +22349,21 @@ function confirmFollowUp(accName, contactName) {
     var hidden = (st.hiddenAccounts || []).length;
     var collKeys = Object.keys(st.collectionsCache || {}).length;
     var collBal  = Object.values(st.collectionsCache || {}).filter(function(c){ return c.balance > 0; }).length;
+    // Build rep breakdown: count entries by salesRep value
+    var collRepMap = {};
+    Object.entries(st.collectionsCache || {}).forEach(function(kv) {
+      var sr = kv[1].salesRep || '(empty)';
+      collRepMap[sr] = (collRepMap[sr] || 0) + 1;
+    });
+    var collRepBreakdown = Object.entries(collRepMap).sort(function(a,b){ return b[1]-a[1]; })
+      .map(function(e){ return e[0] + ':' + e[1]; }).join('  ');
+    // Sample 3 entries showing name, salesRep, and computed rep
+    var collSample = Object.entries(st.collectionsCache || {}).slice(0,3).map(function(kv){
+      var name = kv[0]; var c = kv[1];
+      var acc = (st.accounts||[]).find(function(a){ return a.name && a.name.trim() === name.trim(); });
+      var computedRep = c.salesRep || (acc && acc.rep) || '(none)';
+      return name.slice(0,25) + ' [salesRep=' + (c.salesRep||'EMPTY') + ', computed=' + computedRep + ']';
+    }).join('<br>');
     var gpRecs   = (st.gpCache || []).length;
     var contacts = Object.keys(st.contactsCache || {}).length;
     var cacheLoaded = st.cacheLoaded ? 'YES' : 'NO';

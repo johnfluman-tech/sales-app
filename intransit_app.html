@@ -9060,7 +9060,7 @@ async function loadAllGmail(batchStart) {
       ? 'Gmail API 403 — make sure Gmail API is enabled in Google Cloud Console and gmail.readonly scope is on the OAuth consent screen.'
       : 'Gmail API error: ' + e.message;
     window._gmailScanStatus = { done: 0, total: 0, running: false, errors: 1, lastError: errMsg };
-    renderMyOutreachView();
+    if (state.activeView === 'myOutreach') renderMyOutreachView();
     showToast(errMsg, 'error', 9000);
     return;
   }
@@ -9080,7 +9080,7 @@ async function loadAllGmail(batchStart) {
   });
 
   window._gmailScanStatus = { done: 0, total: toLoad.length, running: true, errors: 0 };
-  renderMyOutreachView(); // show progress bar immediately
+  if (state.activeView === 'myOutreach') renderMyOutreachView();
 
   var done = 0;
   var errors = 0;
@@ -9096,7 +9096,7 @@ async function loadAllGmail(batchStart) {
         if (!firstError) firstError = e.message;
         if (e.message === 'gmail_401') {
           window._gmailScanStatus = { done: done, total: toLoad.length, running: false, errors: errors, lastError: 'Gmail session expired mid-scan. Click Scan again to reconnect.' };
-          renderMyOutreachView();
+          if (state.activeView === 'myOutreach') renderMyOutreachView();
           return;
         }
       }
@@ -9105,12 +9105,12 @@ async function loadAllGmail(batchStart) {
     done++;
     window._gmailScanStatus.done = done;
     window._gmailScanStatus.errors = errors;
-    if (done % 5 === 0) renderMyOutreachView();
+    if (done % 5 === 0 && state.activeView === 'myOutreach') renderMyOutreachView();
   }
 
   window._gmailScanStatus = { done: done, total: toLoad.length, running: false, errors: errors, lastError: firstError };
   _saveGmailCacheToStorage();
-  renderMyOutreachView();
+  if (state.activeView === 'myOutreach') renderMyOutreachView();
 }
 
 function _saveGmailCacheToStorage() {

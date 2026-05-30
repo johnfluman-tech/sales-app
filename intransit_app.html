@@ -12828,8 +12828,12 @@ function renderCollectionsView() {
   }).filter(c => c.balance > 0);
 
   if (!state.isAdmin) {
-    // Non-admin: restrict to their own accounts only (handles null repId safely)
-    collList = collList.filter(c => _myAccNames.has(c.name.trim().toLowerCase()));
+    // Use SALES_REP from _COLLECTIONS when available (set by sales_report.py via ACCOUNT_REP_VIEW).
+    // Fall back to name-matching against state.accounts for any rows missing a rep value.
+    collList = collList.filter(c => {
+      if (c.salesRep) return c.salesRep === state.repId;
+      return _myAccNames.has(c.name.trim().toLowerCase());
+    });
   } else if (repFilter) {
     collList = collList.filter(c => _collRepMatch(c.rep));
   }

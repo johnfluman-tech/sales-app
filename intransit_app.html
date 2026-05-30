@@ -4052,7 +4052,7 @@ async function loadAllAccounts() {
 
   for (const tab of tabs) {
     try {
-      const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, `'${tab}'!A1:Z2000`);
+      const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, `'${tab}'!A1:AZ2000`);
       if (rows.length < 5) continue;
 
       // Find header row (has CUSTOMER_NAME)

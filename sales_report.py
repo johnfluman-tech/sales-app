@@ -792,7 +792,7 @@ def push_customer_directory_tab(service, conn, all_tabs):
         dir_sql = """
             WITH owned_accounts AS (
                 SELECT arv.ACCOUNT AS CUSTOMER_ID,
-                       e.LOGIN_ID AS SALES_REP,
+                       RTRIM(e.LOGIN_ID) AS SALES_REP,
                        ROW_NUMBER() OVER (PARTITION BY arv.ACCOUNT ORDER BY e.LOGIN_ID) AS rn
                 FROM dbo.ACCOUNT_REP_VIEW arv
                 JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
@@ -1079,7 +1079,7 @@ def push_collections_invoices_tab(service, all_tabs):
                 i.TRACKING_NUMBER,
                 i.SHIP_VIA,
                 c.NAME                   AS CUSTOMER_NAME,
-                (SELECT TOP 1 e2.LOGIN_ID FROM dbo.ACCOUNT_REP_VIEW arv2
+                (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
                  JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
                  WHERE arv2.ACCOUNT = i.CUSTOMER_ID
                    AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
@@ -1681,7 +1681,7 @@ def main():
     sql = """
         WITH owned_accounts AS (
             SELECT arv.ACCOUNT AS CUSTOMER_ID,
-                   e.LOGIN_ID AS SALES_REP,
+                   RTRIM(e.LOGIN_ID) AS SALES_REP,
                    ROW_NUMBER() OVER (PARTITION BY arv.ACCOUNT ORDER BY e.LOGIN_ID) AS rn
             FROM dbo.ACCOUNT_REP_VIEW arv
             JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
@@ -1759,7 +1759,7 @@ def main():
         SELECT
             ct.CUSTOMER_ID,
             c.NAME              AS CUSTOMER_NAME,
-            (SELECT TOP 1 e2.LOGIN_ID FROM dbo.ACCOUNT_REP_VIEW arv2
+            (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
              JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
              WHERE arv2.ACCOUNT = c.ID
                AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
@@ -1797,7 +1797,7 @@ def main():
     line_items_sql = """
         WITH owned_accounts AS (
             SELECT arv.ACCOUNT AS CUSTOMER_ID,
-                   e.LOGIN_ID AS SALES_REP,
+                   RTRIM(e.LOGIN_ID) AS SALES_REP,
                    ROW_NUMBER() OVER (PARTITION BY arv.ACCOUNT ORDER BY e.LOGIN_ID) AS rn
             FROM dbo.ACCOUNT_REP_VIEW arv
             JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
@@ -1844,7 +1844,7 @@ def main():
         collections_sql = """
             WITH owned_accounts AS (
                 SELECT arv.ACCOUNT AS CUSTOMER_ID,
-                       e.LOGIN_ID AS SALES_REP,
+                       RTRIM(e.LOGIN_ID) AS SALES_REP,
                        ROW_NUMBER() OVER (PARTITION BY arv.ACCOUNT ORDER BY e.LOGIN_ID) AS rn
                 FROM dbo.ACCOUNT_REP_VIEW arv
                 JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
@@ -1983,7 +1983,7 @@ def main():
                 q.CONTACT_ID,
                 c.ID                AS CUSTOMER_ID,
                 c.NAME              AS CUSTOMER_NAME,
-                (SELECT TOP 1 e2.LOGIN_ID FROM dbo.ACCOUNT_REP_VIEW arv2
+                (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
                  JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
                  WHERE arv2.ACCOUNT = c.ID
                    AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
@@ -2026,7 +2026,7 @@ def main():
             SELECT
                 c.ID                AS CUSTOMER_ID,
                 c.NAME              AS CUSTOMER_NAME,
-                (SELECT TOP 1 e2.LOGIN_ID FROM dbo.ACCOUNT_REP_VIEW arv2
+                (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
                  JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
                  WHERE arv2.ACCOUNT = c.ID
                    AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
@@ -2079,7 +2079,7 @@ def main():
                 o.ORDER_NUMBER,
                 o.CUSTOMER_ID,
                 c.NAME              AS CUSTOMER_NAME,
-                (SELECT TOP 1 e2.LOGIN_ID FROM dbo.ACCOUNT_REP_VIEW arv2
+                (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
                  JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
                  WHERE arv2.ACCOUNT = o.CUSTOMER_ID
                    AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
@@ -2127,7 +2127,7 @@ def main():
         gp_sql = """
             WITH owned_accounts AS (
                 SELECT arv.ACCOUNT AS CUSTOMER_ID,
-                       e.LOGIN_ID AS SALES_REP,
+                       RTRIM(e.LOGIN_ID) AS SALES_REP,
                        ROW_NUMBER() OVER (PARTITION BY arv.ACCOUNT ORDER BY e.LOGIN_ID) AS rn
                 FROM dbo.ACCOUNT_REP_VIEW arv
                 JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
@@ -2167,7 +2167,7 @@ def main():
             SELECT
                 o.ORDER_NUMBER,
                 RTRIM(c.NAME)               AS CUSTOMER_NAME,
-                (SELECT TOP 1 e2.LOGIN_ID FROM dbo.ACCOUNT_REP_VIEW arv2
+                (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
                  JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
                  WHERE arv2.ACCOUNT = o.CUSTOMER_ID
                    AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')

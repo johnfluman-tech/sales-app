@@ -1240,7 +1240,9 @@ def push_collections_tab(service, collections_df, all_tabs):
 
         high_risk = sum(1 for r in rows[1:] if '🔴' in str(r[11]))
         watch = sum(1 for r in rows[1:] if '🟠' in str(r[11]))
-        print(f"  → Pushed {len(rows)-1} accounts to _COLLECTIONS tab "
+        print("  → Pushing unowned accounts (no rep in CRM)...")
+    push_unowned_accounts_tab(service, h_tabs, collections_df, sid)
+    print(f"  → Pushed {len(rows)-1} accounts to _COLLECTIONS tab "
               f"({high_risk} high risk, {watch} watch).")
     except Exception as e:
         print(f"  WARNING: Could not push _COLLECTIONS tab — {e}")
@@ -1664,6 +1666,71 @@ def build_summary(df, notes):
 # ══════════════════════════════════════════════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════════════════════════════════════════════
+
+
+def push_unowned_accounts_tab(service, h_tabs, collections_df, sid):
+    """Push accounts with sales history but no rep attribution to _UNOWNED_ACCOUNTS tab."""
+    try:
+        import pyodbc as _pyodbc
+        conn3 = _pyodbc.connect(
+            "DRIVER={ODBC Driver 17 for SQL Server};"
+            "SERVER=localhost;DATABASE=CCCRM;Trusted_Connection=yes;"
+        )
+        unowned_sql = """
+            SELECT TOP 2000
+                c.ID               AS CUSTOMER_ID,
+                RTRIM(c.NAME)      AS CUSTOMER_NAME,
+                RTRIM(c.USERNAME)  AS CRM_USERNAME,
+                RTRIM(c.CITY)      AS CITY,
+                RTRIM(c.STATE)     AS STATE,
+                ISNULL(SUM(i.INVOICE_TOTAL), 0) AS LIFETIME_REVENUE,
+                MAX(i.INVOICE_DATE) AS LAST_SALE_DATE
+            FROM dbo.CUSTOMER c
+            LEFT JOIN dbo.INVCHEA i ON i.CUSTOMER_ID = c.ID
+                AND i.INVOICE_DATE >= '2010-01-01'
+            WHERE c.INACTIVE = 0
+              AND c.ID NOT IN (
+                  SELECT arv.ACCOUNT
+                  FROM dbo.ACCOUNT_REP_VIEW arv
+                  JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
+                  WHERE e.LOGIN_ID IN (
+                      'CKaren','BillP','PIan','RMauricio',
+                      'LMancera','bcastor','FJohn','Anolan'
+                  )
+              )
+            GROUP BY c.ID, c.NAME, c.USERNAME, c.CITY, c.STATE
+            HAVING ISNULL(SUM(i.INVOICE_TOTAL), 0) > 0
+            ORDER BY LIFETIME_REVENUE DESC
+        """
+        import pandas as _pd2
+        df = _pd2.read_sql(unowned_sql, conn3)
+        conn3.close()
+
+        ensure_tab_exists(service, '_UNOWNED_ACCOUNTS', h_tabs, sheet_id=sid)
+        headers = ['CUSTOMER_ID','CUSTOMER_NAME','CRM_USERNAME','CITY','STATE',
+                   'LIFETIME_REVENUE','LAST_SALE_DATE']
+        rows = [headers]
+        for _, r in df.iterrows():
+            def cl(v):
+                if v is None: return ''
+                s = str(v)
+                return '' if s in ('nan','NaT','None') else s
+            rows.append([cl(r.get('CUSTOMER_ID')), cl(r.get('CUSTOMER_NAME')),
+                         cl(r.get('CRM_USERNAME')), cl(r.get('CITY')), cl(r.get('STATE')),
+                         round(float(r.get('LIFETIME_REVENUE') or 0), 2),
+                         cl(r.get('LAST_SALE_DATE'))[:10] if r.get('LAST_SALE_DATE') else ''])
+        service.spreadsheets().values().clear(
+            spreadsheetId=sid, range="'_UNOWNED_ACCOUNTS'!A1:H5000"
+        ).execute()
+        service.spreadsheets().values().update(
+            spreadsheetId=sid, range="'_UNOWNED_ACCOUNTS'!A1",
+            valueInputOption="RAW", body={"values": rows}
+        ).execute()
+        _format_header_tab(service, '_UNOWNED_ACCOUNTS', sid=sid)
+        print(f"  → Pushed {len(rows)-1} unowned accounts to _UNOWNED_ACCOUNTS tab (History sheet).")
+    except Exception as e:
+        print(f"  WARNING: Could not push _UNOWNED_ACCOUNTS tab — {e}")
+
 
 def main():
     print("=" * 60)

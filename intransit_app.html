@@ -964,6 +964,7 @@ body::before {
   <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.3em; color: var(--accent); margin-bottom: 4px;">INTRANSIT TECHNOLOGIES</div>
   <div class="loading-text" id="loading-msg">INITIALIZING...</div>
   <div class="loading-bar-wrap"><div class="loading-bar" id="loading-bar"></div></div>
+  <div id="loading-pct" style="font-family:var(--font-mono);font-size:11px;color:var(--text-3);margin-top:6px;letter-spacing:0.1em">0%</div>
 </div>
 
 <!-- LOGIN -->
@@ -14164,7 +14165,11 @@ function setLoading(show, msg, pct) {
   const el = document.getElementById('loading-screen');
   el.classList.toggle('visible', show);
   if (msg) document.getElementById('loading-msg').textContent = msg;
-  if (pct !== undefined) document.getElementById('loading-bar').style.width = pct + '%';
+  if (pct !== undefined) {
+    document.getElementById('loading-bar').style.width = pct + '%';
+    const pctEl = document.getElementById('loading-pct');
+    if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+  }
 }
 
 // Only updates the loading bar if the loading screen is already visible

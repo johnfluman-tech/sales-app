@@ -3558,6 +3558,7 @@ function completeLogin() {
   ensureCacheLoaded().catch(() => {});
   loadAllAccounts().then(async () => {
     // Apply persistent hidden list — survives sales_report.py overwrites of rep tabs
+    setLoading(true, 'APPLYING PERMISSIONS...', 97);
     try {
       const _pHidden = await loadHiddenAccountsTab();
       console.log('[HIDDEN] Persistent hidden set size:', _pHidden.size);
@@ -3586,6 +3587,9 @@ function completeLogin() {
       console.warn('[ACCOUNTS] state.accounts is empty — repId:', state.repId, '| check tab load errors above');
       showToast('No accounts loaded. If your data is missing, sign out and back in or contact John.', 'error');
     }
+    setLoading(true, 'RENDERING...', 99);
+    await new Promise(r => setTimeout(r, 50));
+    setLoading(false);
     renderAccountsView();
     updateBadges();
     initSecurity();
@@ -4138,11 +4142,12 @@ async function loadAllAccounts() {
   }
 
   // Load note history once after all tabs (not once per tab — that causes N duplicates)
+  setLoading(true, 'LOADING NOTE HISTORY...', 83);
   await loadNoteHistory();
 
   setLoading(true, 'BUILDING VIEW...', 90);
   await new Promise(r => setTimeout(r, 100));
-  setLoading(false);
+  setLoading(true, 'ALMOST READY...', 95);
 }
 
 async function loadNoteHistory() {

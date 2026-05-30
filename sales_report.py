@@ -790,21 +790,33 @@ def push_customer_directory_tab(service, conn, all_tabs):
         print(f"  → _CUSTOMER_DIRECTORY: Tab ensured.")
 
         dir_sql = """
-            WITH direct_rep_orders AS (
+            WITH non_fjohn_orders AS (
+                -- FJohn is admin and enters orders across many accounts on behalf of other reps.
+                -- Exclude him from Priority-2 so the actual managing rep wins.
                 SELECT o.CUSTOMER_ID, o.USERNAME AS SALES_REP,
                        COUNT(*) AS order_count, MAX(o.ORDER_DATE) AS last_order
                 FROM dbo.ORDERHEA o
                 JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
-                WHERE o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                WHERE o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan')
                   AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
                 GROUP BY o.CUSTOMER_ID, o.USERNAME
             ),
-            direct_rep_ranked AS (
+            non_fjohn_ranked AS (
                 SELECT CUSTOMER_ID, SALES_REP,
                        ROW_NUMBER() OVER (PARTITION BY CUSTOMER_ID ORDER BY order_count DESC, last_order DESC) AS rn
-                FROM direct_rep_orders
+                FROM non_fjohn_orders
+            ),
+            fjohn_fallback AS (
+                -- FJohn gets credit only for accounts where no other known rep placed any order
+                SELECT DISTINCT o.CUSTOMER_ID, 'FJohn' AS SALES_REP
+                FROM dbo.ORDERHEA o
+                JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
+                WHERE o.USERNAME = 'FJohn'
+                  AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM non_fjohn_ranked WHERE rn = 1)
             ),
             rep_by_employee AS (
+                -- EMPLOYEE login lookup: only for accounts neither P2 nor P3 covered
                 SELECT o.CUSTOMER_ID, e.USERNAME AS SALES_REP,
                        ROW_NUMBER() OVER (PARTITION BY o.CUSTOMER_ID ORDER BY o.ORDER_DATE DESC) AS rn
                 FROM dbo.ORDERHEA o
@@ -812,14 +824,17 @@ def push_customer_directory_tab(service, conn, all_tabs):
                 JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
                 WHERE e.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
                   AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
-                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM direct_rep_ranked WHERE rn = 1)
+                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM non_fjohn_ranked WHERE rn = 1)
+                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM fjohn_fallback)
             ),
             owned_accounts AS (
                 SELECT c.ID AS CUSTOMER_ID, c.USERNAME AS SALES_REP
                 FROM dbo.CUSTOMER c
                 WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
                 UNION ALL
-                SELECT CUSTOMER_ID, SALES_REP FROM direct_rep_ranked WHERE rn = 1
+                SELECT CUSTOMER_ID, SALES_REP FROM non_fjohn_ranked WHERE rn = 1
+                UNION ALL
+                SELECT CUSTOMER_ID, SALES_REP FROM fjohn_fallback
                 UNION ALL
                 SELECT CUSTOMER_ID, SALES_REP FROM rep_by_employee WHERE rn = 1
             )
@@ -1704,23 +1719,29 @@ def main():
         "Trusted_Connection=yes;"
     )
     sql = """
-        WITH direct_rep_orders AS (
+        WITH non_fjohn_orders AS (
             SELECT o.CUSTOMER_ID, o.USERNAME AS SALES_REP,
                    COUNT(*) AS order_count, MAX(o.ORDER_DATE) AS last_order
             FROM dbo.ORDERHEA o
             JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
-            WHERE o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+            WHERE o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan')
               AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
             GROUP BY o.CUSTOMER_ID, o.USERNAME
         ),
-        direct_rep_ranked AS (
+        non_fjohn_ranked AS (
             SELECT CUSTOMER_ID, SALES_REP,
                    ROW_NUMBER() OVER (PARTITION BY CUSTOMER_ID ORDER BY order_count DESC, last_order DESC) AS rn
-            FROM direct_rep_orders
+            FROM non_fjohn_orders
+        ),
+        fjohn_fallback AS (
+            SELECT DISTINCT o.CUSTOMER_ID, 'FJohn' AS SALES_REP
+            FROM dbo.ORDERHEA o
+            JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
+            WHERE o.USERNAME = 'FJohn'
+              AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM non_fjohn_ranked WHERE rn = 1)
         ),
         rep_by_employee AS (
-            -- EMPLOYEE table fallback: only for accounts where no known rep placed direct orders
-            -- (e.g. dmacdonald->FJohn for Zebra Technologies)
             SELECT o.CUSTOMER_ID, e.USERNAME AS SALES_REP,
                    ROW_NUMBER() OVER (PARTITION BY o.CUSTOMER_ID ORDER BY o.ORDER_DATE DESC) AS rn
             FROM dbo.ORDERHEA o
@@ -1728,18 +1749,22 @@ def main():
             JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
             WHERE e.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
               AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
-              AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM direct_rep_ranked WHERE rn = 1)
+              AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM non_fjohn_ranked WHERE rn = 1)
+              AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM fjohn_fallback)
         ),
         owned_accounts AS (
-            -- Priority 1: Direct assignment via c.USERNAME
+            -- P1: Direct CUSTOMER.USERNAME assignment
             SELECT c.ID AS CUSTOMER_ID, c.USERNAME AS SALES_REP
             FROM dbo.CUSTOMER c
             WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
             UNION ALL
-            -- Priority 2: Rep placed most orders for this account with their own login
-            SELECT CUSTOMER_ID, SALES_REP FROM direct_rep_ranked WHERE rn = 1
+            -- P2: Non-FJohn rep with most direct orders (FJohn excluded — he's admin)
+            SELECT CUSTOMER_ID, SALES_REP FROM non_fjohn_ranked WHERE rn = 1
             UNION ALL
-            -- Priority 3: EMPLOYEE table fallback (only accounts with no direct rep orders)
+            -- P3: FJohn only if no other known rep placed any order
+            SELECT CUSTOMER_ID, SALES_REP FROM fjohn_fallback
+            UNION ALL
+            -- P4: EMPLOYEE table fallback (dmacdonald->FJohn etc., only if P2+P3 both miss)
             SELECT CUSTOMER_ID, SALES_REP FROM rep_by_employee WHERE rn = 1
         )
         SELECT
@@ -1854,19 +1879,27 @@ def main():
     # ── Pull invoice line items (part numbers) for last 2 years ──────────────
     print("  → Pulling invoice line items...")
     line_items_sql = """
-        WITH direct_rep_orders AS (
+        WITH non_fjohn_orders AS (
             SELECT o.CUSTOMER_ID, o.USERNAME AS SALES_REP,
                    COUNT(*) AS order_count, MAX(o.ORDER_DATE) AS last_order
             FROM dbo.ORDERHEA o
             JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
-            WHERE o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+            WHERE o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan')
               AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
             GROUP BY o.CUSTOMER_ID, o.USERNAME
         ),
-        direct_rep_ranked AS (
+        non_fjohn_ranked AS (
             SELECT CUSTOMER_ID, SALES_REP,
                    ROW_NUMBER() OVER (PARTITION BY CUSTOMER_ID ORDER BY order_count DESC, last_order DESC) AS rn
-            FROM direct_rep_orders
+            FROM non_fjohn_orders
+        ),
+        fjohn_fallback AS (
+            SELECT DISTINCT o.CUSTOMER_ID, 'FJohn' AS SALES_REP
+            FROM dbo.ORDERHEA o
+            JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
+            WHERE o.USERNAME = 'FJohn'
+              AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM non_fjohn_ranked WHERE rn = 1)
         ),
         rep_by_employee AS (
             SELECT o.CUSTOMER_ID, e.USERNAME AS SALES_REP,
@@ -1876,14 +1909,17 @@ def main():
             JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
             WHERE e.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
               AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
-              AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM direct_rep_ranked WHERE rn = 1)
+              AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM non_fjohn_ranked WHERE rn = 1)
+              AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM fjohn_fallback)
         ),
         owned_accounts AS (
             SELECT c.ID AS CUSTOMER_ID, c.USERNAME AS SALES_REP
             FROM dbo.CUSTOMER c
             WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
             UNION ALL
-            SELECT CUSTOMER_ID, SALES_REP FROM direct_rep_ranked WHERE rn = 1
+            SELECT CUSTOMER_ID, SALES_REP FROM non_fjohn_ranked WHERE rn = 1
+            UNION ALL
+            SELECT CUSTOMER_ID, SALES_REP FROM fjohn_fallback
             UNION ALL
             SELECT CUSTOMER_ID, SALES_REP FROM rep_by_employee WHERE rn = 1
         )
@@ -1926,21 +1962,33 @@ def main():
     print("  → Pulling collections data...")
     try:
         collections_sql = """
-            WITH direct_rep_orders AS (
+            WITH non_fjohn_orders AS (
+                -- FJohn is admin and enters orders across many accounts on behalf of other reps.
+                -- Exclude him from Priority-2 so the actual managing rep wins.
                 SELECT o.CUSTOMER_ID, o.USERNAME AS SALES_REP,
                        COUNT(*) AS order_count, MAX(o.ORDER_DATE) AS last_order
                 FROM dbo.ORDERHEA o
                 JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
-                WHERE o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                WHERE o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan')
                   AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
                 GROUP BY o.CUSTOMER_ID, o.USERNAME
             ),
-            direct_rep_ranked AS (
+            non_fjohn_ranked AS (
                 SELECT CUSTOMER_ID, SALES_REP,
                        ROW_NUMBER() OVER (PARTITION BY CUSTOMER_ID ORDER BY order_count DESC, last_order DESC) AS rn
-                FROM direct_rep_orders
+                FROM non_fjohn_orders
+            ),
+            fjohn_fallback AS (
+                -- FJohn gets credit only for accounts where no other known rep placed any order
+                SELECT DISTINCT o.CUSTOMER_ID, 'FJohn' AS SALES_REP
+                FROM dbo.ORDERHEA o
+                JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
+                WHERE o.USERNAME = 'FJohn'
+                  AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM non_fjohn_ranked WHERE rn = 1)
             ),
             rep_by_employee AS (
+                -- EMPLOYEE login lookup: only for accounts neither P2 nor P3 covered
                 SELECT o.CUSTOMER_ID, e.USERNAME AS SALES_REP,
                        ROW_NUMBER() OVER (PARTITION BY o.CUSTOMER_ID ORDER BY o.ORDER_DATE DESC) AS rn
                 FROM dbo.ORDERHEA o
@@ -1948,14 +1996,17 @@ def main():
                 JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
                 WHERE e.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
                   AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
-                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM direct_rep_ranked WHERE rn = 1)
+                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM non_fjohn_ranked WHERE rn = 1)
+                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM fjohn_fallback)
             ),
             owned_accounts AS (
                 SELECT c.ID AS CUSTOMER_ID, c.USERNAME AS SALES_REP
                 FROM dbo.CUSTOMER c
                 WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
                 UNION ALL
-                SELECT CUSTOMER_ID, SALES_REP FROM direct_rep_ranked WHERE rn = 1
+                SELECT CUSTOMER_ID, SALES_REP FROM non_fjohn_ranked WHERE rn = 1
+                UNION ALL
+                SELECT CUSTOMER_ID, SALES_REP FROM fjohn_fallback
                 UNION ALL
                 SELECT CUSTOMER_ID, SALES_REP FROM rep_by_employee WHERE rn = 1
             )
@@ -2211,21 +2262,33 @@ def main():
     print("  → Pulling GP data from invoices...")
     try:
         gp_sql = """
-            WITH direct_rep_orders AS (
+            WITH non_fjohn_orders AS (
+                -- FJohn is admin and enters orders across many accounts on behalf of other reps.
+                -- Exclude him from Priority-2 so the actual managing rep wins.
                 SELECT o.CUSTOMER_ID, o.USERNAME AS SALES_REP,
                        COUNT(*) AS order_count, MAX(o.ORDER_DATE) AS last_order
                 FROM dbo.ORDERHEA o
                 JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
-                WHERE o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                WHERE o.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan')
                   AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
                 GROUP BY o.CUSTOMER_ID, o.USERNAME
             ),
-            direct_rep_ranked AS (
+            non_fjohn_ranked AS (
                 SELECT CUSTOMER_ID, SALES_REP,
                        ROW_NUMBER() OVER (PARTITION BY CUSTOMER_ID ORDER BY order_count DESC, last_order DESC) AS rn
-                FROM direct_rep_orders
+                FROM non_fjohn_orders
+            ),
+            fjohn_fallback AS (
+                -- FJohn gets credit only for accounts where no other known rep placed any order
+                SELECT DISTINCT o.CUSTOMER_ID, 'FJohn' AS SALES_REP
+                FROM dbo.ORDERHEA o
+                JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
+                WHERE o.USERNAME = 'FJohn'
+                  AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM non_fjohn_ranked WHERE rn = 1)
             ),
             rep_by_employee AS (
+                -- EMPLOYEE login lookup: only for accounts neither P2 nor P3 covered
                 SELECT o.CUSTOMER_ID, e.USERNAME AS SALES_REP,
                        ROW_NUMBER() OVER (PARTITION BY o.CUSTOMER_ID ORDER BY o.ORDER_DATE DESC) AS rn
                 FROM dbo.ORDERHEA o
@@ -2233,14 +2296,17 @@ def main():
                 JOIN dbo.CUSTOMER c ON c.ID = o.CUSTOMER_ID
                 WHERE e.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
                   AND c.USERNAME NOT IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
-                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM direct_rep_ranked WHERE rn = 1)
+                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM non_fjohn_ranked WHERE rn = 1)
+                  AND o.CUSTOMER_ID NOT IN (SELECT CUSTOMER_ID FROM fjohn_fallback)
             ),
             owned_accounts AS (
                 SELECT c.ID AS CUSTOMER_ID, c.USERNAME AS SALES_REP
                 FROM dbo.CUSTOMER c
                 WHERE c.USERNAME IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
                 UNION ALL
-                SELECT CUSTOMER_ID, SALES_REP FROM direct_rep_ranked WHERE rn = 1
+                SELECT CUSTOMER_ID, SALES_REP FROM non_fjohn_ranked WHERE rn = 1
+                UNION ALL
+                SELECT CUSTOMER_ID, SALES_REP FROM fjohn_fallback
                 UNION ALL
                 SELECT CUSTOMER_ID, SALES_REP FROM rep_by_employee WHERE rn = 1
             )

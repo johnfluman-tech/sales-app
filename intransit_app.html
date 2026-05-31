@@ -9148,7 +9148,11 @@ async function loadAllGmail(batchStart) {
   for (var i = 0; i < toLoad.length && !expired; i += BATCH) {
     var batch = toLoad.slice(i, i + BATCH);
     await Promise.all(batch.map(async function(a) {
-      if (state.gmailActivityCache[a.name] && state.gmailActivityCache[a.name] !== 'error') return;
+      var cached = state.gmailActivityCache[a.name];
+      var hasEmails = cached && cached.messages && cached.messages.length > 0;
+      var TTL = hasEmails ? 24*60*60*1000 : 7*24*60*60*1000; // 24h if has emails, 7 days if empty
+      var fresh = cached && cached.loadedAt && (Date.now() - cached.loadedAt) < TTL && cached !== 'error';
+      if (fresh) return;
       try {
         await loadGmailActivity(a.name);
       } catch(e) {
@@ -9227,11 +9231,13 @@ async function _gmailAutoScan() {
     return contacts.some(function(c) { return c.email && c.email.includes('@'); });
   });
   if (!toLoad.length) return;
-  var STALE_MS = 24 * 60 * 60 * 1000; // 24 hours — no need to rescan every 8h
   var now = Date.now();
   var stale = toLoad.filter(function(a) {
     var d = state.gmailActivityCache[a.name];
-    return !d || !d.loadedAt || (now - d.loadedAt) > STALE_MS;
+    if (!d || !d.loadedAt) return true;
+    var hasEmails = d.messages && d.messages.length > 0;
+    var TTL = hasEmails ? 24*60*60*1000 : 7*24*60*60*1000;
+    return (now - d.loadedAt) > TTL;
   }).length;
   if (stale === 0) { console.log('[GMAIL] Cache fresh, skipping auto-scan'); return; }
   console.log('[GMAIL] Auto-scan:', stale, 'stale accounts');

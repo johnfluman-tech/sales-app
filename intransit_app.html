@@ -9192,7 +9192,10 @@ function _loadGmailCacheFromStorage() {
     var loaded = 0;
     Object.keys(slim).forEach(function(k) {
       if (state.gmailActivityCache[k] && state.gmailActivityCache[k].loadedAt) return; // keep fresher in-memory data
-      state.gmailActivityCache[k] = slim[k];
+      var d = slim[k];
+      // Drop stale pre-fix entries: all messages have blank 'to' (old metadataHeaders bug)
+      if (d.messages && d.messages.length > 0 && d.messages.every(function(m) { return !m.to; })) return;
+      state.gmailActivityCache[k] = d;
       loaded++;
     });
     console.log('[GMAIL] Cache restored from storage:', loaded, 'accounts');

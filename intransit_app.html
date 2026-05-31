@@ -4549,14 +4549,16 @@ function renderAccountsView() {
     }
 
     if (acc._crmOnly) {
-      const loc = [acc.city, acc.state].filter(Boolean).join(', ') || '—';
+      const loc = [acc.city, acc.state].filter(Boolean).join(', ');
+      tr.dataset.lastSale = acc.lastActivity || '';
       tr.style.opacity = '0.72';
       tr.innerHTML =
         '<td class="td-name">' + escHtml(acc.name) +
           '<span style="display:inline-block;margin-left:6px;background:var(--s2);border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:8px;padding:1px 5px;border-radius:var(--r);vertical-align:middle;letter-spacing:0.06em">CRM</span>' +
+          (loc ? '<span style="display:block;font-size:9px;color:var(--text-3);margin-top:1px">' + escHtml(loc) + '</span>' : '') +
         '</td>' +
         (showRep ? '<td class="td-mono">' + escHtml(getRepDisplayName(acc.rep)) + '</td>' : '') +
-        '<td><span style="color:var(--text-3);font-size:11px">' + escHtml(loc) + '</span></td>' +
+        '<td><span style="color:var(--text-muted)">—</span></td>' +
         '<td class="td-mono" style="color:var(--text-3)">' + (acc.lastActivity ? acc.lastActivity.slice(0,10) : '—') + '</td>' +
         '<td class="td-amount"><span style="color:var(--text-muted)">No shipments</span></td>' +
         '<td>—</td>';

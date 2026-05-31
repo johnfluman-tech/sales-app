@@ -8343,7 +8343,7 @@ async function loadGmailActivity(accName) {
     try {
       var msg = await gmailFetch('users/me/messages/' + m.id, {
         format: 'metadata',
-        metadataHeaders: ['To', 'Subject', 'Date']
+        metadataHeaders: ['To', 'Cc', 'Bcc', 'Subject', 'Date']
       });
       var headers = {};
       (msg.payload && msg.payload.headers || []).forEach(function(h){
@@ -8354,6 +8354,8 @@ async function loadGmailActivity(accName) {
         threadId: msg.threadId,
         subject: headers.subject || '(no subject)',
         to: headers.to || '',
+        cc: headers.cc || '',
+        bcc: headers.bcc || '',
         date: headers.date || '',
         replied: false,
         snippet: msg.snippet || ''
@@ -8435,9 +8437,13 @@ function renderGmailActivityTab(acc) {
       var repliedBadge = m.replied
         ? '<span style="font-size:9px;background:rgba(34,197,94,0.15);color:#22c55e;padding:2px 7px;border-radius:3px;font-family:var(--mono);font-weight:700">&#10003; REPLIED</span>'
         : '<span style="font-size:9px;background:rgba(239,68,68,0.08);color:var(--text-muted);padding:2px 7px;border-radius:3px;font-family:var(--mono)">NO REPLY</span>';
-      var toDisplay = m.to || '—';
-      if (toDisplay.length > 50) toDisplay = toDisplay.slice(0, 50) + '...';
       var subjectDisplay = m.subject || '(no subject)';
+      function _addrRow(label, val) {
+        if (!val) return '';
+        return '<div style="font-size:11px;color:var(--text-muted);margin-bottom:2px;line-height:1.4">' +
+          '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3);display:inline-block;width:26px;margin-right:4px">' + label + '</span>' +
+          escHtml(val) + '</div>';
+      }
       return '<div style="border-bottom:1px solid var(--border);padding:10px 0">' +
         // Row 1: date + reply badge
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
@@ -8445,11 +8451,13 @@ function renderGmailActivityTab(acc) {
         repliedBadge +
         '</div>' +
         // Row 2: subject
-        '<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(subjectDisplay) + '</div>' +
-        // Row 3: To
-        '<div style="font-size:11px;color:var(--text-muted);margin-bottom:3px"><span style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-right:4px">TO</span>' + escHtml(toDisplay) + '</div>' +
-        // Row 4: snippet
-        '<div style="font-size:10px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml((m.snippet||'').slice(0,120)) + '</div>' +
+        '<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(subjectDisplay) + '</div>' +
+        // Rows 3+: To / Cc / Bcc — all shown, full addresses, only if present
+        _addrRow('TO', m.to) +
+        _addrRow('CC', m.cc) +
+        _addrRow('BCC', m.bcc) +
+        // Snippet
+        '<div style="font-size:10px;color:var(--text-3);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml((m.snippet||'').slice(0,120)) + '</div>' +
         '</div>';
     }).join('');
   }
@@ -9172,7 +9180,7 @@ function _saveGmailCacheToStorage() {
       slim[k] = {
         emails: d.emails || [],
         messages: d.messages.slice(0, 15).map(function(m) {
-          return { subject: m.subject || '', to: m.to || '', date: m.date || '', replied: !!m.replied, snippet: (m.snippet || '').slice(0, 150) };
+          return { subject: m.subject || '', to: m.to || '', cc: m.cc || '', bcc: m.bcc || '', date: m.date || '', replied: !!m.replied, snippet: (m.snippet || '').slice(0, 150) };
         }),
         loadedAt: d.loadedAt
       };

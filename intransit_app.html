@@ -4541,7 +4541,7 @@ function renderAccountsView() {
     tr.onclick = () => selectAccount(acc);
     tr.dataset.name        = acc.name || '';
     tr.dataset.total       = acc.total || 0;
-    tr.dataset.lastSale    = acc.lastSale || '';
+    tr.dataset.lastSale    = acc.lastSaleDate || acc.lastSale || '';
     tr.dataset.daysInactive = acc.daysInactive || 0;
     tr.dataset.status      = (acc.status||'').replace(/[🔴🟠⚫🟡]/g,'').trim();
     if (state.selectedAccount?.name === acc.name && state.selectedAccount?.rep === acc.rep) {

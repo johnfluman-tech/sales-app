@@ -8364,6 +8364,20 @@ async function loadGmailActivity(accName, fastMode) {
   return state.gmailActivityCache[accName];
 }
 
+function _parseGmailDate(dateStr) {
+  if (!dateStr) return '';
+  var d = new Date(dateStr);
+  if (!isNaN(d.getTime())) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  // RFC 2822 fallback: extract DD Mon YYYY
+  var m = dateStr.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})/i);
+  if (m) {
+    var mo = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+    var dt = new Date(parseInt(m[3]), mo[m[2].toLowerCase()], parseInt(m[1]));
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  return dateStr;
+}
+
 function renderGmailActivityTab(acc) {
   var cached = state.gmailActivityCache[acc.name];
 
@@ -8417,8 +8431,7 @@ function renderGmailActivityTab(acc) {
     listHtml = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px">No sent emails found to this account\'s contacts.</div>';
   } else {
     listHtml = msgs.map(function(m) {
-      var dStr = '';
-      try { dStr = new Date(m.date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); } catch(e) { dStr = m.date; }
+      var dStr = _parseGmailDate(m.date);
       var repliedBadge = m.replied
         ? '<span style="font-size:9px;background:rgba(34,197,94,0.15);color:#22c55e;padding:1px 5px;border-radius:3px;font-family:var(--mono)">&#10003; REPLIED</span>'
         : '<span style="font-size:9px;background:rgba(239,68,68,0.1);color:var(--text-muted);padding:1px 5px;border-radius:3px;font-family:var(--mono)">NO REPLY</span>';
@@ -8437,6 +8450,34 @@ function renderGmailActivityTab(acc) {
     }).join('');
   }
 
+  var aiSection = '';
+  if (msgs.length > 0 || emails.length > 0) {
+    var accData = state.accounts ? state.accounts.find(function(a){ return a.name === acc.name; }) : null;
+    var ctx = 'Account: ' + acc.name
+      + ' | Status: ' + (acc.status || '?')
+      + ' | Lifetime: $' + Math.round(parseFloat((accData && accData.total) || acc.total || 0))
+      + ' | Last sale: ' + (acc.lastSaleDate || acc.lastSale || 'unknown')
+      + ' | Emails sent: ' + msgs.length
+      + ' | Reply rate: ' + replyRate + '%'
+      + ' | Contacts: ' + emails.join(', ')
+      + (msgs.length ? ' | Subjects: ' + msgs.slice(0,5).map(function(m){ return m.subject; }).join('; ') : '');
+    aiSection = '<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">'
+      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+      + '<span style="font-size:14px">&#127775;</span>'
+      + '<span style="font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--accent)">AI EMAIL ADVISOR</span>'
+      + '</div>'
+      + '<div id="gmail-ai-msgs" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;margin-bottom:10px"></div>'
+      + '<div style="display:flex;gap:6px">'
+      + '<input id="gmail-ai-input" type="text" '
+      + 'placeholder="Ask about this account... e.g. What opportunities exist? What should I say next?" '
+      + 'style="flex:1;padding:7px 10px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:var(--r);outline:none" '
+      + 'onkeydown="if(event.keyCode===13){event.preventDefault();_gmailAIAsk(' + JSON.stringify(ctx) + ');}" />'
+      + '<button onclick="_gmailAIAsk(' + JSON.stringify(ctx) + ')" '
+      + 'style="padding:7px 14px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;border-radius:var(--r);cursor:pointer;white-space:nowrap">ASK &#10148;</button>'
+      + '<button onclick="_gmailAIQuick(' + JSON.stringify(ctx) + ', this)" '
+      + 'style="padding:7px 14px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.4);color:var(--blue-b);font-family:var(--mono);font-size:10px;border-radius:var(--r);cursor:pointer;white-space:nowrap">&#9889; Game Plan</button>'
+      + '</div></div>';
+  }
   var reloadBtn = '<button data-n="' + escHtml(acc.name) + '" onclick="gmailLoadForAccount(this.dataset.n)" ' +
     'style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer;font-family:var(--mono)">&#8635; Reload</button>';
 
@@ -8446,7 +8487,7 @@ function renderGmailActivityTab(acc) {
     '<div style="display:flex;align-items:center;gap:8px">' +
     (loadedAgo ? '<span style="font-size:10px;color:var(--text-3)">loaded ' + loadedAgo + '</span>' : '') +
     reloadBtn + '</div></div>' +
-    summaryHtml + listHtml + '</div>';
+    summaryHtml + listHtml + aiSection + '</div>';
 }
 
 function _gmailKpi(label, val, color) {
@@ -8486,6 +8527,63 @@ async function gmailLoadForAccount(accName) {
       tabEl.innerHTML = renderGmailActivityTab(state.selectedAccount);
     }
   }
+}
+
+
+async function _gmailAIAsk(ctx) {
+  var inp = document.getElementById('gmail-ai-input');
+  var msgs = document.getElementById('gmail-ai-msgs');
+  if (!inp || !msgs) return;
+  var q = inp.value.trim(); if (!q) return;
+  inp.value = ''; inp.disabled = true;
+  var uDiv = document.createElement('div');
+  uDiv.style.cssText = 'align-self:flex-end;background:var(--blue-b);color:#fff;padding:6px 10px;border-radius:var(--r2);font-size:11px;max-width:90%;word-break:break-word;align-self:flex-end;display:inline-block';
+  uDiv.textContent = q; msgs.appendChild(uDiv); msgs.scrollTop = msgs.scrollHeight;
+  if (!window._gmailAIHist) window._gmailAIHist = {};
+  var key = (ctx||'').slice(0,40);
+  if (!window._gmailAIHist[key]) window._gmailAIHist[key] = [];
+  window._gmailAIHist[key].push({ role: 'user', content: q });
+  var sys = 'You are a senior B2B sales coach at Intransit Technologies (industrial electronics distributor). '
+    + 'Analyze the email communication data and give specific, actionable advice. '
+    + 'ACCOUNT CONTEXT: ' + ctx;
+  try {
+    var resp = await callAI({ model: 'claude-haiku-4-5-20251001', max_tokens: 500,
+      system: sys, messages: window._gmailAIHist[key].slice(-8) });
+    var txt = resp && resp.content && resp.content[0] ? resp.content[0].text : 'No response.';
+    window._gmailAIHist[key].push({ role: 'assistant', content: txt });
+    var aDiv = document.createElement('div');
+    aDiv.style.cssText = 'background:var(--s2);border:1px solid var(--border);padding:8px 12px;border-radius:var(--r2);font-size:11px;line-height:1.7;color:var(--text);white-space:pre-wrap';
+    aDiv.textContent = txt; msgs.appendChild(aDiv);
+  } catch(e) {
+    var eDiv = document.createElement('div');
+    eDiv.style.cssText = 'color:var(--red);font-size:11px'; eDiv.textContent = 'Error: ' + e.message; msgs.appendChild(eDiv);
+    window._gmailAIHist[key].pop();
+  }
+  msgs.scrollTop = msgs.scrollHeight; inp.disabled = false; inp.focus();
+}
+
+async function _gmailAIQuick(ctx, btn) {
+  btn.disabled = true; btn.textContent = 'Thinking...';
+  var msgs = document.getElementById('gmail-ai-msgs');
+  var sys = 'You are a senior B2B sales coach at Intransit Technologies (industrial electronics distributor). '
+    + 'Create a concise outreach game plan based on the email history. '
+    + 'ACCOUNT CONTEXT: ' + ctx;
+  var prompt = 'Based on the email communication history for this account, give me: '
+    + '1) A 2-sentence assessment of the relationship status. '
+    + '2) The #1 opportunity to re-engage or grow this account. '
+    + '3) A specific opening line for my next email to them. '
+    + 'Be direct and specific — no generic advice.';
+  try {
+    var resp = await callAI({ model: 'claude-haiku-4-5-20251001', max_tokens: 400,
+      system: sys, messages: [{ role: 'user', content: prompt }] });
+    var txt = resp && resp.content && resp.content[0] ? resp.content[0].text : 'No response.';
+    if (msgs) {
+      var aDiv = document.createElement('div');
+      aDiv.style.cssText = 'background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.3);padding:10px 14px;border-radius:var(--r2);font-size:11px;line-height:1.7;color:var(--text);white-space:pre-wrap';
+      aDiv.textContent = txt; msgs.appendChild(aDiv); msgs.scrollTop = msgs.scrollHeight;
+    }
+  } catch(e) { if (msgs) { var eDiv=document.createElement('div'); eDiv.style.cssText='color:var(--red);font-size:11px'; eDiv.textContent='Error: '+e.message; msgs.appendChild(eDiv); } }
+  btn.disabled = false; btn.textContent = '\u26A1 Game Plan';
 }
 
 // End Gmail Email Activity ─────────────────────────────────────────────────

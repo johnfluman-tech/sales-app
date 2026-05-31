@@ -10066,38 +10066,7 @@ function renderFollowUpCommandCenter() {
   }
 
   const pending = events.filter(e => !e.done).sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
-
-  // ── Gmail Reply Queue — emails sent > 3 days ago with no reply ────────────
-  const _dismissedReplies = new Set();
-  try { JSON.parse(localStorage.getItem('iq_dismissed_replies_' + repKey) || '[]').forEach(function(k){ _dismissedReplies.add(k); }); } catch(e) {}
-
-  const _gmailReplyQueue = [];
-  if (state.gmailActivityCache) {
-    const _threeDaysAgo = Date.now() - 3 * 86400000;
-    repAccounts.forEach(function(acc) {
-      var gmData = state.gmailActivityCache[acc.name] || state.gmailActivityCache[acc.name.trim()];
-      if (!gmData || !gmData.messages) return;
-      gmData.messages.forEach(function(m) {
-        if (m.replied) return;
-        var d = new Date(_parseGmailDate ? m.date : m.date);
-        var ts = NaN;
-        try { ts = new Date(m.date).getTime(); } catch(e) {}
-        if (isNaN(ts)) { // try RFC 2822 parse
-          var mt = (m.date||'').match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})/i);
-          if (mt) { var mo2={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11}; ts = new Date(parseInt(mt[3]), mo2[mt[2].toLowerCase()], parseInt(mt[1])).getTime(); }
-        }
-        if (isNaN(ts) || ts > _threeDaysAgo) return;
-        var daysWaiting = Math.floor((Date.now() - ts) / 86400000);
-        var rKey = acc.name + '|' + (m.subject||'').slice(0,30) + '|' + m.date;
-        if (_dismissedReplies.has(rKey)) return;
-        _gmailReplyQueue.push({ accName: acc.name, subject: m.subject || '(no subject)', to: m.to || '', daysWaiting: daysWaiting, key: rKey });
-      });
-    });
-  }
-  _gmailReplyQueue.sort(function(a,b){ return b.daysWaiting - a.daysWaiting; });
-  const _replyQueueShown = _gmailReplyQueue.slice(0, 8);
-
-  const selDate = (window._iqCalState && window._iqCalState.selectedDate) ? window._iqCalState.selectedDate : todayStr;
+const selDate = (window._iqCalState && window._iqCalState.selectedDate) ? window._iqCalState.selectedDate : todayStr;
   const todayEvents = pending.filter(e => e.date === selDate);
   const overdueEvents = selDate === todayStr ? pending.filter(e => e.date < todayStr) : [];
   const upcomingEvents = pending.filter(e => e.date > todayStr);
@@ -10116,33 +10085,6 @@ function renderFollowUpCommandCenter() {
   const repKey = viewAsRep || state.repId || 'admin';
   let hiddenSet = new Set();
   try { hiddenSet = new Set(JSON.parse(localStorage.getItem('iq_hidden_' + repKey) || '[]')); } catch(e){}
-
-  // ── Gmail Reply Queue — emails sent > 3 days ago with no reply ─────────────
-  const _dismissedReplies = new Set();
-  try { JSON.parse(localStorage.getItem('iq_dismissed_replies_' + repKey) || '[]').forEach(function(k){ _dismissedReplies.add(k); }); } catch(e) {}
-  const _gmailReplyQueue = [];
-  if (state.gmailActivityCache) {
-    const _threeDaysAgo = Date.now() - 3 * 86400000;
-    repAccounts.forEach(function(acc) {
-      var gmData = state.gmailActivityCache[acc.name] || state.gmailActivityCache[(acc.name||'').trim()];
-      if (!gmData || !gmData.messages) return;
-      gmData.messages.forEach(function(m) {
-        if (m.replied) return;
-        var ts = NaN;
-        try { ts = new Date(m.date).getTime(); } catch(e2) {}
-        if (isNaN(ts)) {
-          var mt2 = (m.date||'').match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})/i);
-          if (mt2) { var mo2={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11}; ts = new Date(parseInt(mt2[3]), mo2[mt2[2].toLowerCase()], parseInt(mt2[1])).getTime(); }
-        }
-        if (isNaN(ts) || ts > _threeDaysAgo) return;
-        var rKey2 = acc.name + '|' + (m.subject||'').slice(0,30) + '|' + m.date;
-        if (_dismissedReplies.has(rKey2)) return;
-        _gmailReplyQueue.push({ accName: acc.name, subject: m.subject || '(no subject)', to: m.to || '', daysWaiting: Math.floor((Date.now() - ts) / 86400000), key: rKey2 });
-      });
-    });
-  }
-  _gmailReplyQueue.sort(function(a,b){ return b.daysWaiting - a.daysWaiting; });
-  const _replyQueueShown = _gmailReplyQueue.slice(0, 8);
 
   // Build ONE entry per account — best contact ranked by contact-level invoice value
   // For each account, figure out which contact was on the most invoices

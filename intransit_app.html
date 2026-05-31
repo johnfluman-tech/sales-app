@@ -9141,27 +9141,33 @@ async function loadAllGmail(batchStart) {
   var done = 0;
   var errors = 0;
   var firstError = '';
-  for (var i = 0; i < toLoad.length; i++) {
-    var a = toLoad[i];
-    if (!state.gmailActivityCache[a.name] || state.gmailActivityCache[a.name] === 'error') {
+  var expired = false;
+  var BATCH = 5;   // parallel accounts per batch
+  var DELAY = 100; // ms between batches
+
+  for (var i = 0; i < toLoad.length && !expired; i += BATCH) {
+    var batch = toLoad.slice(i, i + BATCH);
+    await Promise.all(batch.map(async function(a) {
+      if (state.gmailActivityCache[a.name] && state.gmailActivityCache[a.name] !== 'error') return;
       try {
         await loadGmailActivity(a.name);
       } catch(e) {
         state.gmailActivityCache[a.name] = { error: e.message };
         errors++;
         if (!firstError) firstError = e.message;
-        if (e.message === 'gmail_401') {
-          window._gmailScanStatus = { done: done, total: toLoad.length, running: false, errors: errors, lastError: 'Gmail session expired mid-scan. Click Scan again to reconnect.' };
-          if (state.activeView === 'myOutreach') renderMyOutreachView();
-          return;
-        }
+        if (e.message === 'gmail_401') expired = true;
       }
-      await new Promise(function(r){ setTimeout(r, 350); });
-    }
-    done++;
+    }));
+    done = Math.min(i + BATCH, toLoad.length);
     window._gmailScanStatus.done = done;
     window._gmailScanStatus.errors = errors;
-    if (done % 5 === 0 && state.activeView === 'myOutreach') renderMyOutreachView();
+    if (state.activeView === 'myOutreach') renderMyOutreachView();
+    if (expired) {
+      window._gmailScanStatus = { done: done, total: toLoad.length, running: false, errors: errors, lastError: 'Gmail session expired mid-scan. Click Scan again to reconnect.' };
+      if (state.activeView === 'myOutreach') renderMyOutreachView();
+      return;
+    }
+    if (i + BATCH < toLoad.length) await new Promise(function(r){ setTimeout(r, DELAY); });
   }
 
   window._gmailScanStatus = { done: done, total: toLoad.length, running: false, errors: errors, lastError: firstError };

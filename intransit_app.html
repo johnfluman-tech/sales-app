@@ -8943,7 +8943,7 @@ async function renderMyOutreachView() {
   window._ocGmailAccs = gmailLoaded.map(function(k){ var d=state.gmailActivityCache[k]; return {name:k, sent:(d.messages||[]).length, replied:(d.messages||[]).filter(function(m){return m.replied;}).length}; });
   '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:22px">'+
     _kpi('CRITICAL', critical.length, '#ef4444', 'Contact immediately', "_showOutreachList('CRITICAL — Contact Immediately',window._ocCritical,'#ef4444')")+
-    _kpi('AT RISK', atRisk.length, '#f97316', '30–90 days inactive')+
+    _kpi('AT RISK', atRisk.length, '#f97316', '30–90 days inactive', "_showOutreachList('AT RISK \u2014 30-90 Days Inactive',window._ocAtRisk,'#f97316')")+
     _kpi('FU OVERDUE', overdue.length, '#a855f7', 'Past due follow-ups', "_showOutreachList('FU OVERDUE — Past Due Follow-ups',window._ocOverdue,'#a855f7')")+
     (gmailLoaded.length>0
       ? _kpi('REPLY RATE', gRate+'%', gRate>=40?'#22c55e':gRate>=20?'#f59e0b':'#ef4444', gSent+' emails tracked', "_showOutreachList('Gmail — Email Activity',window._ocGmailAccs,'#60a5fa','gmail')")
@@ -9216,7 +9216,7 @@ function _saveGmailCacheToStorage() {
       if (!d || !d.messages) return;
       slim[k] = {
         emails: d.emails || [],
-        messages: d.messages.slice(0, 15).map(function(m) {
+        messages: d.messages.slice(0, 40).map(function(m) {
           return { subject: m.subject || '', to: m.to || '', date: m.date || '', replied: !!m.replied, snippet: (m.snippet || '').slice(0, 150) };
         }),
         loadedAt: d.loadedAt

@@ -10010,6 +10010,37 @@ function renderFollowUpCommandCenter() {
   }
 
   const pending = events.filter(e => !e.done).sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
+
+  // ── Gmail Reply Queue — emails sent > 3 days ago with no reply ────────────
+  const _dismissedReplies = new Set();
+  try { JSON.parse(localStorage.getItem('iq_dismissed_replies_' + repKey) || '[]').forEach(function(k){ _dismissedReplies.add(k); }); } catch(e) {}
+
+  const _gmailReplyQueue = [];
+  if (state.gmailActivityCache) {
+    const _threeDaysAgo = Date.now() - 3 * 86400000;
+    repAccounts.forEach(function(acc) {
+      var gmData = state.gmailActivityCache[acc.name] || state.gmailActivityCache[acc.name.trim()];
+      if (!gmData || !gmData.messages) return;
+      gmData.messages.forEach(function(m) {
+        if (m.replied) return;
+        var d = new Date(_parseGmailDate ? m.date : m.date);
+        var ts = NaN;
+        try { ts = new Date(m.date).getTime(); } catch(e) {}
+        if (isNaN(ts)) { // try RFC 2822 parse
+          var mt = (m.date||'').match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})/i);
+          if (mt) { var mo2={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11}; ts = new Date(parseInt(mt[3]), mo2[mt[2].toLowerCase()], parseInt(mt[1])).getTime(); }
+        }
+        if (isNaN(ts) || ts > _threeDaysAgo) return;
+        var daysWaiting = Math.floor((Date.now() - ts) / 86400000);
+        var rKey = acc.name + '|' + (m.subject||'').slice(0,30) + '|' + m.date;
+        if (_dismissedReplies.has(rKey)) return;
+        _gmailReplyQueue.push({ accName: acc.name, subject: m.subject || '(no subject)', to: m.to || '', daysWaiting: daysWaiting, key: rKey });
+      });
+    });
+  }
+  _gmailReplyQueue.sort(function(a,b){ return b.daysWaiting - a.daysWaiting; });
+  const _replyQueueShown = _gmailReplyQueue.slice(0, 8);
+
   const selDate = (window._iqCalState && window._iqCalState.selectedDate) ? window._iqCalState.selectedDate : todayStr;
   const todayEvents = pending.filter(e => e.date === selDate);
   const overdueEvents = selDate === todayStr ? pending.filter(e => e.date < todayStr) : [];
@@ -10128,6 +10159,8 @@ function renderFollowUpCommandCenter() {
 
   // Score, filter hidden, rank — ONE per account, top 100
   contactList.forEach(c => { c.score = iqScore(c); });
+  window._iqLastEvents = events || [];
+  window._gmailReplyQueue = _gmailReplyQueue;
   const aiPicks = contactList
     .filter(c => c.score >= 15 && !hiddenSet.has(c.accName))
     .sort((a,b) => b.score - a.score)
@@ -10170,12 +10203,33 @@ function renderFollowUpCommandCenter() {
   // KPI bar
   const kpiBar = document.createElement('div');
   kpiBar.className = 'iq-topbar';
+  var _critCount = aiPicks.filter(function(c){ return c.score >= 80; }).length;
+  var _atRiskCount = aiPicks.filter(function(c){ return c.score >= 50 && c.score < 80; }).length;
+  var _fuOverdue = (events||[]).filter(function(e){ return !e.done && e.date < todayStr; }).length;
   kpiBar.innerHTML =
-    '<div class="iq-kpi"><div class="iq-kpi-num" style="color:var(--red)">' + (todayEvents.length + overdueEvents.length) + '</div><div class="iq-kpi-label">DUE TODAY</div></div>' +
-    '<div class="iq-kpi"><div class="iq-kpi-num" style="color:var(--gold)">' + upcomingEvents.length + '</div><div class="iq-kpi-label">UPCOMING</div></div>' +
-    '<div class="iq-kpi"><div class="iq-kpi-num" style="color:var(--blue-bright)">' + aiPicks.length + '</div><div class="iq-kpi-label">AI PICKS</div></div>' +
-    '<div class="iq-kpi" style="flex:2;display:flex;align-items:center;justify-content:flex-end;padding-right:16px">' +
-      '<button onclick="openScheduleModal(\'\',\'\',\'\')" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:7px 16px;cursor:pointer;border-radius:var(--r)">+ SCHEDULE ACTIVITY</button>' +
+    '<div class="iq-kpi" style="cursor:pointer" onclick="iqFilterPicks(' + "'critical'" + ')" title="Click to see critical accounts">' +
+      '<div class="iq-kpi-num" style="color:var(--red)">' + _critCount + '</div>' +
+      '<div class="iq-kpi-label">CRITICAL</div>' +
+      '<div style="font-family:var(--mono);font-size:8px;color:var(--text-3)">tap to filter</div>' +
+    '</div>' +
+    '<div class="iq-kpi" style="cursor:pointer" onclick="iqFilterPicks(' + "'atrisk'" + ')" title="Click to see at-risk accounts">' +
+      '<div class="iq-kpi-num" style="color:var(--gold)">' + _atRiskCount + '</div>' +
+      '<div class="iq-kpi-label">AT RISK</div>' +
+      '<div style="font-family:var(--mono);font-size:8px;color:var(--text-3)">tap to filter</div>' +
+    '</div>' +
+    '<div class="iq-kpi" style="cursor:pointer" onclick="iqFilterPicks(' + "'overdue'" + ')" title="Click to see overdue follow-ups">' +
+      '<div class="iq-kpi-num" style="color:var(--gold)">' + _fuOverdue + '</div>' +
+      '<div class="iq-kpi-label">FU OVERDUE</div>' +
+      '<div style="font-family:var(--mono);font-size:8px;color:var(--text-3)">tap to filter</div>' +
+    '</div>' +
+    (_replyQueueShown.length ? '<div class="iq-kpi" style="cursor:pointer" onclick="iqToggleChat();setTimeout(function(){_iqQuickAsk(' + JSON.stringify('What emails are waiting for a reply? List them with the account name and how many days since I sent.') + '),200})" title="Emails waiting for reply">' +
+      '<div class="iq-kpi-num" style="color:#60a5fa">' + _replyQueueShown.length + '</div>' +
+      '<div class="iq-kpi-label">NEED REPLY</div>' +
+      '<div style="font-family:var(--mono);font-size:8px;color:var(--text-3)">tap to review</div>' +
+    '</div>' : '') +
+    '<div class="iq-kpi" style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding-right:12px">' +
+      '<button onclick="_iqPlanMyDay()" style="background:rgba(167,139,250,0.2);border:1px solid rgba(167,139,250,0.5);color:#a78bfa;font-family:var(--mono);font-size:9px;padding:6px 12px;cursor:pointer;border-radius:var(--r);font-weight:700">&#9889; PLAN MY DAY</button>' +
+      '<button onclick="openScheduleModal(\'\',\'\',\'\')" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:7px 14px;cursor:pointer;border-radius:var(--r)">+ SCHEDULE</button>' +
     '</div>';
   page.appendChild(kpiBar);
 
@@ -10519,6 +10573,54 @@ function renderFollowUpCommandCenter() {
   }
 
   todayPanel.appendChild(todayList);
+
+  // ── Gmail Reply Queue widget ─────────────────────────────────────────────
+  if (_replyQueueShown.length > 0) {
+    var rqSection = document.createElement('div');
+    rqSection.style.cssText = 'border-top:1px solid var(--border);padding:10px 12px;flex-shrink:0';
+    var rqHdr = document.createElement('div');
+    rqHdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+    rqHdr.innerHTML = '<span style="font-family:var(--mono);font-size:9px;font-weight:700;color:#60a5fa;letter-spacing:0.1em">&#128235; AWAITING REPLY</span>' +
+      '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + _gmailReplyQueue.length + ' emails</span>';
+    rqSection.appendChild(rqHdr);
+    _replyQueueShown.forEach(function(item) {
+      var rRow = document.createElement('div');
+      rRow.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 8px;background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.2);border-radius:var(--r);margin-bottom:5px;cursor:pointer';
+      rRow.onclick = function() { selectAccountByName(item.accName); };
+      var rBody = document.createElement('div');
+      rBody.style.cssText = 'flex:1;min-width:0';
+      var rAcct = document.createElement('div');
+      rAcct.style.cssText = 'font-size:11px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      rAcct.textContent = item.accName;
+      var rSub = document.createElement('div');
+      rSub.style.cssText = 'font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      rSub.textContent = item.subject;
+      rBody.appendChild(rAcct);
+      rBody.appendChild(rSub);
+      var rRight = document.createElement('div');
+      rRight.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;gap:2px';
+      var rDays = document.createElement('span');
+      rDays.style.cssText = 'font-family:var(--mono);font-size:9px;color:' + (item.daysWaiting > 7 ? 'var(--red)' : '#f59e0b');
+      rDays.textContent = item.daysWaiting + 'd';
+      var rDismiss = document.createElement('button');
+      rDismiss.style.cssText = 'background:transparent;border:none;color:var(--text-3);font-size:10px;cursor:pointer;padding:0;line-height:1';
+      rDismiss.textContent = '×';
+      rDismiss.title = 'Dismiss';
+      rDismiss.onclick = function(e) {
+        e.stopPropagation();
+        _dismissedReplies.add(item.key);
+        try { localStorage.setItem('iq_dismissed_replies_' + repKey, JSON.stringify(Array.from(_dismissedReplies))); } catch(e2) {}
+        renderFollowUpCommandCenter();
+      };
+      rRight.appendChild(rDays);
+      rRight.appendChild(rDismiss);
+      rRow.appendChild(rBody);
+      rRow.appendChild(rRight);
+      rqSection.appendChild(rRow);
+    });
+    todayPanel.appendChild(rqSection);
+  }
+
   panels.appendChild(todayPanel);
 
   // Right: AI Recommendations
@@ -10569,6 +10671,14 @@ function renderFollowUpCommandCenter() {
     btnChat.style.cssText = 'background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer';
     btnChat.textContent = '✦ Chat';
     btnChat.onclick = function() { iqToggleChat(); };
+
+    var btnContactView = document.createElement('button');
+    btnContactView.id = 'iq-view-contact';
+    btnContactView.style.cssText = 'background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer';
+    btnContactView.textContent = '&#128100; CONTACT';
+    btnContactView.title = 'Switch to contact-level view';
+    btnContactView.onclick = function() { iqSetView(window._iqViewMode === 'contact' ? 'normal' : 'contact'); };
+    tabRow.appendChild(btnContactView);
     tabRow.appendChild(btnChat);
 
     aiHdr.appendChild(tabRow);
@@ -10798,7 +10908,11 @@ function renderFollowUpCommandCenter() {
       if (!aiPicks.length) {
         aiList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:11px">Loading recommendations...<br><span style="font-size:10px">Data loads in background</span></div>';
       } else {
-        window._iqLastPicks = aiPicks;
+        // Apply KPI filter if set
+  if (window._iqPickFilter === 'critical') { window._iqLastPicks = aiPicks.filter(function(c){ return c.score >= 80; }); }
+  else if (window._iqPickFilter === 'atrisk') { window._iqLastPicks = aiPicks.filter(function(c){ return c.score >= 50 && c.score < 80; }); }
+  else if (window._iqPickFilter === 'overdue') { window._iqLastPicks = aiPicks.filter(function(c){ return c.acc && c.acc.followUpDate && c.acc.followUpDate < todayStr; }); }
+  else { window._iqLastPicks = aiPicks; }
         let sortedPicks = [...aiPicks];
         if (iqSortMode === 'buyer') sortedPicks.sort((a,b) => (b.contactRevenue||0) - (a.contactRevenue||0));
         else if (iqSortMode === 'acct') sortedPicks.sort((a,b) => (b.totalRevenue||0) - (a.totalRevenue||0));
@@ -10961,6 +11075,38 @@ function iqToggleHide(accName, repKey) {
 // ── AI PICKS EXTRA FUNCTIONS ─────────────────────────────────────────
 
 let iqViewMode = 'full';
+function iqFilterPicks(filter) {
+  window._iqPickFilter = window._iqPickFilter === filter ? null : filter;
+  renderFollowUpCommandCenter();
+  // Auto-open chat for context
+  var msgs = { critical: 'Show me all CRITICAL accounts — those with the highest urgency scores. List them with revenue and how long since last contact.', atrisk: 'Show me AT RISK accounts — those with moderate urgency. What should I do about them this week?', overdue: 'I have overdue follow-ups. Which accounts have passed their scheduled follow-up date?' };
+  if (msgs[filter]) { iqToggleChat(); setTimeout(function(){ _iqQuickAsk(msgs[filter]); }, 200); }
+}
+
+async function _iqPlanMyDay() {
+  iqToggleChat();
+  var todayStr2 = new Date().toISOString().slice(0,10);
+  var accsCtx = (window._iqLastPicks||[]).slice(0,30).map(function(c){
+    return c.accName + '|score:' + c.score + '|rev:$' + Math.round(c.totalRevenue||0) + '|idle:' + (c.daysSince||'?') + 'd|contact:' + (c.contactName||'?');
+  }).join('; ');
+  var replyCtx = (_gmailReplyQueue||[]).slice(0,5).map(function(r){ return r.accName + '(' + r.daysWaiting + 'd waiting)'; }).join(', ');
+  var sched = (window._iqLastEvents||[]).filter(function(e){ return !e.done && e.date <= todayStr2; }).map(function(e){ return e.contactName + '@' + e.accName + '(' + e.type + ')'; }).join(', ');
+  var prompt = 'Build me an optimized contact sequence for today. I need a numbered list of who to contact, in what order, and why. Focus on highest revenue impact and relationship health.\n\n';
+  prompt += 'MY TOP ACCOUNTS: ' + (accsCtx || 'none loaded') + '\n';
+  prompt += (replyCtx ? 'WAITING FOR REPLY: ' + replyCtx + '\n' : '');
+  prompt += (sched ? 'ALREADY SCHEDULED TODAY: ' + sched + '\n' : '');
+  prompt += '\nFor each contact: name, why them TODAY (not tomorrow), and one specific thing to say or ask.';
+  setTimeout(function(){ _iqQuickAsk(prompt); }, 200);
+}
+
+async function _iqQuickAsk(prompt) {
+  var inp = document.getElementById('iq-chat-input');
+  var msgs = document.getElementById('iq-chat-msgs');
+  if (!inp || !msgs) { iqToggleChat(); setTimeout(function(){ _iqQuickAsk(prompt); }, 300); return; }
+  inp.value = prompt;
+  await iqSendChat();
+}
+
 function iqSetView(mode) {
   iqViewMode = mode;
   const list = document.getElementById('iq-ai-list');
@@ -10990,8 +11136,25 @@ function iqToggleChat() {
     if (msgs && msgs.children.length === 0) {
       const sysMsg = document.createElement('div');
       sysMsg.className = 'iq-chat-msg sys';
-      sysMsg.textContent = "I can build you a call list, analyze your picks, or answer questions about your accounts. Try: 'Show me stalled accounts over $50k' or 'Which picks haven't been contacted in 90 days?'";
+      sysMsg.textContent = "I can build your daily contact plan, analyze reply queues, or answer questions. Try a quick action below or type your own question.";
       msgs.appendChild(sysMsg);
+      // Quick action buttons
+      var qBtns = document.createElement('div');
+      qBtns.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;padding:4px 0';
+      var quickActions = [
+        ['&#9889; Plan My Day', '_iqPlanMyDay()'],
+        ['&#128235; Reply Queue', '_iqQuickAsk("Which accounts have emails waiting for a reply? List them with days waiting.")'],
+        ['&#128293; Top 5 Now', '_iqQuickAsk("What are the top 5 accounts I should contact right now and why?")'],
+        ['&#128202; Stalled $50k+', '_iqQuickAsk("Show me stalled or inactive accounts with over $50k lifetime revenue that I haven\'t contacted recently.")'],
+      ];
+      quickActions.forEach(function(qa) {
+        var qb = document.createElement('button');
+        qb.innerHTML = qa[0];
+        qb.style.cssText = 'padding:4px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;border-radius:var(--r);cursor:pointer';
+        qb.setAttribute('onclick', qa[1]);
+        qBtns.appendChild(qb);
+      });
+      msgs.appendChild(qBtns);
     }
     setTimeout(function() { const inp = document.getElementById('iq-chat-input'); if (inp) inp.focus(); }, 60);
   }
@@ -11142,9 +11305,13 @@ async function iqSendChat() {
     return a.accName + ' | score:' + a.score + ' | rev:$' + formatNum(a.totalRevenue||0) + ' | last:' + (a.daysSince != null ? a.daysSince + 'd ago' : 'unknown');
   }).join('\n');
   const listed = (window._iqList || []).map(function(x) { return x.accName; }).join(', ');
+  var _replyCtx = (window._gmailReplyQueue||[]).slice(0,8).map(function(r){ return r.accName + ' (' + r.daysWaiting + 'd no reply, subj: ' + r.subject.slice(0,40) + ')'; }).join('; ');
+  var _schedCtx = (window._iqLastEvents||[]).filter(function(e){ return !e.done && e.date <= new Date().toISOString().slice(0,10); }).slice(0,5).map(function(e){ return (e.type||'activity') + ' with ' + (e.contactName||e.accName); }).join('; ');
   const sysCtx = 'You are a sales intelligence assistant for ' + repLabel + '.'
     + ' Today is ' + new Date().toISOString().slice(0,10) + '.'
-    + ' Top AI picks by score (name | score | revenue | last order):\n' + (accs || 'No data loaded yet.')
+    + ' Top AI picks (name|score|revenue|idle days):\n' + (accs || 'No data.')
+    + (_replyCtx ? '\n\nEMAILS WAITING FOR REPLY: ' + _replyCtx : '')
+    + (_schedCtx ? '\n\nTODAY SCHEDULED: ' + _schedCtx : '')
     + (listed ? '\n\nCurrent list: ' + listed : '')
     + '\n\nWhen you mention a specific account name from the picks list, wrap it like [ACCTLINK:AccountName] so the user can click it.';
 

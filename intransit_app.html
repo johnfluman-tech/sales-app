@@ -5299,7 +5299,7 @@ let _sortField = 'name';
 let _sortDir   = 1;
 function sortAccountList(field) {
   if (_sortField === field) { _sortDir *= -1; } else { _sortField = field; _sortDir = 1; }
-  const _slabels = {'sort-name':'NAME','sort-total':'VALUE','sort-daysInactive':'INACTIVE'};
+  const _slabels = {'sort-name':'NAME','sort-total':'VALUE','sort-daysInactive':'INACTIVE','sort-lastSale':'LAST SALE','sort-status':'STATUS'};
   document.querySelectorAll('.sort-btn').forEach(b => { b.classList.remove('active'); if (_slabels[b.id]) b.textContent = _slabels[b.id]; });
   const btn = document.getElementById('sort-' + field);
   if (btn) { btn.classList.add('active'); btn.textContent = (_slabels['sort-'+field]||field.toUpperCase()) + ' ' + (_sortDir === 1 ? '↑' : '↓'); }
@@ -5308,13 +5308,22 @@ function sortAccountList(field) {
   if (!tbody) return;
   const rows = [...tbody.querySelectorAll('tr')];
   rows.sort((a, b) => {
-    const aVal = a.dataset[field] || a.dataset.name || '';
-    const bVal = b.dataset[field] || b.dataset.name || '';
-    // Numeric sort for total and daysInactive
+    const aVal = a.dataset[field] || '';
+    const bVal = b.dataset[field] || '';
     if (field === 'total' || field === 'daysInactive') {
       return (_sortDir) * (parseFloat(bVal||0) - parseFloat(aVal||0));
     }
-    return _sortDir * aVal.localeCompare(bVal);
+    if (field === 'lastSale') {
+      const aNoSale = !aVal || aVal === '1753-01-01';
+      const bNoSale = !bVal || bVal === '1753-01-01';
+      if (aNoSale && bNoSale) return 0;
+      if (aNoSale) return 1;
+      if (bNoSale) return -1;
+      return _sortDir * bVal.localeCompare(aVal);
+    }
+    const aSortVal = aVal || a.dataset.name || '';
+    const bSortVal = bVal || b.dataset.name || '';
+    return _sortDir * aSortVal.localeCompare(bSortVal);
   });
   rows.forEach(r => tbody.appendChild(r));
 }
@@ -8294,8 +8303,16 @@ async function _gmailEnsureToken() {
 async function gmailFetch(path, params) {
   var url = 'https://gmail.googleapis.com/gmail/v1/' + path;
   if (params) {
-    var qs = Object.keys(params).map(function(k){ return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); }).join('&');
-    url += '?' + qs;
+    var parts = [];
+    Object.keys(params).forEach(function(k) {
+      var v = params[k];
+      if (Array.isArray(v)) {
+        v.forEach(function(item) { parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(item)); });
+      } else {
+        parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(v));
+      }
+    });
+    url += '?' + parts.join('&');
   }
   var resp = await fetch(url, { headers: { Authorization: 'Bearer ' + state.gmailToken } });
   if (resp.status === 401) { state.gmailToken = null; throw new Error('gmail_401'); }
@@ -8328,7 +8345,7 @@ async function loadGmailActivity(accName, fastMode) {
     try {
       var msg = await gmailFetch('users/me/messages/' + m.id, {
         format: 'metadata',
-        metadataHeaders: 'To,Subject,Date'
+        metadataHeaders: ['To', 'Subject', 'Date']
       });
       var headers = {};
       (msg.payload && msg.payload.headers || []).forEach(function(h){

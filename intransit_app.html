@@ -9616,14 +9616,22 @@ async function mgrLoadAllTeamGmail() {
     return c.some(function(x){ return x.email&&x.email.includes('@'); });
   });
   var done = 0;
-  for (var i = 0; i < toLoad.length; i++) {
-    var a = toLoad[i];
-    if (!state.gmailActivityCache[a.name] || state.gmailActivityCache[a.name] === 'error') {
+  var BATCH = 5;
+  for (var i = 0; i < toLoad.length; i += BATCH) {
+    var batch = toLoad.slice(i, i + BATCH);
+    await Promise.all(batch.map(async function(a) {
+      var cached = state.gmailActivityCache[a.name];
+      var hasEmails = cached && cached.messages && cached.messages.length > 0;
+      var TTL = hasEmails ? 24*60*60*1000 : 7*24*60*60*1000;
+      var fresh = cached && cached.loadedAt && (Date.now() - cached.loadedAt) < TTL && cached !== 'error';
+      if (fresh) return;
       try { await loadGmailActivity(a.name); } catch(e) { state.gmailActivityCache[a.name] = { error: e.message }; }
-    }
-    done++;
+    }));
+    done = Math.min(i + BATCH, toLoad.length);
     if (prog) prog.textContent = done + ' / ' + toLoad.length;
+    if (i + BATCH < toLoad.length) await new Promise(function(r){ setTimeout(r, 100); });
   }
+  _saveGmailCacheToStorage();
   if (btn) btn.disabled = false;
   if (prog) prog.textContent = done + ' accounts scanned';
   renderManagerHub();

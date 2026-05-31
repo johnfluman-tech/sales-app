@@ -7532,7 +7532,7 @@ async function poolNotInterested(accName) {
 }
 
 function _poolMgmtState() {
-  if (!window._poolFilter) window._poolFilter = { tab:'review', rep:'ALL', sort:'revenue', search:'', page:50, dir:'desc', idle:'any', tier:'any', coll:false, status:'ALL', ytd:'any', actStatus:'any' };
+  if (!window._poolFilter) window._poolFilter = { tab:'review', rep:'ALL', sort:'revenue', search:'', page:50, dir:'desc', idle:'any', tier:'any', coll:false, status:'ALL', ytd:'any' };
   if (!window._poolFilter.dir) { window._poolFilter.dir='desc'; window._poolFilter.idle='any'; window._poolFilter.tier='any'; window._poolFilter.coll=false; window._poolFilter.status='ALL'; window._poolFilter.ytd='any'; }
   return window._poolFilter;
 }
@@ -7552,87 +7552,59 @@ function poolMgmtTier(v)   { _poolMgmtState().tier=v; _poolMgmtState().page=50; 
 function poolMgmtStatus(v) { _poolMgmtState().status=v; _poolMgmtState().page=50; renderPoolManagementView(); }
 function poolMgmtColl()    { var f=_poolMgmtState(); f.coll=!f.coll; f.page=50; renderPoolManagementView(); }
 function poolMgmtYtd(v)    { _poolMgmtState().ytd=v; _poolMgmtState().page=50; renderPoolManagementView(); }
-function poolMgmtActStatus(v) { _poolMgmtState().actStatus=v; _poolMgmtState().page=50; renderPoolManagementView(); }
 
 async function poolAIAdvisor() {
+  var f = _poolMgmtState();
   var mgrCfg = getManagerConfig();
   var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[]).filter(function(r){ return r !== 'FJohn'; });
   var repNames = CONFIG.REP_DISPLAY_NAMES || {};
   var poolCache = state.poolManagedCache || [];
-  function _d(a){ var d=a.lastSaleDate||a.lastSale||''; if(!d) return 9999; try{return Math.floor((new Date()-new Date(d))/86400000);}catch(e){return 9999;} }
-  var allPool = (state.accounts||[]).filter(function(a){ return teamReps.indexOf(a.rep) >= 0 && (isInactive(a)||isDeclining(a)); })
-    .sort(function(a,b){ return (parseFloat(b.total||0)||0)-(parseFloat(a.total||0)||0); });
-  var ctxLines = allPool.slice(0,80).map(function(a){
-    var c = state.collectionsCache ? (state.collectionsCache[a.name]||state.collectionsCache[(a.name||'').trim()]||null) : null;
+
+  function _days(a){ var d=a.lastSaleDate||a.lastSale||''; if(!d) return 9999; try{return Math.floor((new Date()-new Date(d))/86400000);}catch(e){return 9999;} }
+
+  var candidates = (state.accounts||[]).filter(function(a){
+    if (teamReps.indexOf(a.rep) < 0) return false;
     var rec = poolCache.find(function(p){ return p.name.toLowerCase()===a.name.toLowerCase(); });
-    return a.name+'|'+( repNames[a.rep]||a.rep)+'|'+(a.status||'?')+'|$'+Math.round(parseFloat(a.total||0)||0)+'|YTD:$'+Math.round(parseFloat(a.ytdRevenue||a.revenue||0)||0)+'|Idle:'+_d(a)+'d|'+(a.city||'?')+(c&&c.balance>0?'|AR:$'+Math.round(c.balance):'')+(rec?'|Pool:'+rec.status:'|unreviewed');
-  });
-  var unCtx = (state._unownedAccounts||[]).slice(0,30).map(function(a){ return '[UNOWNED]'+a.name+'|$'+Math.round(a.total||0)+'|'+(a.city||'?'); });
-  var sys = 'You are a senior sales manager at Intransit Technologies (industrial electronics distributor). '
-    + 'Answer questions about these ' + allPool.length + ' inactive/declining accounts and ' + (state._unownedAccounts||[]).length + ' unowned accounts. '
-    + 'Be specific with names and numbers. ACCOUNTS: ' + ctxLines.concat(unCtx).join('; ');
-  var existing = document.getElementById('pool-ai-modal');
-  if (existing) { existing.remove(); }
+    if (rec && rec.status !== 'REMOVED') return false; // already managed
+    return isInactive(a) || isDeclining(a);
+  }).sort(function(a,b){ return (parseFloat(b.total||0)||0)-(parseFloat(a.total||0)||0); }).slice(0,40);
+
+  if (!candidates.length) { showToast('No unreviewed accounts to analyze.', 'info'); return; }
+
   var modal = document.createElement('div');
   modal.id = 'pool-ai-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center';
-  var mHtml = '<div style="background:var(--s1);border:1px solid var(--border-hi);border-radius:var(--r2);width:min(680px,94vw);max-height:85vh;display:flex;flex-direction:column">'
-    + '<div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border)">'
-    + '<span style="font-size:18px">&#127775;</span>'
-    + '<div style="font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.08em">AI POOL ADVISOR</div>'
-    + '<div style="margin-left:8px;font-size:10px;color:var(--text-3);font-family:var(--mono)">' + allPool.length + ' accounts loaded</div>'
-    + '<button onclick="document.getElementById(' + String.fromCharCode(39) + 'pool-ai-modal' + String.fromCharCode(39) + ').remove()" style="margin-left:auto;background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:16px">&#10005;</button>'
-    + '</div>'
-    + '<div id="pool-ai-msgs" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;min-height:200px">'
-    + '<div style="font-size:11px;color:var(--text-3);font-family:var(--mono);text-align:center;padding:20px 0">'
-    + 'Ask me anything about pool accounts.<br><br><span style="color:var(--text-2)">Try: Which accounts should we prioritize? &bull; Show Monterrey accounts &bull; Who has open AR?</span></div>'
-    + '</div>'
-    + '<div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">'
-    + '<input id="pool-ai-input" type="text" placeholder="Ask about pool accounts..." '
-    + 'style="flex:1;padding:9px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--mono);font-size:12px;outline:none" '
-    + 'onkeydown="if(event.keyCode===13){event.preventDefault();_poolAIChat();}" />'
-    + '<button onclick="_poolAIChat()" style="padding:9px 16px;background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;border-radius:var(--r);cursor:pointer">ASK &#10148;</button>'
-    + '</div></div>';
-  modal.innerHTML = mHtml;
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML =
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:28px;max-width:640px;width:90%;max-height:80vh;overflow-y:auto">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">' +
+        '<span style="font-size:20px">&#127775;</span>' +
+        '<div style="font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.08em">AI POOL ADVISOR</div>' +
+        '<button data-mid="pool-ai-modal" onclick="var _m=document.getElementById(this.dataset.mid);if(_m)_m.remove()" style="margin-left:auto;background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:16px">&#10005;</button>' +
+      '</div>' +
+      '<div id="pool-ai-body" style="font-size:12px;color:var(--text-2);line-height:1.7">Analyzing ' + candidates.length + ' accounts...</div>' +
+    '</div>';
   document.body.appendChild(modal);
-  window._poolAIHistory = [];
-  window._poolAISys = sys;
-  setTimeout(function(){ var i=document.getElementById('pool-ai-input'); if(i)i.focus(); }, 100);
-}
 
-async function _poolAIChat() {
-  var inp = document.getElementById('pool-ai-input');
-  var msgs = document.getElementById('pool-ai-msgs');
-  if (!inp || !msgs) return;
-  var q = inp.value.trim();
-  if (!q) return;
-  inp.value = ''; inp.disabled = true;
-  var uDiv = document.createElement('div');
-  uDiv.style.cssText = 'align-self:flex-end;background:var(--blue-b);color:#fff;padding:8px 12px;border-radius:var(--r2);max-width:85%;font-size:12px;line-height:1.6';
-  uDiv.textContent = q; msgs.appendChild(uDiv);
-  var tDiv = document.createElement('div');
-  tDiv.id = '_pat'; tDiv.style.cssText = 'color:var(--text-3);font-family:var(--mono);font-size:11px;padding:4px 0';
-  tDiv.textContent = '...thinking'; msgs.appendChild(tDiv); msgs.scrollTop = msgs.scrollHeight;
-  window._poolAIHistory.push({ role: 'user', content: q });
+  var summaries = candidates.slice(0,30).map(function(a){
+    var coll = state.collectionsCache ? (state.collectionsCache[a.name]||null) : null;
+    var collStr = coll && coll.balance > 0 ? ' | Collections: $' + Math.round(coll.balance) : '';
+    return a.name + ' | Rep: ' + (repNames[a.rep]||a.rep) + ' | Status: ' + (a.status||'?') + ' | Lifetime: $' + Math.round(parseFloat(a.total||0)||0) + ' | YTD: $' + Math.round(parseFloat(a.ytdRevenue||a.revenue||0)||0) + ' | Idle: ' + _days(a) + 'd' + collStr;
+  }).join('\n');
+
+  var prompt = 'You are a sales manager at an industrial distribution company. Review these inactive accounts and recommend the TOP 8 to add to an Available Accounts pool where reps can claim new business. ACCOUNTS: ' + summaries.replace(/\n/g,'; ') + ' For each of the top 8: state the account name, priority (HOT/WARM/COLD), and 2-3 bullet reasons. Focus on revenue potential and recoverability.';;
+
   try {
-    var resp = await callAI({ model: 'claude-haiku-4-5-20251001', max_tokens: 600,
-      system: window._poolAISys, messages: window._poolAIHistory.slice(-10) });
+    var resp = await callAI({ model:'claude-haiku-4-5-20251001', max_tokens:900,
+      system:'Sales intelligence assistant. Be concise and specific.',
+      messages:[{role:'user',content:prompt}] });
     var txt = resp && resp.content && resp.content[0] ? resp.content[0].text : (resp && resp.text ? resp.text : 'No response.');
-    window._poolAIHistory.push({ role: 'assistant', content: txt });
-    var td = document.getElementById('_pat'); if (td) td.remove();
-    var aDiv = document.createElement('div');
-    aDiv.style.cssText = 'background:var(--s2);border:1px solid var(--border);padding:10px 14px;border-radius:var(--r2);max-width:92%;font-size:12px;line-height:1.7;color:var(--text);white-space:pre-wrap';
-    aDiv.textContent = txt; msgs.appendChild(aDiv);
+    var body = document.getElementById('pool-ai-body');
+    if (body) body.innerHTML = '<div style="white-space:pre-wrap;font-size:12px;line-height:1.7;color:var(--text)">' + escHtml(txt) + '</div>';
   } catch(e) {
-    var td2 = document.getElementById('_pat'); if (td2) td2.remove();
-    var eDiv = document.createElement('div');
-    eDiv.style.cssText = 'color:var(--red);font-size:11px;font-family:var(--mono)';
-    eDiv.textContent = 'Error: ' + e.message; msgs.appendChild(eDiv);
-    window._poolAIHistory.pop();
+    var body2 = document.getElementById('pool-ai-body');
+    if (body2) body2.innerHTML = '<div style="color:var(--red)">AI error: ' + escHtml(e.message) + '</div>';
   }
-  msgs.scrollTop = msgs.scrollHeight; inp.disabled = false; inp.focus();
 }
-
 
 async function poolAIRepMatch(accName) {
   var mgrCfg = getManagerConfig();
@@ -7769,8 +7741,6 @@ function renderPoolManagementView() {
     // YTD revenue flag
     if (f.ytd === 'yes') list = list.filter(function(a){ return (parseFloat(a.ytdRevenue||a.revenue||0)||0) > 0; });
     if (f.ytd === 'no')  list = list.filter(function(a){ return (parseFloat(a.ytdRevenue||a.revenue||0)||0) === 0; });
-    if (f.actStatus === 'inactive')  list = list.filter(function(a){ return isInactive(a); });
-    if (f.actStatus === 'declining') list = list.filter(function(a){ return isDeclining(a); });
     return list;
   }
 
@@ -8016,7 +7986,6 @@ function renderPoolManagementView() {
   var _idlePills = [['Any','any'],['< 90d','lt90'],['90-180d','d90'],['180-365d','d180'],['365d +','d365']].map(function(iv){ return _pill(iv[0],'poolMgmtIdle',iv[1],f.idle===iv[1]); }).join('');
   var _tierPills = [['Any','any'],['$0','zero'],['$1-$10K','low'],['$10-$100K','mid'],['$100K+','high']].map(function(iv){ return _pill(iv[0],'poolMgmtTier',iv[1],f.tier===iv[1]); }).join('');
   var _ytdPills  = [['Any','any'],['Has YTD','yes'],['No YTD','no']].map(function(iv){ return _pill(iv[0],'poolMgmtYtd',iv[1],f.ytd===iv[1]); }).join('');
-  var _actPills  = [['Any','any'],['Inactive','inactive'],['Declining','declining']].map(function(iv){ return _pill(iv[0],'poolMgmtActStatus',iv[1],f.actStatus===iv[1]); }).join('');
 
   var _allStatuses = ['ALL','Dormant','High Value','At Risk','Monitor','Decline','Stalled'];
   var _statusOpts = _allStatuses.map(function(s){ return '<option value="' + s + '"' + (f.status===s?' selected':'') + '>' + s + '</option>'; }).join('');
@@ -8036,17 +8005,14 @@ function renderPoolManagementView() {
       '<span style="margin-left:8px;font-family:var(--mono);font-size:8px;letter-spacing:0.1em;color:var(--text-3)">YTD:</span>' + _ytdPills +
       '<span style="margin-left:8px;font-family:var(--mono);font-size:8px;letter-spacing:0.1em;color:var(--text-3)">STATUS:</span>' +
       '<select onchange="poolMgmtStatus(this.value)" style="padding:3px 8px;background:var(--s1);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:9px;border-radius:var(--r);cursor:pointer">' + _statusOpts + '</select>' +
-      '<span style="margin-left:8px;font-family:var(--mono);font-size:8px;letter-spacing:0.1em;color:var(--text-3)">TYPE:</span>' + _actPills +
       '<span style="margin-left:4px"></span>' + _collBtn +
     '</div>';
 
   // Tab bar
-  var _unowned = state._unownedAccounts || [];
   var tabs = [
-    { id: 'review',  label: 'NEEDS REVIEW',    count: needsReview.length,    color: 'var(--gold)' },
-    { id: 'pool',    label: 'IN POOL',         count: inPool.length,          color: '#14b8a6' },
-    { id: 'unowned', label: 'UNOWNED ACCOUNTS', count: _unowned.length,        color: '#a78bfa' },
-    { id: 'hidden',  label: 'HIDDEN',           count: hiddenFromPool.length,  color: 'var(--text-3)' },
+    { id: 'review', label: 'NEEDS REVIEW', count: needsReview.length, color: 'var(--gold)' },
+    { id: 'pool',   label: 'IN POOL',      count: inPool.length,       color: '#14b8a6' },
+    { id: 'hidden', label: 'HIDDEN',        count: hiddenFromPool.length, color: 'var(--text-3)' },
   ];
   var tabHtml = '<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--border)">' +
     tabs.map(function(t){
@@ -8121,50 +8087,6 @@ function renderPoolManagementView() {
     var filteredPool = applyFilters(applySort(inPool));
     bodyHtml = filterBar + _statsBar(inPool) +
       (filteredPool.length ? filteredPool.map(function(a){ return poolCard(a, getRec(a)); }).join('') : '<div style="padding:30px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' + (f.search || f.rep !== 'ALL' ? 'No matches' : 'No accounts in pool yet — go to Needs Review to add some') + '</div>');
-  } else if (f.tab === 'unowned') {
-    if (!state._unownedLoaded) {
-      sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_UNOWNED_ACCOUNTS'!A1:H5000").then(function(rows) {
-        if (!rows || rows.length < 2) { state._unownedAccounts = []; state._unownedLoaded = true; renderPoolManagementView(); return; }
-        var hdrs = rows[0];
-        var iName=hdrs.indexOf('CUSTOMER_NAME'), iCity=hdrs.indexOf('CITY'), iState=hdrs.indexOf('STATE'),
-            iRev=hdrs.indexOf('LIFETIME_REVENUE'), iLast=hdrs.indexOf('LAST_SALE_DATE'), iUn=hdrs.indexOf('CRM_USERNAME');
-        state._unownedAccounts = rows.slice(1).filter(function(r){ return r[iName||0]; }).map(function(r) {
-          return { name:(r[iName]||'').trim(), city:(r[iCity]||'').trim(), state:(r[iState]||'').trim(),
-                   total:parseFloat(r[iRev]||0)||0, lastSaleDate:(r[iLast]||'').slice(0,10), crmUsername:(r[iUn]||'').trim() };
-        });
-        state._unownedLoaded = true;
-        renderPoolManagementView();
-      }).catch(function() { state._unownedAccounts = []; state._unownedLoaded = true; renderPoolManagementView(); });
-      bodyHtml = filterBar + '<div style="padding:30px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">Loading unowned accounts...</div>';
-    } else {
-      var srch = (f.search||'').toLowerCase();
-      var filtU = _unowned.filter(function(a){ return !srch || (a.name||'').toLowerCase().indexOf(srch)>-1 || (a.city||'').toLowerCase().indexOf(srch)>-1; });
-      filtU.sort(function(a,b){ return (b.total||0)-(a.total||0); });
-      var shownU = filtU.slice(0, f.page);
-      var uCards = shownU.map(function(a) {
-        var days = a.lastSaleDate ? Math.floor((new Date()-new Date(a.lastSaleDate))/86400000) : 9999;
-        var dStr = days < 9999 ? days+'d ago' : 'never';
-        return '<div style="background:var(--s2);border:1px solid var(--border);border-left:3px solid #a78bfa;border-radius:var(--r);padding:12px 14px;margin-bottom:8px">'
-          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
-          + '<div style="font-weight:500;font-size:13px">' + escHtml(a.name) + '</div>'
-          + '<div style="font-family:var(--mono);font-size:13px;color:#3b82f6">$' + formatNum(a.total) + '</div>'
-          + '</div>'
-          + '<div style="display:flex;gap:16px;font-size:11px;color:var(--text-3)">'
-          + '<span>' + escHtml(a.city||'-') + (a.state ? ', '+a.state : '') + '</span>'
-          + '<span>Last sale: ' + dStr + '</span>'
-          + '<span>CRM: ' + escHtml(a.crmUsername||'(none)') + '</span>'
-          + '</div></div>';
-      }).join('');
-      var uEmpty = srch ? 'No matches' : 'No unowned accounts — run sales report to refresh.';
-      var uMore = filtU.length > shownU.length
-        ? '<div style="text-align:center;padding:16px"><button onclick="poolMgmtShowMore()" style="padding:9px 28px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">SHOW MORE (' + (filtU.length-shownU.length) + ' remaining)</button></div>'
-        : '';
-      bodyHtml = filterBar
-        + '<div style="margin-bottom:16px;padding:10px 14px;background:rgba(167,139,250,0.07);border:1px solid rgba(167,139,250,0.3);border-radius:var(--r);font-size:11px;color:#a78bfa;font-family:var(--mono)">'
-        + _unowned.length + ' customers have sales history but no rep assigned in the CRM. Assign them to reps or add to the pool.</div>'
-        + (shownU.length ? uCards : '<div style="padding:30px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' + uEmpty + '</div>')
-        + uMore;
-    }
   } else if (f.tab === 'hidden') {
     var filteredHidden = applyFilters(applySort(hiddenFromPool));
     bodyHtml = filterBar + _statsBar(hiddenFromPool) +

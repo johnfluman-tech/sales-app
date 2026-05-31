@@ -11134,7 +11134,7 @@ async function iqSendChat() {
 
   try {
     const res = await callAI({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: sysCtx,
       messages: window._iqChatHistory.slice(-20)
@@ -11994,7 +11994,7 @@ async function aiGrammarCheck(textareaId, btnEl) {
   btnEl.textContent = '...'; btnEl.disabled = true;
   try {
     const result = await callAI({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       messages: [{ role: 'user', content: 'Fix any spelling and grammar errors in the following text. Return only the corrected text, no explanation:\n\n' + text }]
     });

@@ -4786,7 +4786,13 @@ function renderDetailTab(acc, tab) {
   if (tab === 'collections') return renderCollectionsTab(acc);
   if (tab === 'info') return renderInfoTab(acc);
   if (tab === 'research') return renderResearchTab(acc);
-  if (tab === 'gmailActivity') return renderGmailActivityTab(acc);
+  if (tab === 'gmailActivity') {
+    // Auto-load if token present but not yet loaded for this account
+    if (state.gmailToken && !state.gmailActivityCache[acc.name]) {
+      gmailLoadForAccount(acc.name);
+    }
+    return renderGmailActivityTab(acc);
+  }
   return '';
 }
 
@@ -8372,10 +8378,9 @@ function renderGmailActivityTab(acc) {
       'style="margin-left:auto;background:var(--blue-b);border:none;color:#fff;padding:6px 14px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;font-family:var(--mono)">&#128272; Connect Gmail</button>' +
       '</div>';
   } else if (!cached) {
-    connectHtml = '<div style="margin-bottom:16px">' +
-      '<button data-n="' + escHtml(acc.name) + '" onclick="gmailLoadForAccount(this.dataset.n)" ' +
-      'style="background:var(--blue-b);border:none;color:#fff;padding:7px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128269; Load Email Activity</button>' +
-      '</div>';
+    // Auto-trigger load when tab is opened (if token available)
+    setTimeout(function() { gmailLoadForAccount(acc.name); }, 50);
+    connectHtml = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;font-family:var(--mono)">Loading email activity...</div>';
   } else if (cached === 'loading') {
     connectHtml = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px">Loading email activity...</div>';
   }
@@ -8385,7 +8390,11 @@ function renderGmailActivityTab(acc) {
   }
 
   if (cached.noContacts) {
-    return '<div style="padding:16px"><div style="font-size:12px;color:var(--text-muted)">No contact emails on file for this account. Add contacts in the Contacts tab first.</div></div>';
+    return '<div style="padding:16px"><div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:4px;padding:12px 14px">'
+      + '<div style="font-size:12px;font-weight:600;color:#fbbf24;margin-bottom:4px">&#9888; No contact emails on file</div>'
+      + '<div style="font-size:11px;color:var(--text-muted);line-height:1.6">This account has no contacts with email addresses in the system. '
+      + 'Email addresses come from the <b>_CONTACTS</b> tab in Google Sheets (populated by sales_report.py from the CRM). '
+      + 'Check that this account has contacts with emails in the CRM.</div></div></div>';
   }
 
   var msgs = cached.messages || [];

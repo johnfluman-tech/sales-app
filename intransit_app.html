@@ -4786,13 +4786,7 @@ function renderDetailTab(acc, tab) {
   if (tab === 'collections') return renderCollectionsTab(acc);
   if (tab === 'info') return renderInfoTab(acc);
   if (tab === 'research') return renderResearchTab(acc);
-  if (tab === 'gmailActivity') {
-    // Auto-load if token present but not yet loaded for this account
-    if (state.gmailToken && !state.gmailActivityCache[acc.name]) {
-      gmailLoadForAccount(acc.name);
-    }
-    return renderGmailActivityTab(acc);
-  }
+  if (tab === 'gmailActivity') return renderGmailActivityTab(acc);
   return '';
 }
 
@@ -8328,7 +8322,8 @@ async function loadGmailActivity(accName, fastMode) {
   var data = await gmailFetch('users/me/messages', { q: q, maxResults: '50' });
   var messages = data.messages || [];
 
-  // Step 1: Fetch message metadata in parallel
+  // Fetch metadata for each message
+  // fastMode=true skips thread-reply check (halves API calls during bulk scan)
   var details = await Promise.all(messages.slice(0, 30).map(async function(m) {
     try {
       var msg = await gmailFetch('users/me/messages/' + m.id, {
@@ -8339,31 +8334,24 @@ async function loadGmailActivity(accName, fastMode) {
       (msg.payload && msg.payload.headers || []).forEach(function(h){
         headers[h.name.toLowerCase()] = h.value;
       });
+      var replied = false;
+      if (!fastMode) {
+        var threadData = await gmailFetch('users/me/threads/' + msg.threadId, { format: 'minimal' });
+        replied = (threadData.messages && threadData.messages.length > 1);
+      }
       return {
         id: m.id,
         threadId: msg.threadId,
         subject: headers.subject || '(no subject)',
         to: headers.to || '',
         date: headers.date || '',
-        replied: false,
+        replied: replied,
         snippet: msg.snippet || ''
       };
     } catch(e) { return null; }
   }));
 
   var result = details.filter(Boolean);
-
-  // Step 2: Single inbox search to find replies (1 API call instead of N)
-  // Searches inbox for messages FROM any of the account contacts
-  try {
-    var fromQ = emails.map(function(e){ return 'from:' + e; }).join(' OR ');
-    var inboxData = await gmailFetch('users/me/messages', { q: 'in:inbox (' + fromQ + ')', maxResults: '50' });
-    var replyThreadIds = new Set((inboxData.messages || []).map(function(m){ return m.threadId; }));
-    // Also check sent replies (customer replied and we forwarded/replied back in same thread)
-    result.forEach(function(m) {
-      if (replyThreadIds.has(m.threadId)) m.replied = true;
-    });
-  } catch(e) { /* reply check failed — leave as false */ }
   state.gmailActivityCache[accName] = { emails: emails, messages: result, loadedAt: Date.now() };
   // Save incrementally after each account so partial scans survive navigation
   try { _saveGmailCacheToStorage(); } catch(e) {}
@@ -8384,9 +8372,10 @@ function renderGmailActivityTab(acc) {
       'style="margin-left:auto;background:var(--blue-b);border:none;color:#fff;padding:6px 14px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;font-family:var(--mono)">&#128272; Connect Gmail</button>' +
       '</div>';
   } else if (!cached) {
-    // Auto-trigger load when tab is opened (if token available)
-    setTimeout(function() { gmailLoadForAccount(acc.name); }, 50);
-    connectHtml = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;font-family:var(--mono)">Loading email activity...</div>';
+    connectHtml = '<div style="margin-bottom:16px">' +
+      '<button data-n="' + escHtml(acc.name) + '" onclick="gmailLoadForAccount(this.dataset.n)" ' +
+      'style="background:var(--blue-b);border:none;color:#fff;padding:7px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono)">&#128269; Load Email Activity</button>' +
+      '</div>';
   } else if (cached === 'loading') {
     connectHtml = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px">Loading email activity...</div>';
   }
@@ -8396,11 +8385,7 @@ function renderGmailActivityTab(acc) {
   }
 
   if (cached.noContacts) {
-    return '<div style="padding:16px"><div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:4px;padding:12px 14px">'
-      + '<div style="font-size:12px;font-weight:600;color:#fbbf24;margin-bottom:4px">&#9888; No contact emails on file</div>'
-      + '<div style="font-size:11px;color:var(--text-muted);line-height:1.6">This account has no contacts with email addresses in the system. '
-      + 'Email addresses come from the <b>_CONTACTS</b> tab in Google Sheets (populated by sales_report.py from the CRM). '
-      + 'Check that this account has contacts with emails in the CRM.</div></div></div>';
+    return '<div style="padding:16px"><div style="font-size:12px;color:var(--text-muted)">No contact emails on file for this account. Add contacts in the Contacts tab first.</div></div>';
   }
 
   var msgs = cached.messages || [];
@@ -8492,55 +8477,6 @@ async function gmailLoadForAccount(accName) {
       tabEl.innerHTML = renderGmailActivityTab(state.selectedAccount);
     }
   }
-}
-
-
-function _showOutreachList(title, accs, color, mode) {
-  var existing = document.getElementById('_oc_list_modal');
-  if (existing) existing.remove();
-  var modal = document.createElement('div');
-  modal.id = '_oc_list_modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center';
-  modal.onclick = function(e){ if(e.target===modal) modal.remove(); };
-
-  var rows = '';
-  if (mode === 'gmail') {
-    var sorted = (accs||[]).slice().sort(function(a,b){ return b.sent-a.sent; });
-    rows = sorted.map(function(a){
-      var rate = a.sent ? Math.round(a.replied/a.sent*100) : 0;
-      var col = rate>=40?'#22c55e':rate>=20?'#f59e0b':'#ef4444';
-      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer" onclick="selectAccountByName('+JSON.stringify(a.name)+');document.getElementById(\'_oc_list_modal\').remove()">'
-        + '<div style="flex:1;font-size:12px;color:var(--text)">' + escHtml(a.name) + '</div>'
-        + '<div style="font-family:var(--mono);font-size:11px;color:var(--text-3)">' + a.sent + ' sent</div>'
-        + '<div style="font-family:var(--mono);font-size:11px;color:'+col+';min-width:38px;text-align:right">' + rate + '%</div>'
-        + '</div>';
-    }).join('');
-  } else {
-    rows = (accs||[]).map(function(a){
-      var name = a.name || a.accName || '';
-      var rep  = a.rep || '';
-      var rev  = parseFloat(a.total||0)||0;
-      var last = a.lastSaleDate || a.lastSale || '—';
-      var fu   = a.followUpDate || '';
-      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer" onclick="selectAccountByName('+JSON.stringify(name)+');document.getElementById(\'_oc_list_modal\').remove()">'
-        + '<div style="flex:1;min-width:0">'
-        + '<div style="font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(name) + '</div>'
-        + '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + (rep?'Rep: '+rep+' &nbsp;|&nbsp; ':'') + 'Last sale: ' + escHtml(last) + (fu?' &nbsp;|&nbsp; FU: <span style="color:#a855f7">'+fu+'</span>':'') + '</div>'
-        + '</div>'
-        + '<div style="font-family:var(--mono);font-size:11px;color:#3b82f6;flex-shrink:0">$' + formatNum(rev) + '</div>'
-        + '</div>';
-    }).join('');
-  }
-
-  modal.innerHTML = '<div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid '+color+';border-radius:var(--r2);width:min(560px,94vw);max-height:80vh;display:flex;flex-direction:column">'
-    + '<div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border)">'
-    + '<div style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+color+';letter-spacing:0.06em">' + escHtml(title) + '</div>'
-    + '<div style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text-3)">' + (accs||[]).length + ' accounts</div>'
-    + '<button onclick="document.getElementById('_oc_list_modal').remove()" style="background:transparent;border:none;color:var(--text-3);font-size:16px;cursor:pointer;padding:0 4px">&#10005;</button>'
-    + '</div>'
-    + '<div style="overflow-y:auto;flex:1">' + (rows || '<div style="padding:20px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">No accounts in this category</div>') + '</div>'
-    + '</div>';
-  document.body.appendChild(modal);
 }
 
 // End Gmail Email Activity ─────────────────────────────────────────────────
@@ -8845,14 +8781,11 @@ async function renderMyOutreachView() {
   }
 
   // ── Helper: KPI tile ────────────────────────────────────────────────────
-  function _kpi(label, val, col, sub, onclick) {
-    var cs = onclick ? 'cursor:pointer;transition:box-shadow 0.15s;' : '';
-    var oc = onclick ? ' onclick="'+onclick+'" onmouseover="this.style.boxShadow=\'0 0 0 2px '+col+'\'" onmouseout="this.style.boxShadow=\'\'"' : '';
-    return '<div style="background:var(--s1);border:1px solid var(--border);border-top:2px solid '+col+';border-radius:var(--r2);padding:14px 16px;text-align:center;'+cs+'"'+oc+'>'+
+  function _kpi(label, val, col, sub) {
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-top:2px solid '+col+';border-radius:var(--r2);padding:14px 16px;text-align:center">'+
       '<div style="font-family:var(--mono);font-size:22px;font-weight:800;color:'+col+'">'+val+'</div>'+
       '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-2);margin-top:2px">'+label+'</div>'+
       (sub?'<div style="font-size:9px;color:var(--text-3);margin-top:2px">'+sub+'</div>':'')+
-      (onclick?'<div style="font-size:8px;color:var(--text-3);margin-top:6px;font-family:var(--mono);letter-spacing:0.06em">&#128196; view list</div>':'')+
       '</div>';
   }
 
@@ -8937,17 +8870,13 @@ async function renderMyOutreachView() {
 
   // ── KPI BAR ──────────────────────────────────────────────────────────────
   var kpiHtml =
-    window._ocCritical = critical.map(function(x){ return x.acc; });
-  window._ocAtRisk   = atRisk.map(function(x){ return x.acc; });
-  window._ocOverdue  = overdue.map(function(x){ return x.acc; });
-  window._ocGmailAccs = gmailLoaded.map(function(k){ var d=state.gmailActivityCache[k]; return {name:k, sent:(d.messages||[]).length, replied:(d.messages||[]).filter(function(m){return m.replied;}).length}; });
-  '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:22px">'+
-    _kpi('CRITICAL', critical.length, '#ef4444', 'Contact immediately', "_showOutreachList('CRITICAL — Contact Immediately',window._ocCritical,'#ef4444')")+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:22px">'+
+    _kpi('CRITICAL', critical.length, '#ef4444', 'Contact immediately')+
     _kpi('AT RISK', atRisk.length, '#f97316', '30–90 days inactive')+
-    _kpi('FU OVERDUE', overdue.length, '#a855f7', 'Past due follow-ups', "_showOutreachList('FU OVERDUE — Past Due Follow-ups',window._ocOverdue,'#a855f7')")+
+    _kpi('FU OVERDUE', overdue.length, '#a855f7', 'Past due follow-ups')+
     (gmailLoaded.length>0
-      ? _kpi('REPLY RATE', gRate+'%', gRate>=40?'#22c55e':gRate>=20?'#f59e0b':'#ef4444', gSent+' emails tracked', "_showOutreachList('Gmail — Email Activity',window._ocGmailAccs,'#60a5fa','gmail')")
-      : _kpi('WELL COVERED', strong.length, '#22c55e', 'Active accounts', "_showOutreachList('WELL COVERED — Strong Accounts',window._ocCritical.length?[]:window._ocAtRisk,'#22c55e')"))+
+      ? _kpi('REPLY RATE', gRate+'%', gRate>=40?'#22c55e':gRate>=20?'#f59e0b':'#ef4444', gSent+' emails tracked')
+      : _kpi('WELL COVERED', strong.length, '#22c55e', 'Active accounts'))+
     '</div>';
 
   // ── AI COACH ─────────────────────────────────────────────────────────────
@@ -9182,7 +9111,7 @@ async function loadAllGmail(batchStart) {
     var a = toLoad[i];
     if (!state.gmailActivityCache[a.name] || state.gmailActivityCache[a.name] === 'error') {
       try {
-        await loadGmailActivity(a.name);       // reply detection uses efficient inbox search
+        await loadGmailActivity(a.name, true); // fastMode: skip thread-reply checks during bulk scan
       } catch(e) {
         state.gmailActivityCache[a.name] = { error: e.message };
         errors++;
@@ -9222,7 +9151,7 @@ function _saveGmailCacheToStorage() {
         loadedAt: d.loadedAt
       };
     });
-    localStorage.setItem('it_gmail_cache_v2_' + viewRep, JSON.stringify(slim));
+    localStorage.setItem('it_gmail_cache_' + viewRep, JSON.stringify(slim));
     console.log('[GMAIL] Cache saved:', Object.keys(slim).length, 'accounts for', viewRep);
   } catch(e) { console.log('[GMAIL] Cache save failed:', e.message); }
 }
@@ -9231,8 +9160,7 @@ function _loadGmailCacheFromStorage() {
   try {
     var repId = state.repId || '';
     var viewRep = state.viewAsRep || window._myOutreachViewRep || (repId === 'ADMIN' ? 'FJohn' : repId);
-    var raw = localStorage.getItem('it_gmail_cache_v2_' + viewRep);
-    try { localStorage.removeItem('it_gmail_cache_' + viewRep); } catch(e) {} // remove stale v1
+    var raw = localStorage.getItem('it_gmail_cache_' + viewRep);
     if (!raw) return 0;
     var slim = JSON.parse(raw);
     var loaded = 0;
@@ -9386,7 +9314,7 @@ function _renderContactCoveragePanel(accs) {
     '<button id="load-all-gmail-btn" onclick="loadAllGmail()" ' +
     (scanRunning ? 'disabled ' : '') +
     'style="background:' + (_cacheIsFresh ? 'var(--s2)' : 'var(--blue-b)') + ';border:1px solid ' + (_cacheIsFresh ? 'var(--border)' : 'var(--blue-b)') + ';color:' + (_cacheIsFresh ? 'var(--text-2)' : '#fff') + ';padding:7px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono);' + (scanRunning ? 'opacity:0.5;' : '') + '">' +
-    (scanRunning ? '&#8987; Scanning...' : (_cacheIsFresh ? '&#8635; Refresh' : '&#9993; Scan Gmail &nbsp;&#8635;')) +
+    (scanRunning ? '&#9993; Scanning...' : (_cacheIsFresh ? '&#8635; Refresh Gmail' : '&#9993; Scan Gmail')) +
     '</button>' +
     (scanRunning ? '' :
       _cacheIsFresh
@@ -10066,7 +9994,7 @@ function renderFollowUpCommandCenter() {
   }
 
   const pending = events.filter(e => !e.done).sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
-const selDate = (window._iqCalState && window._iqCalState.selectedDate) ? window._iqCalState.selectedDate : todayStr;
+  const selDate = (window._iqCalState && window._iqCalState.selectedDate) ? window._iqCalState.selectedDate : todayStr;
   const todayEvents = pending.filter(e => e.date === selDate);
   const overdueEvents = selDate === todayStr ? pending.filter(e => e.date < todayStr) : [];
   const upcomingEvents = pending.filter(e => e.date > todayStr);
@@ -10184,8 +10112,6 @@ const selDate = (window._iqCalState && window._iqCalState.selectedDate) ? window
 
   // Score, filter hidden, rank — ONE per account, top 100
   contactList.forEach(c => { c.score = iqScore(c); });
-  window._iqLastEvents = events || [];
-  window._gmailReplyQueue = _gmailReplyQueue;
   const aiPicks = contactList
     .filter(c => c.score >= 15 && !hiddenSet.has(c.accName))
     .sort((a,b) => b.score - a.score)
@@ -10228,33 +10154,12 @@ const selDate = (window._iqCalState && window._iqCalState.selectedDate) ? window
   // KPI bar
   const kpiBar = document.createElement('div');
   kpiBar.className = 'iq-topbar';
-  var _critCount = aiPicks.filter(function(c){ return c.score >= 80; }).length;
-  var _atRiskCount = aiPicks.filter(function(c){ return c.score >= 50 && c.score < 80; }).length;
-  var _fuOverdue = (events||[]).filter(function(e){ return !e.done && e.date < todayStr; }).length;
   kpiBar.innerHTML =
-    '<div class="iq-kpi" style="cursor:pointer" onclick="iqFilterPicks(' + "'critical'" + ')" title="Click to see critical accounts">' +
-      '<div class="iq-kpi-num" style="color:var(--red)">' + _critCount + '</div>' +
-      '<div class="iq-kpi-label">CRITICAL</div>' +
-      '<div style="font-family:var(--mono);font-size:8px;color:var(--text-3)">tap to filter</div>' +
-    '</div>' +
-    '<div class="iq-kpi" style="cursor:pointer" onclick="iqFilterPicks(' + "'atrisk'" + ')" title="Click to see at-risk accounts">' +
-      '<div class="iq-kpi-num" style="color:var(--gold)">' + _atRiskCount + '</div>' +
-      '<div class="iq-kpi-label">AT RISK</div>' +
-      '<div style="font-family:var(--mono);font-size:8px;color:var(--text-3)">tap to filter</div>' +
-    '</div>' +
-    '<div class="iq-kpi" style="cursor:pointer" onclick="iqFilterPicks(' + "'overdue'" + ')" title="Click to see overdue follow-ups">' +
-      '<div class="iq-kpi-num" style="color:var(--gold)">' + _fuOverdue + '</div>' +
-      '<div class="iq-kpi-label">FU OVERDUE</div>' +
-      '<div style="font-family:var(--mono);font-size:8px;color:var(--text-3)">tap to filter</div>' +
-    '</div>' +
-    (_replyQueueShown.length ? '<div class="iq-kpi" style="cursor:pointer" onclick="iqToggleChat();setTimeout(function(){_iqQuickAsk(' + JSON.stringify('What emails are waiting for a reply? List them with the account name and how many days since I sent.') + '),200})" title="Emails waiting for reply">' +
-      '<div class="iq-kpi-num" style="color:#60a5fa">' + _replyQueueShown.length + '</div>' +
-      '<div class="iq-kpi-label">NEED REPLY</div>' +
-      '<div style="font-family:var(--mono);font-size:8px;color:var(--text-3)">tap to review</div>' +
-    '</div>' : '') +
-    '<div class="iq-kpi" style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding-right:12px">' +
-      '<button onclick="_iqPlanMyDay()" style="background:rgba(167,139,250,0.2);border:1px solid rgba(167,139,250,0.5);color:#a78bfa;font-family:var(--mono);font-size:9px;padding:6px 12px;cursor:pointer;border-radius:var(--r);font-weight:700">&#9889; PLAN MY DAY</button>' +
-      '<button onclick="openScheduleModal(\'\',\'\',\'\')" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:7px 14px;cursor:pointer;border-radius:var(--r)">+ SCHEDULE</button>' +
+    '<div class="iq-kpi"><div class="iq-kpi-num" style="color:var(--red)">' + (todayEvents.length + overdueEvents.length) + '</div><div class="iq-kpi-label">DUE TODAY</div></div>' +
+    '<div class="iq-kpi"><div class="iq-kpi-num" style="color:var(--gold)">' + upcomingEvents.length + '</div><div class="iq-kpi-label">UPCOMING</div></div>' +
+    '<div class="iq-kpi"><div class="iq-kpi-num" style="color:var(--blue-bright)">' + aiPicks.length + '</div><div class="iq-kpi-label">AI PICKS</div></div>' +
+    '<div class="iq-kpi" style="flex:2;display:flex;align-items:center;justify-content:flex-end;padding-right:16px">' +
+      '<button onclick="openScheduleModal(\'\',\'\',\'\')" style="background:var(--blue-b);border:none;color:#fff;font-family:var(--mono);font-size:10px;padding:7px 16px;cursor:pointer;border-radius:var(--r)">+ SCHEDULE ACTIVITY</button>' +
     '</div>';
   page.appendChild(kpiBar);
 
@@ -10598,54 +10503,6 @@ const selDate = (window._iqCalState && window._iqCalState.selectedDate) ? window
   }
 
   todayPanel.appendChild(todayList);
-
-  // ── Gmail Reply Queue widget ─────────────────────────────────────────────
-  if (_replyQueueShown.length > 0) {
-    var rqSection = document.createElement('div');
-    rqSection.style.cssText = 'border-top:1px solid var(--border);padding:10px 12px;flex-shrink:0';
-    var rqHdr = document.createElement('div');
-    rqHdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
-    rqHdr.innerHTML = '<span style="font-family:var(--mono);font-size:9px;font-weight:700;color:#60a5fa;letter-spacing:0.1em">&#128235; AWAITING REPLY</span>' +
-      '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + _gmailReplyQueue.length + ' emails</span>';
-    rqSection.appendChild(rqHdr);
-    _replyQueueShown.forEach(function(item) {
-      var rRow = document.createElement('div');
-      rRow.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 8px;background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.2);border-radius:var(--r);margin-bottom:5px;cursor:pointer';
-      rRow.onclick = function() { selectAccountByName(item.accName); };
-      var rBody = document.createElement('div');
-      rBody.style.cssText = 'flex:1;min-width:0';
-      var rAcct = document.createElement('div');
-      rAcct.style.cssText = 'font-size:11px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
-      rAcct.textContent = item.accName;
-      var rSub = document.createElement('div');
-      rSub.style.cssText = 'font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
-      rSub.textContent = item.subject;
-      rBody.appendChild(rAcct);
-      rBody.appendChild(rSub);
-      var rRight = document.createElement('div');
-      rRight.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;gap:2px';
-      var rDays = document.createElement('span');
-      rDays.style.cssText = 'font-family:var(--mono);font-size:9px;color:' + (item.daysWaiting > 7 ? 'var(--red)' : '#f59e0b');
-      rDays.textContent = item.daysWaiting + 'd';
-      var rDismiss = document.createElement('button');
-      rDismiss.style.cssText = 'background:transparent;border:none;color:var(--text-3);font-size:10px;cursor:pointer;padding:0;line-height:1';
-      rDismiss.textContent = '×';
-      rDismiss.title = 'Dismiss';
-      rDismiss.onclick = function(e) {
-        e.stopPropagation();
-        _dismissedReplies.add(item.key);
-        try { localStorage.setItem('iq_dismissed_replies_' + repKey, JSON.stringify(Array.from(_dismissedReplies))); } catch(e2) {}
-        renderFollowUpCommandCenter();
-      };
-      rRight.appendChild(rDays);
-      rRight.appendChild(rDismiss);
-      rRow.appendChild(rBody);
-      rRow.appendChild(rRight);
-      rqSection.appendChild(rRow);
-    });
-    todayPanel.appendChild(rqSection);
-  }
-
   panels.appendChild(todayPanel);
 
   // Right: AI Recommendations
@@ -10696,14 +10553,6 @@ const selDate = (window._iqCalState && window._iqCalState.selectedDate) ? window
     btnChat.style.cssText = 'background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer';
     btnChat.textContent = '✦ Chat';
     btnChat.onclick = function() { iqToggleChat(); };
-
-    var btnContactView = document.createElement('button');
-    btnContactView.id = 'iq-view-contact';
-    btnContactView.style.cssText = 'background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;padding:6px 8px;cursor:pointer';
-    btnContactView.textContent = '&#128100; CONTACT';
-    btnContactView.title = 'Switch to contact-level view';
-    btnContactView.onclick = function() { iqSetView(window._iqViewMode === 'contact' ? 'normal' : 'contact'); };
-    tabRow.appendChild(btnContactView);
     tabRow.appendChild(btnChat);
 
     aiHdr.appendChild(tabRow);
@@ -10933,11 +10782,7 @@ const selDate = (window._iqCalState && window._iqCalState.selectedDate) ? window
       if (!aiPicks.length) {
         aiList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:11px">Loading recommendations...<br><span style="font-size:10px">Data loads in background</span></div>';
       } else {
-        // Apply KPI filter if set
-  if (window._iqPickFilter === 'critical') { window._iqLastPicks = aiPicks.filter(function(c){ return c.score >= 80; }); }
-  else if (window._iqPickFilter === 'atrisk') { window._iqLastPicks = aiPicks.filter(function(c){ return c.score >= 50 && c.score < 80; }); }
-  else if (window._iqPickFilter === 'overdue') { window._iqLastPicks = aiPicks.filter(function(c){ return c.acc && c.acc.followUpDate && c.acc.followUpDate < todayStr; }); }
-  else { window._iqLastPicks = aiPicks; }
+        window._iqLastPicks = aiPicks;
         let sortedPicks = [...aiPicks];
         if (iqSortMode === 'buyer') sortedPicks.sort((a,b) => (b.contactRevenue||0) - (a.contactRevenue||0));
         else if (iqSortMode === 'acct') sortedPicks.sort((a,b) => (b.totalRevenue||0) - (a.totalRevenue||0));
@@ -11100,38 +10945,6 @@ function iqToggleHide(accName, repKey) {
 // ── AI PICKS EXTRA FUNCTIONS ─────────────────────────────────────────
 
 let iqViewMode = 'full';
-function iqFilterPicks(filter) {
-  window._iqPickFilter = window._iqPickFilter === filter ? null : filter;
-  renderFollowUpCommandCenter();
-  // Auto-open chat for context
-  var msgs = { critical: 'Show me all CRITICAL accounts — those with the highest urgency scores. List them with revenue and how long since last contact.', atrisk: 'Show me AT RISK accounts — those with moderate urgency. What should I do about them this week?', overdue: 'I have overdue follow-ups. Which accounts have passed their scheduled follow-up date?' };
-  if (msgs[filter]) { iqToggleChat(); setTimeout(function(){ _iqQuickAsk(msgs[filter]); }, 200); }
-}
-
-async function _iqPlanMyDay() {
-  iqToggleChat();
-  var todayStr2 = new Date().toISOString().slice(0,10);
-  var accsCtx = (window._iqLastPicks||[]).slice(0,30).map(function(c){
-    return c.accName + '|score:' + c.score + '|rev:$' + Math.round(c.totalRevenue||0) + '|idle:' + (c.daysSince||'?') + 'd|contact:' + (c.contactName||'?');
-  }).join('; ');
-  var replyCtx = (_gmailReplyQueue||[]).slice(0,5).map(function(r){ return r.accName + '(' + r.daysWaiting + 'd waiting)'; }).join(', ');
-  var sched = (window._iqLastEvents||[]).filter(function(e){ return !e.done && e.date <= todayStr2; }).map(function(e){ return e.contactName + '@' + e.accName + '(' + e.type + ')'; }).join(', ');
-  var prompt = 'Build me an optimized contact sequence for today. I need a numbered list of who to contact, in what order, and why. Focus on highest revenue impact and relationship health.\n\n';
-  prompt += 'MY TOP ACCOUNTS: ' + (accsCtx || 'none loaded') + '\n';
-  prompt += (replyCtx ? 'WAITING FOR REPLY: ' + replyCtx + '\n' : '');
-  prompt += (sched ? 'ALREADY SCHEDULED TODAY: ' + sched + '\n' : '');
-  prompt += '\nFor each contact: name, why them TODAY (not tomorrow), and one specific thing to say or ask.';
-  setTimeout(function(){ _iqQuickAsk(prompt); }, 200);
-}
-
-async function _iqQuickAsk(prompt) {
-  var inp = document.getElementById('iq-chat-input');
-  var msgs = document.getElementById('iq-chat-msgs');
-  if (!inp || !msgs) { iqToggleChat(); setTimeout(function(){ _iqQuickAsk(prompt); }, 300); return; }
-  inp.value = prompt;
-  await iqSendChat();
-}
-
 function iqSetView(mode) {
   iqViewMode = mode;
   const list = document.getElementById('iq-ai-list');
@@ -11161,25 +10974,8 @@ function iqToggleChat() {
     if (msgs && msgs.children.length === 0) {
       const sysMsg = document.createElement('div');
       sysMsg.className = 'iq-chat-msg sys';
-      sysMsg.textContent = "I can build your daily contact plan, analyze reply queues, or answer questions. Try a quick action below or type your own question.";
+      sysMsg.textContent = "I can build you a call list, analyze your picks, or answer questions about your accounts. Try: 'Show me stalled accounts over $50k' or 'Which picks haven't been contacted in 90 days?'";
       msgs.appendChild(sysMsg);
-      // Quick action buttons
-      var qBtns = document.createElement('div');
-      qBtns.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;padding:4px 0';
-      var quickActions = [
-        ['&#9889; Plan My Day', '_iqPlanMyDay()'],
-        ['&#128235; Reply Queue', '_iqQuickAsk("Which accounts have emails waiting for a reply? List them with days waiting.")'],
-        ['&#128293; Top 5 Now', '_iqQuickAsk("What are the top 5 accounts I should contact right now and why?")'],
-        ['&#128202; Stalled $50k+', '_iqQuickAsk("Show me stalled or inactive accounts with over $50k lifetime revenue that I haven\'t contacted recently.")'],
-      ];
-      quickActions.forEach(function(qa) {
-        var qb = document.createElement('button');
-        qb.innerHTML = qa[0];
-        qb.style.cssText = 'padding:4px 8px;background:var(--s2);border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;border-radius:var(--r);cursor:pointer';
-        qb.setAttribute('onclick', qa[1]);
-        qBtns.appendChild(qb);
-      });
-      msgs.appendChild(qBtns);
     }
     setTimeout(function() { const inp = document.getElementById('iq-chat-input'); if (inp) inp.focus(); }, 60);
   }
@@ -11330,13 +11126,9 @@ async function iqSendChat() {
     return a.accName + ' | score:' + a.score + ' | rev:$' + formatNum(a.totalRevenue||0) + ' | last:' + (a.daysSince != null ? a.daysSince + 'd ago' : 'unknown');
   }).join('\n');
   const listed = (window._iqList || []).map(function(x) { return x.accName; }).join(', ');
-  var _replyCtx = (window._gmailReplyQueue||[]).slice(0,8).map(function(r){ return r.accName + ' (' + r.daysWaiting + 'd no reply, subj: ' + r.subject.slice(0,40) + ')'; }).join('; ');
-  var _schedCtx = (window._iqLastEvents||[]).filter(function(e){ return !e.done && e.date <= new Date().toISOString().slice(0,10); }).slice(0,5).map(function(e){ return (e.type||'activity') + ' with ' + (e.contactName||e.accName); }).join('; ');
   const sysCtx = 'You are a sales intelligence assistant for ' + repLabel + '.'
     + ' Today is ' + new Date().toISOString().slice(0,10) + '.'
-    + ' Top AI picks (name|score|revenue|idle days):\n' + (accs || 'No data.')
-    + (_replyCtx ? '\n\nEMAILS WAITING FOR REPLY: ' + _replyCtx : '')
-    + (_schedCtx ? '\n\nTODAY SCHEDULED: ' + _schedCtx : '')
+    + ' Top AI picks by score (name | score | revenue | last order):\n' + (accs || 'No data loaded yet.')
     + (listed ? '\n\nCurrent list: ' + listed : '')
     + '\n\nWhen you mention a specific account name from the picks list, wrap it like [ACCTLINK:AccountName] so the user can click it.';
 

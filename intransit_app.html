@@ -8322,11 +8322,10 @@ async function gmailFetch(path, params) {
   return resp.json();
 }
 
-async function loadGmailActivity(accName, fastMode) {
+async function loadGmailActivity(accName) {
   // Get contact emails for this account
   var normName = accName.trim().toLowerCase();
   var contacts = state.contactsCache[accName] || state.contactsCache[normName] || [];
-  // Also try normalized lookup
   if (!contacts.length && state._contactsCacheNorm) {
     contacts = state._contactsCacheNorm[normName] || [];
   }
@@ -8334,15 +8333,12 @@ async function loadGmailActivity(accName, fastMode) {
                        .map(function(c){ return c.email.toLowerCase().trim(); });
   if (!emails.length) return { noContacts: true };
 
-  // Build Gmail query: in:sent AND (to:email1 OR to:email2 ...)
+  // 1) Fetch sent emails to these contacts
   var toQuery = emails.map(function(e){ return 'to:' + e; }).join(' OR ');
-  var q = 'in:sent (' + toQuery + ')';
-
-  var data = await gmailFetch('users/me/messages', { q: q, maxResults: '50' });
+  var data = await gmailFetch('users/me/messages', { q: 'in:sent (' + toQuery + ')', maxResults: '50' });
   var messages = data.messages || [];
 
-  // Fetch metadata for each message
-  // fastMode=true skips thread-reply check (halves API calls during bulk scan)
+  // 2) Fetch metadata for each sent message (Subject, To, Date)
   var details = await Promise.all(messages.slice(0, 30).map(async function(m) {
     try {
       var msg = await gmailFetch('users/me/messages/' + m.id, {
@@ -8353,26 +8349,30 @@ async function loadGmailActivity(accName, fastMode) {
       (msg.payload && msg.payload.headers || []).forEach(function(h){
         headers[h.name.toLowerCase()] = h.value;
       });
-      var replied = false;
-      if (!fastMode) {
-        var threadData = await gmailFetch('users/me/threads/' + msg.threadId, { format: 'minimal' });
-        replied = (threadData.messages && threadData.messages.length > 1);
-      }
       return {
         id: m.id,
         threadId: msg.threadId,
         subject: headers.subject || '(no subject)',
         to: headers.to || '',
         date: headers.date || '',
-        replied: replied,
+        replied: false,
         snippet: msg.snippet || ''
       };
     } catch(e) { return null; }
   }));
 
   var result = details.filter(Boolean);
+
+  // 3) Detect actual customer replies in ONE search — find inbound messages FROM these contacts.
+  //    messages.list returns {id, threadId} so no extra per-message fetch needed.
+  try {
+    var fromQuery = emails.map(function(e){ return 'from:' + e; }).join(' OR ');
+    var replyData = await gmailFetch('users/me/messages', { q: fromQuery, maxResults: '100' });
+    var replyThreadIds = new Set((replyData.messages || []).map(function(rm){ return rm.threadId; }));
+    result.forEach(function(m){ if (replyThreadIds.has(m.threadId)) m.replied = true; });
+  } catch(e) {}
+
   state.gmailActivityCache[accName] = { emails: emails, messages: result, loadedAt: Date.now() };
-  // Save incrementally after each account so partial scans survive navigation
   try { _saveGmailCacheToStorage(); } catch(e) {}
   return state.gmailActivityCache[accName];
 }
@@ -8433,20 +8433,24 @@ function renderGmailActivityTab(acc) {
         dStr = isNaN(_d.getTime()) ? '' : _d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
       }
       var repliedBadge = m.replied
-        ? '<span style="font-size:9px;background:rgba(34,197,94,0.15);color:#22c55e;padding:1px 5px;border-radius:3px;font-family:var(--mono)">&#10003; REPLIED</span>'
-        : '<span style="font-size:9px;background:rgba(239,68,68,0.1);color:var(--text-muted);padding:1px 5px;border-radius:3px;font-family:var(--mono)">NO REPLY</span>';
-      var toShort = m.to.length > 40 ? m.to.slice(0, 40) + '...' : m.to;
+        ? '<span style="font-size:9px;background:rgba(34,197,94,0.15);color:#22c55e;padding:2px 7px;border-radius:3px;font-family:var(--mono);font-weight:700">&#10003; REPLIED</span>'
+        : '<span style="font-size:9px;background:rgba(239,68,68,0.08);color:var(--text-muted);padding:2px 7px;border-radius:3px;font-family:var(--mono)">NO REPLY</span>';
+      var toDisplay = m.to || '—';
+      if (toDisplay.length > 50) toDisplay = toDisplay.slice(0, 50) + '...';
+      var subjectDisplay = m.subject || '(no subject)';
       return '<div style="border-bottom:1px solid var(--border);padding:10px 0">' +
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
-        '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:12px;font-weight:600;margin-bottom:3px;color:var(--text)">' + escHtml(m.subject) + '</div>' +
-        '<div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">To: ' + escHtml(toShort) + '</div>' +
-        '<div style="font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml((m.snippet||'').slice(0,100)) + '</div>' +
-        '</div>' +
-        '<div style="flex-shrink:0;text-align:right">' +
-        '<div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;font-family:var(--mono)">' + dStr + '</div>' +
+        // Row 1: date + reply badge
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+        '<span style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + escHtml(dStr || '—') + '</span>' +
         repliedBadge +
-        '</div></div></div>';
+        '</div>' +
+        // Row 2: subject
+        '<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(subjectDisplay) + '</div>' +
+        // Row 3: To
+        '<div style="font-size:11px;color:var(--text-muted);margin-bottom:3px"><span style="font-family:var(--mono);font-size:9px;color:var(--text-3);margin-right:4px">TO</span>' + escHtml(toDisplay) + '</div>' +
+        // Row 4: snippet
+        '<div style="font-size:10px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml((m.snippet||'').slice(0,120)) + '</div>' +
+        '</div>';
     }).join('');
   }
 
@@ -9133,7 +9137,7 @@ async function loadAllGmail(batchStart) {
     var a = toLoad[i];
     if (!state.gmailActivityCache[a.name] || state.gmailActivityCache[a.name] === 'error') {
       try {
-        await loadGmailActivity(a.name, true); // fastMode: skip thread-reply checks during bulk scan
+        await loadGmailActivity(a.name);
       } catch(e) {
         state.gmailActivityCache[a.name] = { error: e.message };
         errors++;

@@ -8409,7 +8409,10 @@ function renderGmailActivityTab(acc) {
   } else {
     listHtml = msgs.map(function(m) {
       var dStr = '';
-      try { dStr = new Date(m.date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); } catch(e) { dStr = m.date; }
+      if (m.date) {
+        var _d = new Date(m.date.replace(/\s*\([^)]*\)\s*$/, '').trim());
+        dStr = isNaN(_d.getTime()) ? '' : _d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+      }
       var repliedBadge = m.replied
         ? '<span style="font-size:9px;background:rgba(34,197,94,0.15);color:#22c55e;padding:1px 5px;border-radius:3px;font-family:var(--mono)">&#10003; REPLIED</span>'
         : '<span style="font-size:9px;background:rgba(239,68,68,0.1);color:var(--text-muted);padding:1px 5px;border-radius:3px;font-family:var(--mono)">NO REPLY</span>';

@@ -8494,6 +8494,55 @@ async function gmailLoadForAccount(accName) {
   }
 }
 
+
+function _showOutreachList(title, accs, color, mode) {
+  var existing = document.getElementById('_oc_list_modal');
+  if (existing) existing.remove();
+  var modal = document.createElement('div');
+  modal.id = '_oc_list_modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.onclick = function(e){ if(e.target===modal) modal.remove(); };
+
+  var rows = '';
+  if (mode === 'gmail') {
+    var sorted = (accs||[]).slice().sort(function(a,b){ return b.sent-a.sent; });
+    rows = sorted.map(function(a){
+      var rate = a.sent ? Math.round(a.replied/a.sent*100) : 0;
+      var col = rate>=40?'#22c55e':rate>=20?'#f59e0b':'#ef4444';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer" onclick="selectAccountByName('+JSON.stringify(a.name)+');document.getElementById(\'_oc_list_modal\').remove()">'
+        + '<div style="flex:1;font-size:12px;color:var(--text)">' + escHtml(a.name) + '</div>'
+        + '<div style="font-family:var(--mono);font-size:11px;color:var(--text-3)">' + a.sent + ' sent</div>'
+        + '<div style="font-family:var(--mono);font-size:11px;color:'+col+';min-width:38px;text-align:right">' + rate + '%</div>'
+        + '</div>';
+    }).join('');
+  } else {
+    rows = (accs||[]).map(function(a){
+      var name = a.name || a.accName || '';
+      var rep  = a.rep || '';
+      var rev  = parseFloat(a.total||0)||0;
+      var last = a.lastSaleDate || a.lastSale || '—';
+      var fu   = a.followUpDate || '';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer" onclick="selectAccountByName('+JSON.stringify(name)+');document.getElementById(\'_oc_list_modal\').remove()">'
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(name) + '</div>'
+        + '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono)">' + (rep?'Rep: '+rep+' &nbsp;|&nbsp; ':'') + 'Last sale: ' + escHtml(last) + (fu?' &nbsp;|&nbsp; FU: <span style="color:#a855f7">'+fu+'</span>':'') + '</div>'
+        + '</div>'
+        + '<div style="font-family:var(--mono);font-size:11px;color:#3b82f6;flex-shrink:0">$' + formatNum(rev) + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  modal.innerHTML = '<div style="background:var(--s1);border:1px solid var(--border-hi);border-top:3px solid '+color+';border-radius:var(--r2);width:min(560px,94vw);max-height:80vh;display:flex;flex-direction:column">'
+    + '<div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border)">'
+    + '<div style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+color+';letter-spacing:0.06em">' + escHtml(title) + '</div>'
+    + '<div style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text-3)">' + (accs||[]).length + ' accounts</div>'
+    + '<button onclick="document.getElementById('_oc_list_modal').remove()" style="background:transparent;border:none;color:var(--text-3);font-size:16px;cursor:pointer;padding:0 4px">&#10005;</button>'
+    + '</div>'
+    + '<div style="overflow-y:auto;flex:1">' + (rows || '<div style="padding:20px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">No accounts in this category</div>') + '</div>'
+    + '</div>';
+  document.body.appendChild(modal);
+}
+
 // End Gmail Email Activity ─────────────────────────────────────────────────
 
 
@@ -8796,11 +8845,14 @@ async function renderMyOutreachView() {
   }
 
   // ── Helper: KPI tile ────────────────────────────────────────────────────
-  function _kpi(label, val, col, sub) {
-    return '<div style="background:var(--s1);border:1px solid var(--border);border-top:2px solid '+col+';border-radius:var(--r2);padding:14px 16px;text-align:center">'+
+  function _kpi(label, val, col, sub, onclick) {
+    var cs = onclick ? 'cursor:pointer;transition:box-shadow 0.15s;' : '';
+    var oc = onclick ? ' onclick="'+onclick+'" onmouseover="this.style.boxShadow=\'0 0 0 2px '+col+'\'" onmouseout="this.style.boxShadow=\'\'"' : '';
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-top:2px solid '+col+';border-radius:var(--r2);padding:14px 16px;text-align:center;'+cs+'"'+oc+'>'+
       '<div style="font-family:var(--mono);font-size:22px;font-weight:800;color:'+col+'">'+val+'</div>'+
       '<div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--text-2);margin-top:2px">'+label+'</div>'+
       (sub?'<div style="font-size:9px;color:var(--text-3);margin-top:2px">'+sub+'</div>':'')+
+      (onclick?'<div style="font-size:8px;color:var(--text-3);margin-top:6px;font-family:var(--mono);letter-spacing:0.06em">&#128196; view list</div>':'')+
       '</div>';
   }
 
@@ -8885,13 +8937,17 @@ async function renderMyOutreachView() {
 
   // ── KPI BAR ──────────────────────────────────────────────────────────────
   var kpiHtml =
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:22px">'+
-    _kpi('CRITICAL', critical.length, '#ef4444', 'Contact immediately')+
+    window._ocCritical = critical.map(function(x){ return x.acc; });
+  window._ocAtRisk   = atRisk.map(function(x){ return x.acc; });
+  window._ocOverdue  = overdue.map(function(x){ return x.acc; });
+  window._ocGmailAccs = gmailLoaded.map(function(k){ var d=state.gmailActivityCache[k]; return {name:k, sent:(d.messages||[]).length, replied:(d.messages||[]).filter(function(m){return m.replied;}).length}; });
+  '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:22px">'+
+    _kpi('CRITICAL', critical.length, '#ef4444', 'Contact immediately', "_showOutreachList('CRITICAL — Contact Immediately',window._ocCritical,'#ef4444')")+
     _kpi('AT RISK', atRisk.length, '#f97316', '30–90 days inactive')+
-    _kpi('FU OVERDUE', overdue.length, '#a855f7', 'Past due follow-ups')+
+    _kpi('FU OVERDUE', overdue.length, '#a855f7', 'Past due follow-ups', "_showOutreachList('FU OVERDUE — Past Due Follow-ups',window._ocOverdue,'#a855f7')")+
     (gmailLoaded.length>0
-      ? _kpi('REPLY RATE', gRate+'%', gRate>=40?'#22c55e':gRate>=20?'#f59e0b':'#ef4444', gSent+' emails tracked')
-      : _kpi('WELL COVERED', strong.length, '#22c55e', 'Active accounts'))+
+      ? _kpi('REPLY RATE', gRate+'%', gRate>=40?'#22c55e':gRate>=20?'#f59e0b':'#ef4444', gSent+' emails tracked', "_showOutreachList('Gmail — Email Activity',window._ocGmailAccs,'#60a5fa','gmail')")
+      : _kpi('WELL COVERED', strong.length, '#22c55e', 'Active accounts', "_showOutreachList('WELL COVERED — Strong Accounts',window._ocCritical.length?[]:window._ocAtRisk,'#22c55e')"))+
     '</div>';
 
   // ── AI COACH ─────────────────────────────────────────────────────────────
@@ -9330,7 +9386,7 @@ function _renderContactCoveragePanel(accs) {
     '<button id="load-all-gmail-btn" onclick="loadAllGmail()" ' +
     (scanRunning ? 'disabled ' : '') +
     'style="background:' + (_cacheIsFresh ? 'var(--s2)' : 'var(--blue-b)') + ';border:1px solid ' + (_cacheIsFresh ? 'var(--border)' : 'var(--blue-b)') + ';color:' + (_cacheIsFresh ? 'var(--text-2)' : '#fff') + ';padding:7px 16px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--mono);' + (scanRunning ? 'opacity:0.5;' : '') + '">' +
-    (scanRunning ? '&#9993; Scanning...' : (_cacheIsFresh ? '&#8635; Refresh Gmail' : '&#9993; Scan Gmail')) +
+    (scanRunning ? '&#8987; Scanning...' : (_cacheIsFresh ? '&#8635; Refresh' : '&#9993; Scan Gmail &nbsp;&#8635;')) +
     '</button>' +
     (scanRunning ? '' :
       _cacheIsFresh

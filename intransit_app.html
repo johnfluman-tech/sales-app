@@ -3752,7 +3752,7 @@ async function ipManagerRefresh() {
   var body = document.getElementById('ip-list-body');
   if (!body) return;
   try {
-    var res = await fetch(CONFIG.WORKER_URL + '/admin/ips', { credentials: 'include' });
+    var res = await fetch(CONFIG.WORKER_URL + '/admin/ips', { credentials: 'include', headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' } });
     var ips = await res.json();
     if (!ips.length) { body.innerHTML = '<div style="color:var(--text-3);padding:12px 0">No external IPs on record yet.</div>'; return; }
     var statusColor = { approved:'#22c55e', pending:'#f59e0b', denied:'#ef4444', revoked:'#6b7280', new:'#f59e0b' };
@@ -3784,7 +3784,7 @@ async function ipManagerRevoke(ip) {
   try {
     await fetch(CONFIG.WORKER_URL + '/admin/revoke-ip', {
       method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' },
       body: JSON.stringify({ ip })
     });
     showToast(ip + ' access revoked', 'success');
@@ -3798,7 +3798,7 @@ async function ipManagerApprove(ip) {
   try {
     await fetch(CONFIG.WORKER_URL + '/admin/approve-ip', {
       method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' },
       body: JSON.stringify({ ip })
     });
     showToast(ip + ' approved', 'success');
@@ -4196,7 +4196,7 @@ async function checkAuth() {
 
   // Verify the httpOnly session cookie is still valid before restoring
   try {
-    const res = await fetch(CONFIG.WORKER_URL + '/check-session', { credentials: 'include' });
+    const res = await fetch(CONFIG.WORKER_URL + '/check-session', { credentials: 'include', headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' } });
     if (!res.ok) {
       // Cookie expired or missing — force fresh Google login
       localStorage.removeItem('it_token');

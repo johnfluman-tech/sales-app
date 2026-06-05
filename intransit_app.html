@@ -7831,6 +7831,26 @@ async function poolMarkHidden(accName) {
   renderPoolManagementView();
 }
 
+async function poolRestoreToReview(accName) {
+  // Delete the D1 record so the account falls back into "Needs Review" (!r bucket)
+  if (!state.sessionToken) { showToast('Not authenticated', 'error'); return; }
+  try {
+    var res = await fetch(CONFIG.WORKER_URL + '/pool/managed', {
+      method: 'DELETE',
+      headers: { 'X-Session-Token': state.sessionToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account_name: accName })
+    });
+    if (!res.ok) { showToast('Restore failed: ' + res.status, 'error'); return; }
+    // Remove from in-memory cache
+    if (state.poolManagedCache) {
+      state.poolManagedCache = state.poolManagedCache.filter(function(p){ return p.name.toLowerCase() !== accName.toLowerCase(); });
+    }
+    poolLogAction('RESTORED_TO_REVIEW', accName, 'Restored to Needs Review by: ' + state.repId);
+    showToast(accName + ' restored to Needs Review.', 'success');
+    renderPoolManagementView();
+  } catch(e) { showToast('Restore failed: ' + e.message, 'error'); }
+}
+
 async function poolSetPriority(accName, priority) {
   if (!state.poolManagedCache) return;
   var idx = state.poolManagedCache.findIndex(function(p){ return p.name.toLowerCase() === accName.toLowerCase(); });
@@ -7899,7 +7919,8 @@ function poolMgmtSearch() {
   var v = document.getElementById('pool-search-input');
   _poolMgmtState().search = v ? v.value.toLowerCase().trim() : '';
   _poolMgmtState().page = 50;
-  renderPoolManagementView();
+  clearTimeout(window._poolSearchTimer);
+  window._poolSearchTimer = setTimeout(renderPoolManagementView, 320);
 }
 function poolMgmtShowMore() { _poolMgmtState().page += 50; renderPoolManagementView(); }
 function poolMgmtSortDir() { var f=_poolMgmtState(); f.dir = f.dir==='asc' ? 'desc' : 'asc'; renderPoolManagementView(); }
@@ -8363,7 +8384,7 @@ function renderPoolManagementView() {
           (days < 9999 ? '<div style="font-size:10px;color:' + daysCol + ';font-family:var(--mono);margin-top:3px">' + days + ' days inactive</div>' : '') +
           (who ? '<div style="font-size:10px;color:var(--text-3);margin-top:3px;font-style:italic">' + who + '</div>' : '') +
         '</div>' +
-        '<button data-n="' + escHtml(a.name) + '" data-r="' + escHtml(a.rep) + '" data-p="Warm" onclick="poolMarkAvailable(this.dataset.n,this.dataset.r,this.dataset.p)" style="padding:7px 14px;background:rgba(20,184,166,0.12);border:1px solid #14b8a6;color:#14b8a6;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700;flex-shrink:0">RESTORE</button>' +
+        '<button data-n="' + escHtml(a.name) + '" onclick="poolRestoreToReview(this.dataset.n)" style="padding:7px 14px;background:rgba(20,184,166,0.12);border:1px solid #14b8a6;color:#14b8a6;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700;flex-shrink:0">RESTORE</button>' +
       '</div>' +
     '</div>';
   }
@@ -8488,6 +8509,8 @@ function renderPoolManagementView() {
       (filteredHidden.length ? filteredHidden.map(hiddenCard).join('') : '<div style="padding:30px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' + (f.search || f.rep !== 'ALL' ? 'No matches' : 'No hidden accounts') + '</div>');
   }
 
+  var _prevScroll = (document.getElementById('pool-mgmt-scroll') || {}).scrollTop || 0;
+
   el.innerHTML =
     '<style>#pool-mgmt-scroll::-webkit-scrollbar{width:10px}#pool-mgmt-scroll::-webkit-scrollbar-track{background:var(--s2)}#pool-mgmt-scroll::-webkit-scrollbar-thumb{background:var(--s3);border-radius:5px;border:2px solid var(--s2)}</style>' +
     '<div id="pool-mgmt-scroll" style="height:100%;overflow-y:auto">' +
@@ -8501,7 +8524,7 @@ function renderPoolManagementView() {
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">' +
         '<div style="font-size:12px;color:var(--text-3)">Curate which inactive accounts are visible to reps in <strong>Available Accounts</strong>. All actions are logged.' +
           (isAdmin() ? '<span style="margin-left:10px;font-family:var(--mono);font-size:10px;color:' + (poolCache.length > 0 ? '#22c55e' : '#f59e0b') + '">' +
-            '&#9679; ' + (poolCache.length > 0 ? poolCache.length + ' records loaded from sheet' : '_POOL_MANAGED empty — hides may not persist yet') +
+            '&#9679; ' + (poolCache.length > 0 ? poolCache.length + ' records loaded from D1' : 'D1 empty — no pool actions yet') +
           '</span>' : '') +
         '</div>' +
         '<div style="display:flex;gap:8px;flex-shrink:0">' +
@@ -8514,6 +8537,11 @@ function renderPoolManagementView() {
       bodyHtml +
     '</div>' +
     '</div>';
+
+  if (_prevScroll > 0) {
+    var _sc = document.getElementById('pool-mgmt-scroll');
+    if (_sc) _sc.scrollTop = _prevScroll;
+  }
 }
 
 function renderAvailablePoolView() {

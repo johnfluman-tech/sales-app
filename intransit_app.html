@@ -4447,8 +4447,15 @@ function switchView(view) {
     renderHiddenAccountsView();
     setTimeout(restoreSplitPositions, 30);
   } else if (view === 'poolManagement') {
-    renderPoolManagementView();
-    setTimeout(restoreSplitPositions, 30);
+    // Always force-reload from Sheets when opening Pool Management — the startup
+    // load runs before auth is ready and caches an empty result, so we must bypass it.
+    loadPoolManaged(true).then(function() {
+      renderPoolManagementView();
+      setTimeout(restoreSplitPositions, 30);
+    });
+    // Show something immediately while loading
+    var _pmEl = document.getElementById('main-content');
+    if (_pmEl && !state.poolManagedCache) _pmEl.innerHTML = '<div style="padding:40px;color:var(--text-3);font-family:var(--mono);font-size:12px">Loading pool data...</div>';
   } else if (view === 'availablePool') {
     renderAvailablePoolView();
     setTimeout(restoreSplitPositions, 30);
@@ -7547,6 +7554,8 @@ async function loadPoolManaged(force) {
       }
     } catch(e2) {
       console.warn('[POOL] loadPoolManaged failed, could not rebuild:', e2);
+      // Don't permanently cache [] on auth/network failure — leave null so it retries next open
+      if (!state.sessionToken) { state.poolManagedCache = null; return; }
       state.poolManagedCache = [];
     }
   }
@@ -7883,6 +7892,34 @@ function poolLogAction(action, accName, detail) {
   var ts = new Date().toISOString();
   var row = [ts, 'POOL_ACTION', accName, state.repId, detail || '', action, ''];
   sheetsAppend("'_REQUEST_LOG'!A1", [row], CONFIG.HISTORY_SPREADSHEET_ID).catch(function(){});
+}
+
+async function poolDiag() {
+  var lines = ['=== POOL MANAGEMENT DIAGNOSTIC ==='];
+  lines.push('Session token: ' + (state.sessionToken ? 'YES (' + state.sessionToken.slice(0,20) + '...)' : 'MISSING'));
+  lines.push('Google token:  ' + (state.accessToken ? 'YES' : 'MISSING'));
+  lines.push('poolManagedCache: ' + (state.poolManagedCache === null ? 'null (not loaded)' : state.poolManagedCache.length + ' records'));
+  if (state.poolManagedCache && state.poolManagedCache.length) {
+    var byStatus = {};
+    state.poolManagedCache.forEach(function(r){ byStatus[r.status] = (byStatus[r.status]||0)+1; });
+    lines.push('  by status: ' + JSON.stringify(byStatus));
+  }
+  // Try to read _POOL_MANAGED tab directly
+  try {
+    var rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A1:H50");
+    lines.push('_POOL_MANAGED tab: EXISTS, ' + rows.length + ' rows (incl header)');
+    if (rows.length > 1) lines.push('  sample: ' + JSON.stringify(rows[1]));
+  } catch(e) { lines.push('_POOL_MANAGED tab: ERROR — ' + e.message); }
+  // Try to read _REQUEST_LOG for POOL_ACTION rows
+  try {
+    var logRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_REQUEST_LOG'!A1:G200");
+    var poolActions = (logRows||[]).filter(function(r){ return (r[1]||'').toUpperCase().trim() === 'POOL_ACTION'; });
+    lines.push('_REQUEST_LOG POOL_ACTION rows: ' + poolActions.length);
+    if (poolActions.length) lines.push('  latest: ' + JSON.stringify(poolActions[poolActions.length-1]));
+  } catch(e) { lines.push('_REQUEST_LOG: ERROR — ' + e.message); }
+  var msg = lines.join('\n');
+  console.log(msg);
+  alert(msg);
 }
 
 function renderPoolManagementView() {
@@ -8320,8 +8357,14 @@ function renderPoolManagementView() {
         (hiddenFromPool.length ? '<span style="background:var(--s2);color:var(--text-3);font-size:10px;font-family:var(--mono);padding:2px 10px;border-radius:10px">' + hiddenFromPool.length + ' hidden</span>' : '') +
       '</div>' +
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">' +
-        '<div style="font-size:12px;color:var(--text-3)">Curate which inactive accounts are visible to reps in <strong>Available Accounts</strong>. All actions are logged.</div>' +
+        '<div style="font-size:12px;color:var(--text-3)">Curate which inactive accounts are visible to reps in <strong>Available Accounts</strong>. All actions are logged.' +
+          '<span style="margin-left:10px;font-family:var(--mono);font-size:10px;color:' + (poolCache.length > 0 ? '#22c55e' : '#f59e0b') + '">' +
+            '&#9679; ' + (poolCache.length > 0 ? poolCache.length + ' records loaded from sheet' : '_POOL_MANAGED empty — hides may not persist yet') +
+          '</span>' +
+        '</div>' +
         '<div style="display:flex;gap:8px;flex-shrink:0">' +
+          '<button onclick="poolDiag()" style="padding:7px 14px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.4);color:#f59e0b;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">&#9881; DIAG</button>' +
+          '<button onclick="loadPoolManaged(true).then(function(){renderPoolManagementView();})" style="padding:7px 14px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.4);color:#60a5fa;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">&#8635; RELOAD</button>' +
           '<button onclick="poolAIAdvisor()" style="padding:7px 14px;background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.5);color:#a855f7;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">&#127775; AI POOL ADVISOR</button>' +
         '</div>' +
       '</div>' +

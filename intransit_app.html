@@ -5932,6 +5932,7 @@ async function checkUnusualActivity() {
       fetch(CONFIG.WORKER_URL + '/send-alert', {
         method: 'POST',
         headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           to: 'john.fluman@intransittech.com',
           subject: '\u26a0 Unusual Activity: ' + a.repId + ' — Intransit Sales App',
@@ -15132,6 +15133,7 @@ async function saveAttackPlan(rep, cards) {
         await fetch(CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + ':batchUpdate', {
           method: 'POST',
           headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ requests:[{ addSheet:{ properties:{ title:'_ATTACK_PLAN' } } }] })
         });
       } catch(e) { /* tab may already exist */ }

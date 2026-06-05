@@ -1194,7 +1194,7 @@ body::before {
           <span class="nav-badge" id="badge-my-feedback" style="background:var(--gold);color:#000"></span>
         </div>
       </div>
-      <div class="nav-item" id="nav-hidden-accounts" data-view="hiddenAccounts" onclick="switchView('hiddenAccounts')">
+      <div class="nav-item" id="nav-hidden-accounts" data-view="hiddenAccounts" onclick="switchView('hiddenAccounts')" style="display:none">
         <div class="nav-item-inner">
           <span class="nav-icon">&#128274;</span> Hidden Accounts
           <span class="nav-badge" id="badge-hidden-accounts" style="background:var(--orange)"></span>
@@ -3538,6 +3538,10 @@ function completeLogin() {
     if (poolMgmtNav) poolMgmtNav.style.display = 'block';
     const myOutreachNav = document.getElementById('nav-my-outreach');
     if (myOutreachNav) myOutreachNav.style.display = 'block';
+    const hiddenAccNav = document.getElementById('nav-hidden-accounts');
+    if (hiddenAccNav) hiddenAccNav.style.display = 'block';
+    const myFeedbackNav = document.getElementById('nav-my-feedback');
+    if (myFeedbackNav) myFeedbackNav.style.display = 'block';
     loadSuggestionsBoardBadge();
     // Populate admin View As dropdown
     const _admSel = document.getElementById('view-as-select');
@@ -3601,7 +3605,7 @@ function completeLogin() {
   sendHeartbeat().catch(function(){});
   clearInterval(window._heartbeatInterval);
   window._heartbeatInterval = setInterval(function() { sendHeartbeat().catch(function(){}); }, 60 * 1000);
-  // Show notes feed nav for ALL users (label varies by role)
+  // Notes Feed nav for all users — label varies by role; data is already scoped inside _renderNotesFeed
   const _nfNavAll = document.getElementById('nav-notes-feed');
   if (_nfNavAll && _nfNavAll.style.display !== 'block') {
     _nfNavAll.style.display = 'block';
@@ -3609,9 +3613,7 @@ function completeLogin() {
     if (_nfInner && !isAdmin() && !isManager()) _nfInner.innerHTML = '<span class="nav-icon">&#128203;</span> My Notes';
   }
   academyUpdateBadge();
-  // Show My Feedback nav + Compose button for all users
-  const _fbNav = document.getElementById('nav-my-feedback');
-  if (_fbNav) _fbNav.style.display = 'block';
+  // Compose button for all users
   const _composeBtn = document.getElementById('compose-email-btn');
   if (_composeBtn) _composeBtn.style.display = 'block';
   // Proactive refresh disabled — requestAccessToken() opens a popup window on some
@@ -3721,6 +3723,7 @@ function generateSessionId() {
 // ── IP Manager (admin only) ───────────────────────────────────────────────────
 
 async function showIPManager() {
+  if (!isAdmin()) return;
   var existing = document.getElementById('ip-manager-modal');
   if (existing) existing.remove();
   var modal = document.createElement('div');
@@ -7619,6 +7622,7 @@ async function renderRequestLogView() {
 }
 
 function renderHiddenAccountsView() {
+  if (!isAdmin()) { switchView('accounts'); return; }
   const el = document.getElementById('main-content');
   if (!el) return;
   const mgrCfg = getManagerConfig();
@@ -20846,6 +20850,7 @@ async function suggSaveReply(rowIdx) {
 // ══════════════════════════════════════════════════════════════
 
 async function renderMyFeedbackView() {
+  if (!isAdmin()) { switchView('accounts'); return; }
   const el = document.getElementById('main-content');
   el.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font-family:var(--mono);color:var(--text-3)">Loading...</div></div>';
   let rows = [];
@@ -20992,7 +20997,7 @@ function fbUnarchive(idxStr) {
 // ══════════════════════════════════════════════════════════════
 
 async function renderNotesFeed() { await _renderNotesFeed(false); }
-async function renderTeamNotes() { await _renderNotesFeed(true); }
+async function renderTeamNotes() { if (!isAdmin() && !isManager()) { switchView('accounts'); return; } await _renderNotesFeed(true); }
 
 async function _renderNotesFeed(isTeamView) {
   const el = document.getElementById('main-content');

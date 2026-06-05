@@ -12627,9 +12627,15 @@ function switchViewAs(rep) {
     // Suggestions board: only show in own admin view — hidden in all view-as modes
     const _suggNav = document.getElementById('nav-suggestions-board');
     if (_suggNav) _suggNav.style.display = !state.viewAsRep ? 'block' : 'none';
-    // My Feedback: always visible (admin can preview another rep's feedback when simulating)
+    // These were missing from the view-as hide list — hide all admin-only items when simulating a rep
+    const ipMgrNavAs = document.getElementById('nav-ip-manager');
+    if (ipMgrNavAs) ipMgrNavAs.style.display = showAdminNav ? 'block' : 'none';
+    const actLogNavAs = document.getElementById('nav-activity-log');
+    if (actLogNavAs) actLogNavAs.style.display = showAdminNav ? 'block' : 'none';
+    const hidAccNavAs = document.getElementById('nav-hidden-accounts');
+    if (hidAccNavAs) hidAccNavAs.style.display = showAdminNav ? 'block' : 'none';
     const _fbNavAs = document.getElementById('nav-my-feedback');
-    if (_fbNavAs) _fbNavAs.style.display = 'block';
+    if (_fbNavAs) _fbNavAs.style.display = showAdminNav ? 'block' : 'none';
   } else if (isManager()) {
     const _mc = getManagerConfig(); const _tn = _mc ? _mc.teamName.toUpperCase() : 'TEAM';
     label.textContent = (rep === '__TEAM_ALL__' || rep === 'MX_TEAM') ? 'MANAGER — ' + _tn : rep ? 'VIEWING: ' + rep : 'MANAGER — MY ACCOUNTS';

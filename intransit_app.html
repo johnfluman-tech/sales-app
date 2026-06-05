@@ -4119,38 +4119,56 @@ function _permissionScope() {
 }
 
 async function checkAuth() {
-  const savedToken   = localStorage.getItem('it_token');
-  const savedUser    = localStorage.getItem('it_user');
-  const tokenTime    = localStorage.getItem('it_token_time');
-  const savedSession = localStorage.getItem('it_session_token');
-  if (savedToken && savedUser && savedSession) {
-    // Check if Google token is older than 50 minutes (Google tokens last 60 min)
-    const age = Date.now() - parseInt(tokenTime || '0');
-    if (age > 50 * 60 * 1000) {
-      // Token likely expired — clear everything so user gets fresh login
+  // Phase 3a: session is in an httpOnly cookie, not localStorage.
+  // Always clear the old localStorage session token — it is no longer used.
+  localStorage.removeItem('it_session_token');
+
+  const savedToken = localStorage.getItem('it_token');
+  const savedUser  = localStorage.getItem('it_user');
+  const tokenTime  = localStorage.getItem('it_token_time');
+
+  if (!savedToken || !savedUser) {
+    localStorage.removeItem('it_token');
+    localStorage.removeItem('it_token_time');
+    localStorage.removeItem('it_user');
+    return false;
+  }
+
+  // Google access tokens expire after ~60 min
+  const age = Date.now() - parseInt(tokenTime || '0');
+  if (age > 50 * 60 * 1000) {
+    localStorage.removeItem('it_token');
+    localStorage.removeItem('it_token_time');
+    localStorage.removeItem('it_user');
+    sessionStorage.removeItem('it_nda_accepted');
+    sessionStorage.removeItem('it_session_id');
+    sessionStorage.removeItem('it_login_time');
+    return false;
+  }
+
+  // Verify the httpOnly session cookie is still valid before restoring
+  try {
+    const res = await fetch(CONFIG.WORKER_URL + '/check-session', { credentials: 'include' });
+    if (!res.ok) {
+      // Cookie expired or missing — force fresh Google login
       localStorage.removeItem('it_token');
       localStorage.removeItem('it_token_time');
-      localStorage.removeItem('it_session_token');
+      localStorage.removeItem('it_user');
       sessionStorage.removeItem('it_nda_accepted');
       sessionStorage.removeItem('it_session_id');
       sessionStorage.removeItem('it_login_time');
       return false;
     }
-    state.accessToken  = savedToken;
-    state.sessionToken = 'active'; // actual auth is via httpOnly cookie
-    state.user = JSON.parse(savedUser);
-    setRepFromEmail(state.user.email);
-    state.loginTime = parseInt(sessionStorage.getItem('it_login_time') || '0');
-    return true;
+  } catch(e) {
+    console.warn('[AUTH] check-session network error — proceeding anyway:', e.message);
   }
-  // No saved token or session — clear everything so NDA shows on next login
-  localStorage.removeItem('it_token');
-  localStorage.removeItem('it_token_time');
-  localStorage.removeItem('it_session_token');
-  sessionStorage.removeItem('it_nda_accepted');
-  sessionStorage.removeItem('it_session_id');
-  sessionStorage.removeItem('it_login_time');
-  return false;
+
+  state.accessToken  = savedToken;
+  state.sessionToken = 'active';
+  state.user = JSON.parse(savedUser);
+  setRepFromEmail(state.user.email);
+  state.loginTime = parseInt(sessionStorage.getItem('it_login_time') || '0');
+  return true;
 }
 
 async function loadUserInfo() {

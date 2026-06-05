@@ -3394,6 +3394,8 @@ function requestSheetsToken() {
     console.warn('[AUTH] OAuth callback timeout — popup may have been blocked. Allow popups and try again.');
     state.tokenRequestInProgress = false;
     state.loginInProgress = false;
+    try { google.accounts.id.disableAutoSelect(); } catch(e) {}
+    showToast('Sign-in timed out — allow pop-ups in your browser and click Sign In again.', 'error');
   }, 30000);
   try {
     // Fix 3 — reuse existing tokenClient if already initialized
@@ -3416,7 +3418,8 @@ function requestSheetsToken() {
               return;
             }
             state.loginInProgress = false;
-            showToast('Sign-in error: ' + tokenResponse.error, 'error');
+            try { google.accounts.id.disableAutoSelect(); } catch(e) {}
+            showToast('Sign-in error: ' + tokenResponse.error + ' — allow pop-ups and try again.', 'error');
             return;
           }
           state.accessToken = tokenResponse.access_token;
@@ -3456,7 +3459,14 @@ function requestSheetsToken() {
                 state._idToken = null;
                 return; // abort login
               }
-            } catch(e) { console.warn('[AUTH] Worker session exchange error:', e.message); }
+            } catch(e) {
+              console.warn('[AUTH] Worker session exchange error:', e.message);
+              state.loginInProgress = false;
+              state.tokenRequestInProgress = false;
+              state._idToken = null;
+              showToast('Authentication service unreachable — please try again.', 'error');
+              return; // abort: no session token was established
+            }
             state._idToken = null;
           }
           // If triggered by a silent refresh (not initial login), resolve and return
@@ -4254,7 +4264,8 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
           showToast('Session expired — please sign out and sign back in', 'error');
         }
         if (res.status === 401 && !state._refreshingToken) {
-          showToast('Session may have expired — please sign out and sign in again', 'error');
+          showToast('Session expired — signing out, please sign in again.', 'error');
+          if (!_signedOut) setTimeout(handleSignout, 3000);
         }
         throw new Error('Sheets API ' + res.status);
       }

@@ -8115,6 +8115,19 @@ function renderPoolManagementView() {
     return false;
   });
 
+  // CRM accounts not tracked by the app — in _CUSTOMER_DIRECTORY but not in state.accounts
+  // These are accounts under reps not in our tracked list, or with no rep assignment.
+  // Only admin can see this tab.
+  var _appAccountNames = new Set(
+    (state.accounts||[]).concat(state.hiddenAccounts||[]).map(function(a){ return (a.name||'').toLowerCase().trim(); })
+  );
+  var crmOtherAccounts = [];
+  if (isAdmin() && state.customerDirectory && state.customerDirectory.length) {
+    crmOtherAccounts = state.customerDirectory.filter(function(c){
+      return c.name && !_appAccountNames.has(c.name.toLowerCase().trim());
+    }).sort(function(a,b){ return (parseFloat(b.total)||0) - (parseFloat(a.total)||0); });
+  }
+
   var poolCache = state.poolManagedCache || [];
 
   function getRec(a) { return poolCache.find(function(p){ return p.name.toLowerCase() === a.name.toLowerCase(); }); }
@@ -8431,10 +8444,11 @@ function renderPoolManagementView() {
 
   // Tab bar
   var tabs = [
-    { id: 'review', label: 'NEEDS REVIEW', count: needsReview.length, color: 'var(--gold)' },
-    { id: 'pool',   label: 'IN POOL',      count: inPool.length,       color: '#14b8a6' },
-    { id: 'hidden', label: 'HIDDEN',        count: hiddenFromPool.length, color: 'var(--text-3)' },
+    { id: 'review',   label: 'NEEDS REVIEW', count: needsReview.length,    color: 'var(--gold)' },
+    { id: 'pool',     label: 'IN POOL',      count: inPool.length,          color: '#14b8a6' },
+    { id: 'hidden',   label: 'HIDDEN',       count: hiddenFromPool.length,  color: 'var(--text-3)' },
   ];
+  if (isAdmin()) tabs.push({ id: 'crmOther', label: 'OTHER CRM', count: crmOtherAccounts.length, color: '#a78bfa' });
   var tabHtml = '<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--border)">' +
     tabs.map(function(t){
       var active = f.tab === t.id;
@@ -8512,6 +8526,59 @@ function renderPoolManagementView() {
     var filteredHidden = applyFilters(applySort(hiddenFromPool));
     bodyHtml = filterBar + _statsBar(hiddenFromPool) +
       (filteredHidden.length ? filteredHidden.map(hiddenCard).join('') : '<div style="padding:30px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' + (f.search || f.rep !== 'ALL' ? 'No matches' : 'No hidden accounts') + '</div>');
+  } else if (f.tab === 'crmOther') {
+    // Accounts in CRM directory not tracked by this app
+    var srch = f.search;
+    var filteredCrm = crmOtherAccounts.filter(function(c){
+      if (!srch) return true;
+      return (c.name||'').toLowerCase().indexOf(srch) > -1 ||
+             (c.rep||'').toLowerCase().indexOf(srch) > -1 ||
+             (c.city||'').toLowerCase().indexOf(srch) > -1;
+    });
+    var shownCrm = filteredCrm.slice(0, f.page);
+    var totalCrmRev = filteredCrm.reduce(function(s,c){ return s+(parseFloat(c.total)||0); }, 0);
+    var totalCrmYtd = filteredCrm.reduce(function(s,c){ return s+(parseFloat(c.ytdRevenue)||0); }, 0);
+    var crmStatBar = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">' +
+      [['ACCOUNTS',filteredCrm.length,'var(--text)'],['LIFETIME REV',totalCrmRev>0?'$'+formatNum(totalCrmRev):'$0','#a78bfa'],['YTD REV',totalCrmYtd>0?'$'+formatNum(totalCrmYtd):'$0','#22c55e']].map(function(x){
+        return '<div style="background:var(--s2);border:1px solid var(--border);border-top:2px solid '+x[2]+';border-radius:var(--r);padding:8px 10px;text-align:center">' +
+          '<div style="font-family:var(--mono);font-size:15px;font-weight:800;color:'+x[2]+'">' + x[1] + '</div>' +
+          '<div style="font-size:8px;color:var(--text-3);font-family:var(--mono);margin-top:2px">' + x[0] + '</div></div>';
+      }).join('') +
+    '</div>';
+    var crmSearchBar = '<div style="margin-bottom:14px"><input id="pool-search-input" type="text" placeholder="Search CRM accounts..." value="' + escHtml(f.search) + '" oninput="poolMgmtSearch()" style="padding:7px 12px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--mono);font-size:11px;width:100%;box-sizing:border-box"></div>';
+    var crmNote = '<div style="background:rgba(167,139,250,0.07);border:1px solid rgba(167,139,250,0.25);border-radius:var(--r);padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--text-3)">' +
+      '&#128270; These <strong style="color:#a78bfa">' + crmOtherAccounts.length + ' accounts</strong> are in your CRM but not tracked by this app — they belong to reps outside the app\'s rep list, or have no rep assigned. ' +
+      'Move any to <strong>Available Pool</strong> to let reps claim them, or <strong>Hide</strong> to suppress them from this view.' +
+    '</div>';
+    bodyHtml = crmSearchBar + crmStatBar + crmNote +
+      (shownCrm.length ? shownCrm.map(crmOtherCard).join('') : '<div style="padding:30px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:11px">' + (srch ? 'No CRM accounts match "' + escHtml(srch) + '"' : 'No untracked CRM accounts found') + '</div>') +
+      (filteredCrm.length > shownCrm.length ? '<div style="text-align:center;padding:16px"><button onclick="poolMgmtShowMore()" style="padding:9px 28px;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:var(--r)">SHOW MORE (' + (filteredCrm.length - shownCrm.length) + ' remaining)</button></div>' : '');
+
+    function crmOtherCard(c) {
+      var rec = getRec({ name: c.name });
+      var isHidden = rec && rec.status === 'HIDDEN';
+      return '<div style="background:var(--s1);border:1px solid var(--border);border-left:3px solid #a78bfa;border-radius:var(--r2);padding:12px 16px;margin-bottom:8px' + (isHidden?';opacity:0.5':'') + '">' +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;font-weight:700;margin-bottom:3px">' + escHtml(c.name) + (isHidden ? ' <span style="font-size:9px;color:var(--text-3);font-family:var(--mono)">HIDDEN</span>' : '') + '</div>' +
+            '<div style="font-size:11px;color:var(--text-3)">' +
+              (c.rep ? 'CRM Rep: <strong>' + escHtml(c.rep) + '</strong> &nbsp;·&nbsp; ' : 'No CRM rep &nbsp;·&nbsp; ') +
+              (c.city ? escHtml(c.city) + (c.state ? ', ' + escHtml(c.state) : '') + ' &nbsp;·&nbsp; ' : '') +
+              (c.total > 0 ? '<span style="color:#a78bfa">$' + formatNum(c.total) + ' lifetime</span>' : 'No revenue history') +
+              (c.ytdRevenue > 0 ? ' &nbsp;·&nbsp; <span style="color:#22c55e">$' + formatNum(c.ytdRevenue) + ' YTD</span>' : '') +
+              (c.lastSale ? ' &nbsp;·&nbsp; Last sale: ' + escHtml(c.lastSale) : '') +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;flex-shrink:0">' +
+            (isHidden
+              ? '<button data-n="' + escHtml(c.name) + '" onclick="poolRestoreToReview(this.dataset.n)" style="padding:5px 12px;background:rgba(20,184,166,0.12);border:1px solid #14b8a6;color:#14b8a6;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">UNHIDE</button>'
+              : '<button data-n="' + escHtml(c.name) + '" data-r="' + escHtml(c.rep||'') + '" data-p="Warm" onclick="poolMarkAvailable(this.dataset.n,this.dataset.r,this.dataset.p)" style="padding:5px 12px;background:rgba(20,184,166,0.12);border:1px solid #14b8a6;color:#14b8a6;cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px;font-weight:700">+ POOL</button>' +
+                '<button data-n="' + escHtml(c.name) + '" onclick="poolMarkHidden(this.dataset.n)" style="padding:5px 12px;background:transparent;border:1px solid var(--border);color:var(--text-3);cursor:pointer;border-radius:var(--r);font-family:var(--mono);font-size:9px">HIDE</button>'
+            ) +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }
   }
 
   var _prevScroll = (document.getElementById('pool-mgmt-scroll') || {}).scrollTop || 0;

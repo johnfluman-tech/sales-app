@@ -7606,6 +7606,33 @@ async function approveReturnRequest(accName, repId) {
 
 async function loadPoolManaged(force) {
   if (!force && state.poolManagedCache !== null) return;
+  // ── D1 path: fetch from Worker database (reliable, no Sheets tab required) ──
+  if (state.sessionToken) {
+    try {
+      const res = await fetch(CONFIG.WORKER_URL + '/pool/managed', {
+        headers: { 'X-Session-Token': state.sessionToken }
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        state.poolManagedCache = rows.map(function(r) {
+          return {
+            name:         r.account_name,
+            sourceRep:    r.source_rep    || '',
+            priority:     r.priority      || 'Warm',
+            status:       (r.status       || 'AVAILABLE').toUpperCase(),
+            assignedTo:   r.assigned_to   || 'ALL',
+            approvedBy:   r.approved_by   || '',
+            approvedDate: r.approved_date || '',
+            notes:        r.notes         || '',
+          };
+        });
+        console.log('[POOL-D1] Loaded', state.poolManagedCache.length, 'records from D1');
+        _updatePoolBadge();
+        _updateMyOutreachBadge();
+        return;
+      }
+    } catch(e) { console.warn('[POOL-D1] fetch failed, falling back to Sheets:', e.message); }
+  }
   try {
     var rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A1:H2000");
     if (rows && rows.length >= 2) {
@@ -7729,34 +7756,39 @@ function _updatePoolBadge() {
 }
 
 async function poolSaveRecord(record) {
-  var row = [record.name, record.sourceRep, record.priority, record.status, record.assignedTo,
-             record.approvedBy, record.approvedDate, record.notes];
-  try {
-    var rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A1:H2000");
-    if (rows && rows.length >= 2) {
-      for (var i = 1; i < rows.length; i++) {
-        if ((rows[i][0]||'').trim().toLowerCase() === record.name.toLowerCase()) {
-          await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A" + (i+1) + ":H" + (i+1), [row]);
-          return;
-        }
-      }
-    } else {
-      // Tab exists but has no data rows yet — write header first
-      await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A1:H1",
-        [['ACCOUNT_NAME','SOURCE_REP','PRIORITY','STATUS','ASSIGNED_TO','APPROVED_BY','APPROVED_DATE','NOTES']]);
-    }
-    await sheetsAppend("'_POOL_MANAGED'!A1", [row], CONFIG.HISTORY_SPREADSHEET_ID);
-  } catch(e) {
-    // Tab likely doesn't exist — create it then retry once
+  // ── D1 path: write to Worker database — atomic, reliable, no tab-exists issues ──
+  if (state.sessionToken) {
     try {
-      await _poolCreateTabAndWrite([]);
-      await sheetsAppend("'_POOL_MANAGED'!A1", [row], CONFIG.HISTORY_SPREADSHEET_ID);
-    } catch(e2) {
-      console.error('[POOL] poolSaveRecord failed after tab creation attempt:', e2);
-      showToast('Pool save failed — your change was not persisted. Refresh may lose it.', 'error');
-      throw e2;
+      const res = await fetch(CONFIG.WORKER_URL + '/pool/managed', {
+        method: 'POST',
+        headers: { 'X-Session-Token': state.sessionToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account_name:  record.name,
+          source_rep:    record.sourceRep   || '',
+          priority:      record.priority    || 'Warm',
+          status:        record.status      || 'AVAILABLE',
+          assigned_to:   record.assignedTo  || 'ALL',
+          approved_by:   record.approvedBy  || '',
+          approved_date: record.approvedDate|| '',
+          notes:         record.notes       || '',
+        })
+      });
+      if (res.ok) {
+        console.log('[POOL-D1] Saved:', record.name, '→', record.status);
+        return; // D1 save succeeded — done
+      }
+      const err = await res.json().catch(() => ({}));
+      console.error('[POOL-D1] Save failed:', res.status, err);
+      showToast('Pool save failed (' + res.status + '): ' + (err.error || 'unknown error'), 'error');
+      return;
+    } catch(e) {
+      console.error('[POOL-D1] Network error on save:', e.message);
+      showToast('Pool save failed — network error. Change not persisted.', 'error');
+      return;
     }
   }
+  // No session token yet — should not happen in normal flow
+  showToast('Pool save failed — not authenticated. Please refresh and try again.', 'error');
 }
 
 async function poolMarkAvailable(accName, sourceRep, priority) {
@@ -8003,19 +8035,30 @@ async function poolDiag() {
     state.poolManagedCache.forEach(function(r){ byStatus[r.status] = (byStatus[r.status]||0)+1; });
     lines.push('  by status: ' + JSON.stringify(byStatus));
   }
-  // Try to read _POOL_MANAGED tab directly
+  // ── D1 database check (source of truth) ──────────────────────────────────
+  lines.push('');
+  lines.push('─── D1 DATABASE (source of truth) ───');
   try {
-    var rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A1:H50");
-    lines.push('_POOL_MANAGED tab: EXISTS, ' + rows.length + ' rows (incl header)');
-    if (rows.length > 1) lines.push('  sample: ' + JSON.stringify(rows[1]));
-  } catch(e) { lines.push('_POOL_MANAGED tab: ERROR — ' + e.message); }
-  // Try to read _REQUEST_LOG for POOL_ACTION rows
-  try {
-    var logRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_REQUEST_LOG'!A1:G200");
-    var poolActions = (logRows||[]).filter(function(r){ return (r[1]||'').toUpperCase().trim() === 'POOL_ACTION'; });
-    lines.push('_REQUEST_LOG POOL_ACTION rows: ' + poolActions.length);
-    if (poolActions.length) lines.push('  latest: ' + JSON.stringify(poolActions[poolActions.length-1]));
-  } catch(e) { lines.push('_REQUEST_LOG: ERROR — ' + e.message); }
+    var d1Res = await fetch(CONFIG.WORKER_URL + '/pool/diag', {
+      headers: { 'X-Session-Token': state.sessionToken || '' }
+    });
+    if (d1Res.ok) {
+      var d1 = await d1Res.json();
+      lines.push('pool_managed rows:  ' + d1.pool_managed_total);
+      lines.push('pool_managed hidden: ' + d1.pool_managed_hidden);
+      lines.push('pool_actions total:  ' + d1.pool_actions_total);
+      if (d1.sample_records && d1.sample_records.length) {
+        lines.push('Recent records:');
+        d1.sample_records.forEach(function(r){ lines.push('  ' + r.account_name + ' → ' + r.status + ' (' + r.updated_at + ')'); });
+      }
+      if (d1.recent_actions && d1.recent_actions.length) {
+        lines.push('Recent actions:');
+        d1.recent_actions.forEach(function(a){ lines.push('  ' + a.action + ': ' + a.account_name + ' by ' + a.rep_id); });
+      }
+    } else {
+      lines.push('D1 diag endpoint returned ' + d1Res.status);
+    }
+  } catch(e) { lines.push('D1 diag ERROR: ' + e.message); }
   var msg = lines.join('\n');
   console.log(msg);
   alert(msg);

@@ -8092,7 +8092,12 @@ function renderPoolManagementView() {
 
   var f = _poolMgmtState();
   var mgrCfg = getManagerConfig();
-  var teamReps = mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[]).filter(function(r){ return r !== 'FJohn'; });
+  // Admin sees ALL reps (including FJohn + Anolan) so they can manage and move to pool.
+  // Managers see their configured team. Default non-admin excludes FJohn and Anolan —
+  // their accounts are not visible in team views unless explicitly moved to Available Pool.
+  var teamReps = isAdmin()
+    ? (CONFIG.REPS||[])
+    : (mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[]).filter(function(r){ return r !== 'FJohn' && r !== 'Anolan'; }));
   var repNames  = CONFIG.REP_DISPLAY_NAMES || {};
   var priColors = { Hot: '#ef4444', Warm: '#f59e0b', Cold: '#3b82f6' };
 
@@ -15606,7 +15611,7 @@ function renderManagerHub() {
     teamReps = mgrCfg.teamReps;
     teamName = mgrCfg.teamName;
   } else {
-    teamReps = (CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor','Anolan']).filter(function(r){ return r !== 'FJohn'; });
+    teamReps = (CONFIG.REPS || ['CKaren','BillP','PIan','RMauricio','LMancera','bcastor']).filter(function(r){ return r !== 'FJohn' && r !== 'Anolan'; });
     teamName = 'All Reps';
   }
   var tab = window._mgrHubTab || 'scoreboard';

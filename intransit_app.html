@@ -7136,12 +7136,12 @@ async function submitHideRequest(accName, reason) {
     const iRemove = acc.headers.indexOf('REMOVE_FLAG');
     if (iRemove < 0) { showToast('REMOVE_FLAG column not in sheet', 'error'); return; }
     const range = "'" + acc.tabName + "'!A" + (acc.rowIndex+1) + ":Z" + (acc.rowIndex+1);
-    const rows = await sheetsGet(range);
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, range);
     const row = rows[0] || [];
     const newRow = [...row];
     while (newRow.length < acc.headers.length) newRow.push('');
     newRow[iRemove] = reason;
-    await sheetsUpdate(range, [newRow]);
+    await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, range, [newRow]);
     acc.removeFlag = reason;
     writeRequestLog('HIDE', accName, state.repId || '', reason, 'PENDING').catch(function(){});
     showToast('Hide request sent to John for review ✓', 'success');
@@ -7158,7 +7158,7 @@ async function unhideAccount(accountName) {
   if (!acc) { showToast('Account not found in hidden list', 'error'); return; }
   try {
     const range = "'" + acc.tabName + "'!A" + (acc.rowIndex+1) + ":Z" + (acc.rowIndex+1);
-    const rows = await sheetsGet(range);
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, range);
     const row = rows[0] || [];
     const newRow = [...row];
     while (newRow.length < acc.headers.length) newRow.push('');
@@ -7166,7 +7166,7 @@ async function unhideAccount(accountName) {
     const iRemove = acc.headers.indexOf('REMOVE_FLAG');
     if (iJohn >= 0) newRow[iJohn] = '';
     if (iRemove >= 0) newRow[iRemove] = '';
-    await sheetsUpdate(range, [newRow]);
+    await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, range, [newRow]);
     acc.johnApproval = '';
     acc.removeFlag = '';
     // Move back to active accounts
@@ -7209,13 +7209,13 @@ async function approveRemovalDirect(accountName) {
   if (!acc) return;
   try {
     const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
-    const rows = await sheetsGet(range);
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, range);
     const row = rows[0] || [];
     const newRow = [...row];
     while (newRow.length < acc.headers.length) newRow.push('');
     const iJohn = acc.headers.indexOf('JOHN_APPROVAL');
     if (iJohn >= 0) newRow[iJohn] = 'YES';
-    await sheetsUpdate(range, [newRow]);
+    await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, range, [newRow]);
     acc.johnApproval = 'YES';
     // Immediately remove from all views — move to hiddenAccounts
     state.accounts = state.accounts.filter(function(a){ return a.name !== accountName; });
@@ -7235,7 +7235,7 @@ async function adminSetPoolHide(accName, hide) {
   const val = hide ? 'YES' : '';
   try {
     const range = "'" + acc.tabName + "'!A" + (acc.rowIndex + 1) + ":Z" + (acc.rowIndex + 1);
-    const rows = await sheetsGet(range);
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, range);
     const row = rows[0] || [];
     const newRow = [...row];
     while (newRow.length < acc.headers.length) newRow.push('');
@@ -7245,7 +7245,7 @@ async function adminSetPoolHide(accName, hide) {
       return;
     }
     newRow[iHide] = val;
-    await sheetsUpdate(range, [newRow]);
+    await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, range, [newRow]);
     acc.hideFromPool = val;
     showToast(hide ? accName + ' hidden from Transfer Pool ✓' : accName + ' restored to Transfer Pool ✓', 'success');
     renderDetail(state.selectedAccount);
@@ -7255,16 +7255,16 @@ async function adminSetPoolHide(accName, hide) {
 async function denyRemoval(accountName, adminNote) {
   document.getElementById('deny-hide-overlay')?.remove();
   const acc = state.accounts.find(function(a){ return a.name === accountName; });
-  if (!acc) return;
+  if (!acc) { showToast('Account not found in state', 'error'); return; }
   try {
     const range = "'" + acc.tabName + "'!A" + (acc.rowIndex + 1) + ":Z" + (acc.rowIndex + 1);
-    const rows = await sheetsGet(range);
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, range);
     const row = rows[0] || [];
     const newRow = [...row];
     while (newRow.length < acc.headers.length) newRow.push('');
     const iRemove = acc.headers.indexOf('REMOVE_FLAG');
     if (iRemove >= 0) newRow[iRemove] = '';
-    await sheetsUpdate(range, [newRow]);
+    await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, range, [newRow]);
     acc.removeFlag = '';
     resolveRequestLog('HIDE', accountName, acc.rep || '', 'DENIED', adminNote || '').catch(function(){});
     showToast('Hide request denied for ' + accountName + ' ✓', 'success');
@@ -7372,6 +7372,10 @@ async function denyTransferRequest(accName, repEmail, adminNote) {
 async function renderRequestLogView() {
   const el = document.getElementById('main-content');
   if (!el) return;
+  if (!isAdmin() || state.viewAsRep) {
+    el.innerHTML = '<div style="padding:40px;color:var(--text-3);font-family:var(--mono)">Admin only — not available.</div>';
+    return;
+  }
   el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div style="font-size:24px;margin-bottom:8px">&#128203;</div>Loading...</div>';
   let allRows = [];
   try {
@@ -12582,7 +12586,7 @@ async function saveNote() {
   try {
     // Find the row range for this account in the Sheet
     const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
-    const rows = await sheetsGet(range);
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, range);
     const row = rows[0] || [];
 
     const headers = acc.headers;
@@ -12597,7 +12601,7 @@ async function saveNote() {
     if (iFollow >= 0) newRow[iFollow] = followUpDisplay;
     if (iStat >= 0)   newRow[iStat]   = status;
 
-    await sheetsUpdate(range, [newRow]);
+    await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, range, [newRow]);
 
     // Update local state
     acc.repNote      = text;
@@ -12646,13 +12650,13 @@ async function requestRemoval() {
 
   try {
     const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
-    const rows = await sheetsGet(range);
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, range);
     const row = rows[0] || [];
     const newRow = [...row];
     while (newRow.length < acc.headers.length) newRow.push('');
     const iRemove = acc.headers.indexOf('REMOVE_FLAG');
     if (iRemove >= 0) newRow[iRemove] = reason;
-    await sheetsUpdate(range, [newRow]);
+    await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, range, [newRow]);
     acc.removeFlag = reason;
     showToast('Removal request sent to John ✓', 'success');
     renderDetail(acc);
@@ -12667,13 +12671,13 @@ async function approveRemoval() {
 
   try {
     const range = `'${acc.tabName}'!A${acc.rowIndex + 1}:Z${acc.rowIndex + 1}`;
-    const rows = await sheetsGet(range);
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, range);
     const row = rows[0] || [];
     const newRow = [...row];
     while (newRow.length < acc.headers.length) newRow.push('');
     const iJohn = acc.headers.indexOf('JOHN_APPROVAL');
     if (iJohn >= 0) newRow[iJohn] = 'YES';
-    await sheetsUpdate(range, [newRow]);
+    await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, range, [newRow]);
     acc.johnApproval = 'YES';
     showToast('Account approved for removal. Will be excluded next script run.', 'success');
     renderDetail(acc);

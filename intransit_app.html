@@ -4662,9 +4662,13 @@ function getViewAccounts() {
   // View-as-rep / manager filter — track repFilter for CRM merge
   let _repFilter = null, _repList = null;
   if (state.viewAsRep === '__TEAM_ALL__' || state.viewAsRep === 'MX_TEAM') {
-    const _mgrCfg = getManagerConfig();
-    _repList = _mgrCfg ? _mgrCfg.teamReps : getManagerTeam();
-    accs = accs.filter(function(a){ return _repList.includes(a.rep); });
+    if (!isAdmin()) {
+      // Managers see their configured team only
+      const _mgrCfg = getManagerConfig();
+      _repList = _mgrCfg ? _mgrCfg.teamReps : [];
+      accs = accs.filter(function(a){ return _repList.includes(a.rep); });
+    }
+    // Admin in team view sees ALL reps including FJohn and Anolan — no filter
   } else if (state.viewAsRep) {
     _repFilter = state.viewAsRep;
     accs = accs.filter(function(a){ return a.rep === state.viewAsRep; });

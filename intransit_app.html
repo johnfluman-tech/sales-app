@@ -21148,7 +21148,7 @@ async function _renderNotesFeed(isTeamView) {
     '</div>';
   }).join('') || '<div style="padding:40px;text-align:center;color:var(--text-3)">No notes found</div>';
 
-  const repOpts = (isAdm || isMgr) ? (['all'].concat(teamReps || (CONFIG.REPS||[]))) : [];
+  const repOpts = ((isAdm && !_simRep) || isMgr) ? (['all'].concat(teamReps || (CONFIG.REPS||[]))) : [];
   const typeOpts = [['all','ALL'],['RepNote','REP'],['ContactNote','CONTACT'],['ManagerNote','MGR'],['CollectionsNote','COLL'],['Outcome','OUTCOME'],['FollowUp','FOLLOW-UP']];
   const sortOpts = [['newest','Newest'],['oldest','Oldest'],['rep','By Rep'],['value','By Value']];
   const headerLabel = isTeamView ? (teamName.toUpperCase() + ' NOTES') : (isAdm ? 'ALL NOTES FEED' : 'MY NOTES');

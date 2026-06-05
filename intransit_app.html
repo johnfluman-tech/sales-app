@@ -1940,17 +1940,27 @@ async function loadSupplementalData() {
 
     state.cacheLoaded = true;
 
-    // Load contact notes — stored as 2D array [[header],[rows...]] for Notes Feed + save consistency
+    // Load contact notes from D1 — reliable, no tab-missing issues
     try {
-      const cnRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_NOTES'!A1:F50000");
-      if (cnRows.length > 1) {
-        state.contactNotesCache = cnRows; // raw 2D array: row[0]=header, rest=data
-      } else {
-        state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
-        try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']], CONFIG.HISTORY_SPREADSHEET_ID); } catch(e2) {}
-      }
+      const cnRes = await fetch(CONFIG.WORKER_URL + '/contact-notes', {
+        credentials: 'include',
+        headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' }
+      });
+      if (cnRes.ok) {
+        const cnList = await cnRes.json();
+        // Convert to 2D array format that the rest of the app expects
+        const header = ['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP'];
+        state.contactNotesCache = [header].concat(cnList.map(function(r){
+          return [r.account_name, r.contact_name, r.type, r.note, r.date_str, r.rep];
+        }));
+        console.log('[CONTACT-NOTES-D1] Loaded', cnList.length, 'contact notes from D1');
+      } else { throw new Error('HTTP ' + cnRes.status); }
     } catch(e) {
-      state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
+      console.warn('[CONTACT-NOTES-D1] Falling back to Sheets:', e.message);
+      try {
+        const cnRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_CONTACT_NOTES'!A1:F50000");
+        state.contactNotesCache = cnRows.length > 1 ? cnRows : [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']];
+      } catch(e2) { state.contactNotesCache = [['ACCOUNT_NAME','CONTACT_NAME','TYPE','NOTE','DATE','REP']]; }
     }
 
     // Load schedule
@@ -2194,13 +2204,15 @@ async function saveContactNote(accountName, contactName, safeId) {
                   ' ' + now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   const rep = state.user?.email || 'unknown';
 
-  // Save to _CONTACT_NOTES sheet
+  // Save to D1 (primary) + Sheets (mirror)
   try {
-    // Ensure tab exists first
-    try { await sheetsUpdate("'_CONTACT_NOTES'!A1:F1", [['ACCOUNT','CONTACT','TYPE','NOTE','DATE','REP']], CONFIG.HISTORY_SPREADSHEET_ID); } catch(e2) {}
-    await sheetsAppend("'_CONTACT_NOTES'!A2", [[
-      accountName, contactName, type, note, dateStr, rep
-    ]], CONFIG.HISTORY_SPREADSHEET_ID);
+    await fetch(CONFIG.WORKER_URL + '/contact-notes', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' },
+      body: JSON.stringify({ account_name: accountName, contact_name: contactName, type, note, date_str: dateStr, rep })
+    });
+    // Mirror to Sheets (best-effort)
+    sheetsAppend("'_CONTACT_NOTES'!A2", [[accountName, contactName, type, note, dateStr, rep]], CONFIG.HISTORY_SPREADSHEET_ID).catch(function(){});
     showToast('Note saved ✓', 'success');
     noteEl.value = '';
 
@@ -15148,9 +15160,29 @@ function openContactEmailClient(accountName, safeId) {
 // ══════════════════════════════════════════════════════════════
 
 async function loadAttackPlan(rep) {
-  // Try Google Sheets first
+  // D1 primary — fixes the Main/History sheet mismatch bug
   try {
-    const rows = await sheetsGet("'_ATTACK_PLAN'!A1:F2000");
+    const url = CONFIG.WORKER_URL + (rep ? '/attack-plan/' + encodeURIComponent(rep) : '/attack-plan');
+    const res = await fetch(url, {
+      credentials: 'include',
+      headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' }
+    });
+    if (res.ok) {
+      const rows = await res.json();
+      const plan = {};
+      rows.forEach(function(r){
+        if (!plan[r.rep_id]) plan[r.rep_id] = [];
+        plan[r.rep_id].push({ name: r.account_name, zone: r.zone, order: r.position });
+      });
+      if (rep) localStorage.setItem('it_attackplan_' + rep, JSON.stringify(plan[rep] || []));
+      console.log('[ATTACK-D1] Loaded attack plan from D1');
+      return plan;
+    }
+  } catch(e) { console.warn('[ATTACK-D1] D1 load failed, trying Sheets:', e.message); }
+
+  // Fallback: Sheets (History sheet — was previously loading from wrong Main sheet)
+  try {
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A1:F2000");
     if (rows && rows.length >= 2) {
       const hdrs = rows[0];
       const iRep=hdrs.indexOf('REP'), iName=hdrs.indexOf('ACCOUNT_NAME');
@@ -15161,20 +15193,15 @@ async function loadAttackPlan(rep) {
         if (!plan[rk]) plan[rk]=[];
         plan[rk].push({name:(row[iName]||'').trim(), zone:(row[iZone]||'POOL').trim(), order:parseInt(row[iOrd]||'99')});
       }
-      // Also cache to localStorage
       localStorage.setItem('it_attackplan_' + rep, JSON.stringify(plan[rep] || []));
       return plan;
     }
-  } catch(e) { console.warn('loadAttackPlan from Sheets failed:', e.message); }
+  } catch(e) { console.warn('loadAttackPlan Sheets fallback failed:', e.message); }
 
-  // Fall back to localStorage
+  // Last resort: localStorage
   try {
     const cached = localStorage.getItem('it_attackplan_' + rep);
-    if (cached) {
-      const cards = JSON.parse(cached);
-      showToast('Loaded plan from local cache', 'success');
-      return { [rep]: cards };
-    }
+    if (cached) { showToast('Loaded plan from local cache', 'success'); return { [rep]: JSON.parse(cached) }; }
   } catch(e) {}
   return {};
 }
@@ -15218,7 +15245,14 @@ async function saveAttackPlan(rep, cards) {
       await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A1:F" + filtered.length, filtered);
     }
 
-    // Save to localStorage as backup so it persists even if Sheets fails
+    // Save to D1 (primary — reliable, no tab-missing issues)
+    fetch(CONFIG.WORKER_URL + '/attack-plan', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' },
+      body: JSON.stringify({ rep_id: rep, cards: cards })
+    }).catch(function(e){ console.warn('[ATTACK-D1] D1 save failed:', e.message); });
+
+    // Save to localStorage as backup
     localStorage.setItem('it_attackplan_' + rep, JSON.stringify(cards));
     showToast('Attack plan saved ✓ (' + cards.length + ' accounts)', 'success');
   } catch(e) {

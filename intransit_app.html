@@ -3412,7 +3412,22 @@ function requestSheetsToken() {
                 state.sessionToken = _authData.sessionToken;
                 localStorage.setItem('it_session_token', _authData.sessionToken);
               } else {
-                console.warn('[AUTH] Worker session exchange failed:', _authRes.status);
+                const _authErr = await _authRes.json().catch(() => ({}));
+                const _code = _authErr.error || '';
+                state.loginInProgress = false;
+                state.tokenRequestInProgress = false;
+                // Show specific access-control errors rather than falling through to the app
+                if (_code === 'MOBILE_BLOCKED') {
+                  showAccessBlockedScreen('Mobile Not Supported', 'Mobile and tablet access is not enabled for your account. Please use a desktop or laptop to access the Intransit Sales App.', false);
+                } else if (_code === 'IP_PENDING' || _code === 'IP_BLOCKED') {
+                  showAccessBlockedScreen('IP Address Not Approved', _authErr.message || 'Your IP address is not yet approved. The administrator has been notified.', false);
+                } else if (_code === 'OUTSIDE_HOURS') {
+                  showOutsideHoursScreen(_authErr.message || 'App access is restricted to business hours.', _authErr.reason || '');
+                } else {
+                  console.warn('[AUTH] Worker session exchange failed:', _authRes.status, _code);
+                }
+                state._idToken = null;
+                return; // abort login
               }
             } catch(e) { console.warn('[AUTH] Worker session exchange error:', e.message); }
             state._idToken = null;
@@ -3646,6 +3661,81 @@ function handleLogin() {
 function generateSessionId() {
   return 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
+
+// ── Access-control blocked screens ───────────────────────────────────────────
+
+function showAccessBlockedScreen(title, message, canRetry) {
+  var el = document.getElementById('login-screen') || document.body;
+  var container = document.getElementById('access-block-screen');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'access-block-screen';
+    container.style.cssText = 'position:fixed;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:sans-serif';
+    document.body.appendChild(container);
+  }
+  container.innerHTML = '<div style="max-width:420px;text-align:center;padding:32px">' +
+    '<div style="font-size:48px;margin-bottom:16px">🚫</div>' +
+    '<h2 style="color:#f1f5f9;margin:0 0 12px">' + title + '</h2>' +
+    '<p style="color:#94a3b8;line-height:1.6;margin:0 0 24px">' + message + '</p>' +
+    (canRetry ? '<button onclick="location.reload()" style="background:#3b82f6;color:#fff;border:0;padding:10px 28px;border-radius:6px;cursor:pointer;font-size:14px">Try Again</button>' : '') +
+    '</div>';
+  container.style.display = 'flex';
+  var loginEl = document.getElementById('login-screen');
+  if (loginEl) loginEl.style.display = 'none';
+}
+
+function showOutsideHoursScreen(message, reason) {
+  var container = document.getElementById('access-block-screen');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'access-block-screen';
+    container.style.cssText = 'position:fixed;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:sans-serif';
+    document.body.appendChild(container);
+  }
+  var reasonLabel = reason === 'weekend' ? 'weekend' : 'after hours';
+  container.innerHTML = '<div style="max-width:460px;text-align:center;padding:32px">' +
+    '<div style="font-size:48px;margin-bottom:16px">🕔</div>' +
+    '<h2 style="color:#f1f5f9;margin:0 0 12px">Outside Business Hours</h2>' +
+    '<p style="color:#94a3b8;line-height:1.6;margin:0 0 24px">' + message + '</p>' +
+    '<div style="background:#1e293b;border-radius:8px;padding:20px;text-align:left">' +
+      '<p style="color:#94a3b8;font-size:13px;margin:0 0 12px">Need ' + reasonLabel + ' access? Enter a brief reason and submit a request to the administrator.</p>' +
+      '<textarea id="offhours-reason" placeholder="Reason for access..." style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid #334155;color:#f1f5f9;padding:10px;border-radius:6px;font-size:13px;resize:vertical;min-height:70px;margin-bottom:12px"></textarea>' +
+      '<button onclick="submitOffHoursRequest()" style="width:100%;background:#f59e0b;color:#0f172a;border:0;padding:10px;border-radius:6px;cursor:pointer;font-weight:700;font-size:14px">Request Access</button>' +
+      '<div id="offhours-status" style="margin-top:10px;font-size:13px;color:#94a3b8;min-height:18px"></div>' +
+    '</div>' +
+    '</div>';
+  container.style.display = 'flex';
+  var loginEl = document.getElementById('login-screen');
+  if (loginEl) loginEl.style.display = 'none';
+}
+
+async function submitOffHoursRequest() {
+  var reasonEl = document.getElementById('offhours-reason');
+  var statusEl = document.getElementById('offhours-status');
+  var reason = (reasonEl ? reasonEl.value : '').trim();
+  if (!reason) { if (statusEl) statusEl.textContent = 'Please enter a reason.'; return; }
+  if (!state._idToken && !state.user) { if (statusEl) statusEl.textContent = 'Please sign in with Google first.'; return; }
+  if (statusEl) statusEl.textContent = 'Sending request...';
+  try {
+    var res = await fetch(CONFIG.WORKER_URL + '/request-access', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: state._idToken || '', reason: reason })
+    });
+    var data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:#22c55e">✓ Request sent — you will receive access once the administrator approves.</span>';
+      if (reasonEl) { reasonEl.disabled = true; }
+      document.querySelector('#access-block-screen button[onclick="submitOffHoursRequest()"]').disabled = true;
+    } else {
+      if (statusEl) statusEl.textContent = data.error || 'Request failed. Please try again.';
+    }
+  } catch(e) {
+    if (statusEl) statusEl.textContent = 'Network error — please check your connection.';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function handleSignout() {
   // Block all further API calls from triggering more signouts (cascade prevention)
@@ -7412,35 +7502,112 @@ async function loadPoolManaged(force) {
   if (!force && state.poolManagedCache !== null) return;
   try {
     var rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A1:H2000");
-    if (!rows || rows.length < 2) { state.poolManagedCache = []; return; }
-    var hdr = rows[0].map(function(h){ return (h||'').toUpperCase().trim(); });
-    var iName = hdr.indexOf('ACCOUNT_NAME');
-    var iSrc  = hdr.indexOf('SOURCE_REP');
-    var iPri  = hdr.indexOf('PRIORITY');
-    var iSt   = hdr.indexOf('STATUS');
-    var iAsgn = hdr.indexOf('ASSIGNED_TO');
-    var iAppr = hdr.indexOf('APPROVED_BY');
-    var iDate = hdr.indexOf('APPROVED_DATE');
-    var iNote = hdr.indexOf('NOTES');
-    state.poolManagedCache = rows.slice(1).map(function(r){
-      return {
-        name:         (r[iName]||'').trim(),
-        sourceRep:    (r[iSrc] ||'').trim(),
-        priority:     (r[iPri] ||'Warm').trim(),
-        status:       (r[iSt]  ||'AVAILABLE').trim().toUpperCase(),
-        assignedTo:   (r[iAsgn]||'ALL').trim(),
-        approvedBy:   (r[iAppr]||'').trim(),
-        approvedDate: (r[iDate]||'').trim(),
-        notes:        (r[iNote]||'').trim(),
-      };
-    }).filter(function(r){ return !!r.name; });
-    console.log('[POOL] Loaded', state.poolManagedCache.length, 'pool records');
-    _updatePoolBadge();
-    _updateMyOutreachBadge();
+    if (rows && rows.length >= 2) {
+      var hdr = rows[0].map(function(h){ return (h||'').toUpperCase().trim(); });
+      var iName = hdr.indexOf('ACCOUNT_NAME');
+      var iSrc  = hdr.indexOf('SOURCE_REP');
+      var iPri  = hdr.indexOf('PRIORITY');
+      var iSt   = hdr.indexOf('STATUS');
+      var iAsgn = hdr.indexOf('ASSIGNED_TO');
+      var iAppr = hdr.indexOf('APPROVED_BY');
+      var iDate = hdr.indexOf('APPROVED_DATE');
+      var iNote = hdr.indexOf('NOTES');
+      state.poolManagedCache = rows.slice(1).map(function(r){
+        return {
+          name:         (r[iName]||'').trim(),
+          sourceRep:    (r[iSrc] ||'').trim(),
+          priority:     (r[iPri] ||'Warm').trim(),
+          status:       (r[iSt]  ||'AVAILABLE').trim().toUpperCase(),
+          assignedTo:   (r[iAsgn]||'ALL').trim(),
+          approvedBy:   (r[iAppr]||'').trim(),
+          approvedDate: (r[iDate]||'').trim(),
+          notes:        (r[iNote]||'').trim(),
+        };
+      }).filter(function(r){ return !!r.name; });
+      console.log('[POOL] Loaded', state.poolManagedCache.length, 'pool records from _POOL_MANAGED tab');
+    } else {
+      // Tab missing or empty — rebuild from _REQUEST_LOG event history
+      state.poolManagedCache = await _poolRebuildFromLog();
+      if (state.poolManagedCache.length > 0) {
+        await _poolCreateTabAndWrite(state.poolManagedCache);
+        console.log('[POOL] Rebuilt', state.poolManagedCache.length, 'pool records from event log and saved to _POOL_MANAGED tab');
+      } else {
+        state.poolManagedCache = [];
+      }
+    }
   } catch(e) {
-    console.warn('[POOL] loadPoolManaged failed:', e);
-    state.poolManagedCache = [];
+    // Tab doesn't exist — try to rebuild from event log
+    try {
+      state.poolManagedCache = await _poolRebuildFromLog();
+      if (state.poolManagedCache.length > 0) {
+        await _poolCreateTabAndWrite(state.poolManagedCache);
+        console.log('[POOL] Rebuilt', state.poolManagedCache.length, 'records from event log after tab error');
+      } else {
+        state.poolManagedCache = [];
+      }
+    } catch(e2) {
+      console.warn('[POOL] loadPoolManaged failed, could not rebuild:', e2);
+      state.poolManagedCache = [];
+    }
   }
+  _updatePoolBadge();
+  _updateMyOutreachBadge();
+}
+
+// Reads _REQUEST_LOG and reconstructs last-known pool status per account from POOL_ACTION events.
+async function _poolRebuildFromLog() {
+  try {
+    var logRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_REQUEST_LOG'!A1:G2000");
+    if (!logRows || logRows.length < 2) return [];
+    // Col layout written by poolLogAction: [ts, 'POOL_ACTION', accName, repId, detail, action, '']
+    var byAccount = {};
+    logRows.slice(1).forEach(function(r) {
+      if ((r[1]||'').toUpperCase().trim() !== 'POOL_ACTION') return;
+      var name = (r[2]||'').trim();
+      if (!name) return;
+      var ts     = r[0] || '';
+      var action = (r[5]||'').toUpperCase().trim();
+      var rep    = (r[3]||'').trim();
+      var detail = (r[4]||'').trim();
+      if (!byAccount[name] || ts > byAccount[name].ts) {
+        byAccount[name] = { ts: ts, action: action, rep: rep, detail: detail, name: name };
+      }
+    });
+    var today = new Date().toISOString().slice(0, 10);
+    return Object.values(byAccount).map(function(e) {
+      var status = 'AVAILABLE';
+      if (e.action === 'HIDDEN')       status = 'HIDDEN';
+      if (e.action === 'REMOVED')      status = 'REMOVED';
+      if (e.action === 'ASSIGNED')     status = 'CLAIMED';
+      var assignedTo = 'ALL';
+      var m = e.detail.match(/Assigned to:\s*(\S+)/i);
+      if (m) assignedTo = m[1];
+      return { name: e.name, sourceRep: e.rep, priority: 'Warm', status: status,
+               assignedTo: assignedTo, approvedBy: e.rep, approvedDate: today, notes: '' };
+    });
+  } catch(e) {
+    console.warn('[POOL] _poolRebuildFromLog failed:', e);
+    return [];
+  }
+}
+
+// Creates _POOL_MANAGED tab if needed, writes header + all records.
+async function _poolCreateTabAndWrite(records) {
+  var sid = CONFIG.HISTORY_SPREADSHEET_ID;
+  try {
+    var createUrl = CONFIG.WORKER_URL + '/sheets/' + sid + ':batchUpdate';
+    await fetch(createUrl, {
+      method: 'POST',
+      headers: { 'X-Google-Token': state.accessToken, 'X-Session-Token': state.sessionToken || '', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title: '_POOL_MANAGED' } } }] })
+    });
+  } catch(e) { /* tab may already exist */ }
+  var headerRow = ['ACCOUNT_NAME','SOURCE_REP','PRIORITY','STATUS','ASSIGNED_TO','APPROVED_BY','APPROVED_DATE','NOTES'];
+  var dataRows = records.map(function(r){
+    return [r.name, r.sourceRep, r.priority, r.status, r.assignedTo, r.approvedBy, r.approvedDate, r.notes];
+  });
+  await sheetsUpdateIn(sid, "'_POOL_MANAGED'!A1:H" + (dataRows.length + 1), [headerRow].concat(dataRows));
+  console.log('[POOL] _POOL_MANAGED tab written with', records.length, 'records');
 }
 
 function _updatePoolBadge() {
@@ -7458,19 +7625,29 @@ async function poolSaveRecord(record) {
              record.approvedBy, record.approvedDate, record.notes];
   try {
     var rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A1:H2000");
-    if (rows && rows.length > 1) {
+    if (rows && rows.length >= 2) {
       for (var i = 1; i < rows.length; i++) {
         if ((rows[i][0]||'').trim().toLowerCase() === record.name.toLowerCase()) {
-          var rng = "'_POOL_MANAGED'!A" + (i+1) + ":H" + (i+1);
-          await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, rng, [row]);
+          await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A" + (i+1) + ":H" + (i+1), [row]);
           return;
         }
       }
+    } else {
+      // Tab exists but has no data rows yet — write header first
+      await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_POOL_MANAGED'!A1:H1",
+        [['ACCOUNT_NAME','SOURCE_REP','PRIORITY','STATUS','ASSIGNED_TO','APPROVED_BY','APPROVED_DATE','NOTES']]);
     }
     await sheetsAppend("'_POOL_MANAGED'!A1", [row], CONFIG.HISTORY_SPREADSHEET_ID);
   } catch(e) {
-    console.warn('[POOL] poolSaveRecord failed:', e);
-    await sheetsAppend("'_POOL_MANAGED'!A1", [row], CONFIG.HISTORY_SPREADSHEET_ID);
+    // Tab likely doesn't exist — create it then retry once
+    try {
+      await _poolCreateTabAndWrite([]);
+      await sheetsAppend("'_POOL_MANAGED'!A1", [row], CONFIG.HISTORY_SPREADSHEET_ID);
+    } catch(e2) {
+      console.error('[POOL] poolSaveRecord failed after tab creation attempt:', e2);
+      showToast('Pool save failed — your change was not persisted. Refresh may lose it.', 'error');
+      throw e2;
+    }
   }
 }
 

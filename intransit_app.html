@@ -3628,6 +3628,31 @@ function completeLogin() {
         }
       }
     } catch(e) { console.warn('[HIDDEN] Could not load hidden accounts tab:', e.message); }
+
+    // Overlay D1 notes onto accounts — source of truth, survives Sheets overwrites
+    try {
+      const _notesRes = await fetch(CONFIG.WORKER_URL + '/notes', {
+        credentials: 'include',
+        headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' }
+      });
+      if (_notesRes.ok) {
+        const _d1Notes = await _notesRes.json();
+        const _noteMap = {};
+        _d1Notes.forEach(function(n){ _noteMap[(n.account_name||'').toLowerCase().trim()] = n; });
+        var _overlaid = 0;
+        state.accounts.forEach(function(a) {
+          const n = _noteMap[(a.name||'').toLowerCase().trim()];
+          if (n) {
+            if (n.note) a.repNote = n.note;
+            if (n.follow_up_date) a.followUpDate = n.follow_up_date;
+            if (n.rep_status) a.repStatus = n.rep_status;
+            _overlaid++;
+          }
+        });
+        console.log('[NOTES-D1] Overlaid', _overlaid, 'notes from D1');
+      }
+    } catch(e) { console.warn('[NOTES-D1] Could not load notes from D1:', e.message); }
+
     console.log('[ACCOUNTS] Loaded', state.accounts.length, 'accounts | repId:', state.repId, '| viewAsRep:', state.viewAsRep, '| managerRole:', state.managerRole);
     const _viewAccs = getViewAccounts();
     console.log('[ACCOUNTS] After filter:', _viewAccs.length, 'visible accounts');
@@ -7204,33 +7229,49 @@ async function unhideAccount(accountName) {
     state.hiddenAccounts = state.hiddenAccounts.filter(function(a){ return a.name !== accountName; });
     state.accounts.push(acc);
     sheetsAppend("'_HIDDEN_ACCOUNTS'!A:C", [[accountName, acc.rep || '', 'RESTORED']], CONFIG.HISTORY_SPREADSHEET_ID).catch(function(){});
+    // Remove from D1 hidden — source of truth
+    fetch(CONFIG.WORKER_URL + '/hidden/' + encodeURIComponent(accountName), {
+      method: 'DELETE', credentials: 'include',
+      headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' }
+    }).catch(function(){});
     showToast(accountName + ' restored to ' + acc.rep + "'s account list ✓", 'success');
     renderRemovalsView();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 async function loadHiddenAccountsTab() {
+  // D1 is now the source of truth for hidden accounts — reliable, no tab-missing issues
   try {
-    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_HIDDEN_ACCOUNTS'!A:C");
-    if (!rows || rows.length < 1) return new Set();
-    // Detect whether row 0 is a real header or a data row
-    const firstRow = rows[0].map(function(h){ return (h||'').toUpperCase().trim(); });
-    const hasHeader = firstRow[0] === 'ACCOUNT_NAME' || firstRow[2] === 'STATUS';
-    // If no header: columns are positional [ACCOUNT_NAME, REP, STATUS]
-    const iName   = hasHeader ? firstRow.indexOf('ACCOUNT_NAME') : 0;
-    const iStatus = hasHeader ? firstRow.indexOf('STATUS')       : 2;
-    const dataRows = hasHeader ? rows.slice(1) : rows;
-    const statusMap = {};
-    dataRows.forEach(function(r) {
-      const name   = (r[iName]  || '').trim();
-      const status = (r[iStatus] || 'HIDDEN').toUpperCase();
-      if (name) statusMap[name.toLowerCase()] = { name: name, status: status };
+    const res = await fetch(CONFIG.WORKER_URL + '/hidden', {
+      credentials: 'include',
+      headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' }
     });
-    const hiddenSet = new Set();
-    Object.values(statusMap).forEach(function(e){ if (e.status === 'HIDDEN') hiddenSet.add(e.name.toLowerCase()); });
-    console.log('[HIDDEN] loadHiddenAccountsTab: found', hiddenSet.size, 'hidden accounts in _HIDDEN_ACCOUNTS tab');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const list = await res.json();
+    const hiddenSet = new Set(list.map(function(r){ return r.account_name.toLowerCase().trim(); }));
+    console.log('[HIDDEN-D1] Loaded', hiddenSet.size, 'hidden accounts from D1');
     return hiddenSet;
-  } catch(e) { console.warn('[HIDDEN] Could not read _HIDDEN_ACCOUNTS tab:', e.message); return new Set(); }
+  } catch(e) {
+    console.warn('[HIDDEN-D1] D1 load failed, falling back to Sheets:', e.message);
+    // Fallback: read from _HIDDEN_ACCOUNTS tab in History sheet
+    try {
+      const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_HIDDEN_ACCOUNTS'!A:C");
+      if (!rows || rows.length < 1) return new Set();
+      const firstRow = rows[0].map(function(h){ return (h||'').toUpperCase().trim(); });
+      const hasHeader = firstRow[0] === 'ACCOUNT_NAME' || firstRow[2] === 'STATUS';
+      const iName = hasHeader ? firstRow.indexOf('ACCOUNT_NAME') : 0;
+      const iStatus = hasHeader ? firstRow.indexOf('STATUS') : 2;
+      const dataRows = hasHeader ? rows.slice(1) : rows;
+      const statusMap = {};
+      dataRows.forEach(function(r){
+        const name = (r[iName]||'').trim(), status = (r[iStatus]||'HIDDEN').toUpperCase();
+        if (name) statusMap[name.toLowerCase()] = { name, status };
+      });
+      const hiddenSet = new Set();
+      Object.values(statusMap).forEach(function(e){ if (e.status === 'HIDDEN') hiddenSet.add(e.name.toLowerCase()); });
+      return hiddenSet;
+    } catch(e2) { console.warn('[HIDDEN] Sheets fallback also failed:', e2.message); return new Set(); }
+  }
 }
 
 async function approveRemovalDirect(accountName) {
@@ -7254,6 +7295,12 @@ async function approveRemovalDirect(accountName) {
     if (state.selectedAccount && state.selectedAccount.name === accountName) state.selectedAccount = null;
     resolveRequestLog('HIDE', accountName, acc.rep || '', 'APPROVED', '').catch(function(){});
     sheetsAppend("'_HIDDEN_ACCOUNTS'!A:C", [[accountName, acc.rep || '', 'HIDDEN']], CONFIG.HISTORY_SPREADSHEET_ID).catch(function(){});
+    // Save to D1 — source of truth for hidden status
+    fetch(CONFIG.WORKER_URL + '/hidden', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' },
+      body: JSON.stringify({ account_name: accountName, rep_id: acc.rep || '' })
+    }).catch(function(){});
     showToast(accountName + ' hidden from ' + acc.rep + "'s view ✓", 'success');
     renderRemovalsView();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
@@ -12660,6 +12707,12 @@ async function saveNote() {
     });
 
     state.hasUnsavedNote = false;
+    // Also save to D1 — source of truth, survives sales_report.py rewrites
+    fetch(CONFIG.WORKER_URL + '/notes', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' },
+      body: JSON.stringify({ account_name: acc.name, rep_id: acc.rep || '', note: text, follow_up_date: followUpDisplay, rep_status: status })
+    }).catch(function(e){ console.warn('[NOTES-D1] D1 save failed:', e.message); });
     showToast('Note saved and locked ✓', 'success');
     renderDetail(acc);
     updateBadges();

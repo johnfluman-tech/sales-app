@@ -1881,11 +1881,16 @@ async function loadSupplementalData() {
       }
     }
 
-    // Process signatures
+    // Process signatures from Sheets (baseline)
     if (sigRowsRaw.length > 1) {
       const hdrs=sigRowsRaw[0]; const iRep=hdrs.indexOf('REP'),iSig=hdrs.indexOf('SIGNATURE_TEXT');
       for (let r=1;r<sigRowsRaw.length;r++) { const row=sigRowsRaw[r]; const rep=(row[iRep]||'').trim(); if(rep) state.signaturesCache[rep]=row[iSig]||''; }
     }
+    // Overlay D1 signatures — source of truth (fire-and-forget merge)
+    fetch(CONFIG.WORKER_URL + '/signatures', { credentials: 'include', headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token')||'' } })
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(list){ list.forEach(function(s){ if(s.rep_id) state.signaturesCache[s.rep_id] = s.signature_text||''; }); })
+      .catch(function(){});
 
     // Process collections invoices
     if (collInvRows.length > 1) {
@@ -7372,23 +7377,27 @@ async function denyRemoval(accountName, adminNote) {
 // ══════════════════════════════════════════════════════════
 
 async function writeRequestLog(type, account, repId, reason, status) {
-  try {
-    await sheetsAppend("'_REQUEST_LOG'!A1", [[
-      new Date().toISOString(), type, account, repId || '', reason || '', status || 'PENDING', ''
-    ]], CONFIG.HISTORY_SPREADSHEET_ID);
-  } catch(e) {
-    console.warn('[REQ_LOG] Write failed:', e.message);
-  }
+  const tok = sessionStorage.getItem('it_ss_token') || '';
+  // D1 primary
+  fetch(CONFIG.WORKER_URL + '/request-log', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-Session-Token': tok },
+    body: JSON.stringify({ type, account_name: account, rep_id: repId || '', reason: reason || '', status: status || 'PENDING', admin_note: '' })
+  }).catch(function(){});
+  // Sheets mirror
+  sheetsAppend("'_REQUEST_LOG'!A1", [[new Date().toISOString(), type, account, repId||'', reason||'', status||'PENDING', '']], CONFIG.HISTORY_SPREADSHEET_ID).catch(function(){});
 }
 
 async function resolveRequestLog(type, account, repId, status, adminNote) {
-  try {
-    await sheetsAppend("'_REQUEST_LOG'!A1", [[
-      new Date().toISOString(), type + '_RESOLVED', account, repId || '', '', status || 'RESOLVED', adminNote || ''
-    ]], CONFIG.HISTORY_SPREADSHEET_ID);
-  } catch(e) {
-    console.warn('[REQ_LOG] Resolve write failed:', e.message);
-  }
+  const tok = sessionStorage.getItem('it_ss_token') || '';
+  // D1 primary
+  fetch(CONFIG.WORKER_URL + '/request-log', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-Session-Token': tok },
+    body: JSON.stringify({ type: type + '_RESOLVED', account_name: account, rep_id: repId||'', reason: '', status: status||'RESOLVED', admin_note: adminNote||'' })
+  }).catch(function(){});
+  // Sheets mirror
+  sheetsAppend("'_REQUEST_LOG'!A1", [[new Date().toISOString(), type+'_RESOLVED', account, repId||'', '', status||'RESOLVED', adminNote||'']], CONFIG.HISTORY_SPREADSHEET_ID).catch(function(){});
 }
 
 async function resolveHoldRequest(accName, repId, status) {
@@ -10250,27 +10259,48 @@ function schedSave(events) {
   schedPushToSheets(events).catch(()=>{});
 }
 async function schedPushToSheets(events) {
+  const tok = sessionStorage.getItem('it_ss_token') || '';
+  const rep = state.user?.email || state.repId || '';
+  // D1 primary — fixes Main/History sheet mismatch, works cross-device
+  fetch(CONFIG.WORKER_URL + '/schedule', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-Session-Token': tok },
+    body: JSON.stringify({ rep, events })
+  }).catch(function(){});
+  // Sheets mirror (best-effort)
   try {
     const rows = [['ID','TYPE','ACCOUNT','CONTACT','EMAIL','DATE','TIME','NOTE','REP','DONE']];
     events.forEach(e => rows.push([e.id||'',e.type||'',e.accName||'',e.contactName||'',e.contactEmail||'',e.date||'',e.time||'',e.note||'',e.rep||'',e.done?'YES':'']));
-    await sheetsUpdate("'_SCHEDULE'!A1", rows, CONFIG.SPREADSHEET_ID);
+    sheetsUpdate("'_SCHEDULE'!A1", rows, CONFIG.SPREADSHEET_ID).catch(function(){});
   } catch(e) { /* silent */ }
 }
 async function schedLoadFromSheets() {
+  const tok = sessionStorage.getItem('it_ss_token') || '';
+  const rep = state.user?.email || state.repId || '';
+  // D1 primary
+  try {
+    const res = await fetch(CONFIG.WORKER_URL + '/schedule/' + encodeURIComponent(rep), {
+      credentials: 'include', headers: { 'X-Session-Token': tok }
+    });
+    if (res.ok) {
+      const rows = await res.json();
+      const events = rows.map(function(r){ return { id:r.id, type:r.type, accName:r.acc_name, contactName:r.contact_name, contactEmail:r.contact_email, date:r.date, time:r.time, note:r.note, rep:r.rep, done:!!r.done }; })
+        .filter(function(e){ return e.date && (e.accName || e.type === 'Task'); });
+      localStorage.setItem('iq_schedule', JSON.stringify(events));
+      console.log('[SCHEDULE-D1] Loaded', events.length, 'events from D1');
+      return;
+    }
+  } catch(e) { console.warn('[SCHEDULE-D1] D1 load failed, trying Sheets:', e.message); }
+  // Fallback: Sheets (was on Main sheet — still try it)
   try {
     const rows = await sheetsGet("'_SCHEDULE'!A1:J5000");
     if (rows.length < 2) return;
     const hdrs = rows[0];
     const iId=hdrs.indexOf('ID'), iType=hdrs.indexOf('TYPE'), iAcc=hdrs.indexOf('ACCOUNT'),
           iCon=hdrs.indexOf('CONTACT'), iEmail=hdrs.indexOf('EMAIL'), iDate=hdrs.indexOf('DATE'),
-          iTime=hdrs.indexOf('TIME'), iNote=hdrs.indexOf('NOTE'), iRep=hdrs.indexOf('REP'),
-          iDone=hdrs.indexOf('DONE');
-    const events = rows.slice(1).map(r => ({
-      id: r[iId]||'', type: r[iType]||'Call', accName: r[iAcc]||'',
-      contactName: r[iCon]||'', contactEmail: r[iEmail]||'',
-      date: r[iDate]||'', time: r[iTime]||'', note: r[iNote]||'',
-      rep: r[iRep]||'', done: r[iDone]==='YES'
-    })).filter(e => e.date && (e.accName || e.type === 'Task'));
+          iTime=hdrs.indexOf('TIME'), iNote=hdrs.indexOf('NOTE'), iRep=hdrs.indexOf('REP'), iDone=hdrs.indexOf('DONE');
+    const events = rows.slice(1).map(function(r){ return { id:r[iId]||'', type:r[iType]||'Call', accName:r[iAcc]||'', contactName:r[iCon]||'', contactEmail:r[iEmail]||'', date:r[iDate]||'', time:r[iTime]||'', note:r[iNote]||'', rep:r[iRep]||'', done:r[iDone]==='YES' }; })
+      .filter(function(e){ return e.date && (e.accName || e.type === 'Task'); });
     localStorage.setItem('iq_schedule', JSON.stringify(events));
   } catch(e) { /* silent */ }
 }
@@ -13435,6 +13465,12 @@ async function saveSignature() {
     }
 
     state.signaturesCache[rep] = text;
+    // Also save to D1 — source of truth
+    fetch(CONFIG.WORKER_URL + '/signatures', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' },
+      body: JSON.stringify({ rep_id: rep, signature_text: text })
+    }).catch(function(){});
     showToast('Signature saved for ' + rep + ' ✓', 'success');
   } catch(e) {
     showToast('Error saving signature: ' + e.message, 'error');
@@ -22863,9 +22899,14 @@ async function submitSuggestion() {
   const page = SUGGEST_PAGE_LABELS[state.activeView] || state.activeView || 'Unknown';
 
   try {
-    await sheetsAppend("'_SUGGESTIONS'!A1", [
-      [dateStr, repName, page, _suggestCat, desc, 'New']
-    ], CONFIG.HISTORY_SPREADSHEET_ID);
+    // D1 primary
+    await fetch(CONFIG.WORKER_URL + '/suggestions', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionStorage.getItem('it_ss_token')||'' },
+      body: JSON.stringify({ date_str: dateStr, rep_name: repName, rep_email: (state.user&&state.user.email)||rep, page, category: _suggestCat, description: desc })
+    });
+    // Sheets mirror (best-effort)
+    sheetsAppend("'_SUGGESTIONS'!A1", [[dateStr, repName, page, _suggestCat, desc, 'New']], CONFIG.HISTORY_SPREADSHEET_ID).catch(function(){});
     fetch(CONFIG.WORKER_URL + '/send-alert', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Google-Token': state.accessToken},

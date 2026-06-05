@@ -1224,6 +1224,12 @@ body::before {
           <span class="nav-badge blue" id="badge-access"></span>
         </div>
       </div>
+      <div class="nav-item" id="nav-ip-manager" onclick="showIPManager()"
+           style="display:none;border-left:2px solid #f59e0b">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#128274;</span> IP Manager
+        </div>
+      </div>
       <div class="nav-item" id="nav-activity-log" data-view="activity" onclick="switchView('activity')"
            style="display:none;border-left:2px solid #a855f7">
         <div class="nav-item-inner">
@@ -3497,6 +3503,8 @@ function completeLogin() {
     if (removalsNav) removalsNav.style.display = 'block';
     const accessNav = document.getElementById('nav-access');
     if (accessNav) accessNav.style.display = 'block';
+    const ipMgrNav = document.getElementById('nav-ip-manager');
+    if (ipMgrNav) ipMgrNav.style.display = 'block';
     const activityLogNav = document.getElementById('nav-activity-log');
     if (activityLogNav) activityLogNav.style.display = 'block';
     const _flBtn = document.getElementById('force-logout-btn');
@@ -3663,6 +3671,97 @@ function generateSessionId() {
 }
 
 // ── Access-control blocked screens ───────────────────────────────────────────
+
+// ── IP Manager (admin only) ───────────────────────────────────────────────────
+
+async function showIPManager() {
+  var existing = document.getElementById('ip-manager-modal');
+  if (existing) existing.remove();
+  var modal = document.createElement('div');
+  modal.id = 'ip-manager-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:var(--mono)';
+  modal.innerHTML = '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:28px;width:560px;max-width:95vw;max-height:85vh;overflow-y:auto">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">' +
+      '<div style="font-size:14px;font-weight:700;letter-spacing:0.06em">&#128274; IP ACCESS MANAGER</div>' +
+      '<button onclick="document.getElementById(\'ip-manager-modal\').remove()" style="background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:18px">&#10005;</button>' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--text-3);margin-bottom:16px">Office IP <strong style="color:#22c55e">162.220.79.135</strong> is always auto-approved. All other IPs require your approval. Business hours still apply to everyone except Admin.</div>' +
+    '<div id="ip-list-body" style="font-size:12px">Loading...</div>' +
+    '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">' +
+      '<div style="font-size:10px;color:var(--text-3);margin-bottom:8px">MANUALLY ADD / APPROVE AN IP</div>' +
+      '<div style="display:flex;gap:8px">' +
+        '<input id="ip-manual-input" placeholder="IP address (e.g. 203.0.113.45)" style="flex:1;background:var(--s0);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:12px">' +
+        '<button onclick="ipManagerApprove(document.getElementById(\'ip-manual-input\').value)" style="background:#16a34a;color:#fff;border:none;padding:8px 16px;border-radius:var(--r);cursor:pointer;font-size:11px;font-weight:700">APPROVE</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+  document.body.appendChild(modal);
+  await ipManagerRefresh();
+}
+
+async function ipManagerRefresh() {
+  var body = document.getElementById('ip-list-body');
+  if (!body) return;
+  try {
+    var res = await fetch(CONFIG.WORKER_URL + '/admin/ips', {
+      headers: { 'X-Session-Token': state.sessionToken || '' }
+    });
+    var ips = await res.json();
+    if (!ips.length) { body.innerHTML = '<div style="color:var(--text-3);padding:12px 0">No external IPs on record yet.</div>'; return; }
+    var statusColor = { approved:'#22c55e', pending:'#f59e0b', denied:'#ef4444', revoked:'#6b7280', new:'#f59e0b' };
+    body.innerHTML = ips.map(function(e) {
+      var sc = statusColor[e.status] || '#6b7280';
+      var isOffice = e.ip === '162.220.79.135';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:12px;font-weight:600">' + escHtml(e.ip) + (isOffice ? ' <span style="color:#22c55e;font-size:9px">OFFICE</span>' : '') + '</div>' +
+          '<div style="font-size:10px;color:var(--text-3);margin-top:2px">' +
+            (e.email ? escHtml(e.email) + ' &nbsp;·&nbsp; ' : '') +
+            (e.location ? escHtml(e.location) + ' &nbsp;·&nbsp; ' : '') +
+            (e.approvedAt ? 'Approved ' + e.approvedAt.slice(0,10) : e.requestedAt ? 'Requested ' + e.requestedAt.slice(0,10) : e.revokedAt ? 'Revoked ' + e.revokedAt.slice(0,10) : '') +
+          '</div>' +
+        '</div>' +
+        '<span style="font-size:9px;font-weight:700;color:' + sc + ';border:1px solid ' + sc + ';padding:2px 8px;border-radius:10px;white-space:nowrap">' + (e.status||'').toUpperCase() + '</span>' +
+        (e.status === 'approved' ? '<button onclick="ipManagerRevoke(\'' + escHtml(e.ip) + '\')" style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.4);color:#ef4444;padding:5px 10px;border-radius:var(--r);cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">REVOKE</button>' : '') +
+        (e.status === 'pending' ? '<button onclick="ipManagerApprove(\'' + escHtml(e.ip) + '\')" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.4);color:#22c55e;padding:5px 10px;border-radius:var(--r);cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">APPROVE</button>' : '') +
+        (e.status === 'revoked' || e.status === 'denied' ? '<button onclick="ipManagerApprove(\'' + escHtml(e.ip) + '\')" style="background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.4);color:#60a5fa;padding:5px 10px;border-radius:var(--r);cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">RE-APPROVE</button>' : '') +
+      '</div>';
+    }).join('');
+  } catch(e) {
+    body.innerHTML = '<div style="color:var(--red)">Error loading IPs: ' + escHtml(e.message) + '</div>';
+  }
+}
+
+async function ipManagerRevoke(ip) {
+  if (!confirm('Revoke access for ' + ip + '? They will be blocked immediately on next login attempt.')) return;
+  try {
+    await fetch(CONFIG.WORKER_URL + '/admin/revoke-ip', {
+      method: 'POST',
+      headers: { 'X-Session-Token': state.sessionToken || '', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip })
+    });
+    showToast(ip + ' access revoked', 'success');
+    await ipManagerRefresh();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function ipManagerApprove(ip) {
+  ip = (ip || '').trim();
+  if (!ip) { showToast('Enter an IP address', 'error'); return; }
+  try {
+    await fetch(CONFIG.WORKER_URL + '/admin/approve-ip', {
+      method: 'POST',
+      headers: { 'X-Session-Token': state.sessionToken || '', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip })
+    });
+    showToast(ip + ' approved', 'success');
+    var inp = document.getElementById('ip-manual-input');
+    if (inp) inp.value = '';
+    await ipManagerRefresh();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function showAccessBlockedScreen(title, message, canRetry) {
   var el = document.getElementById('login-screen') || document.body;

@@ -4265,7 +4265,10 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
         }
         if (res.status === 401 && !state._refreshingToken) {
           showToast('Session expired — signing out, please sign in again.', 'error');
-          if (!_signedOut) setTimeout(handleSignout, 3000);
+          if (!_signedOut && !window._autoSignoutPending) {
+            window._autoSignoutPending = true;
+            setTimeout(function(){ window._autoSignoutPending = false; handleSignout(); }, 3000);
+          }
         }
         throw new Error('Sheets API ' + res.status);
       }
@@ -23120,6 +23123,14 @@ function confirmFollowUp(accName, contactName) {
       ? '<tr><td colspan="2" style="color:#22c55e">No JS errors captured</td></tr>'
       : _diagErrors.map(function(e){ return _diagRow('ERROR', e.msg + (e.src ? ' ['+e.src+':'+e.line+']' : '') + (e.stack ? ' | '+e.stack : ''), '#f87171'); }).join('');
 
+    var ssTok = sessionStorage.getItem('it_ss_token') || '';
+    var ssTokDisplay = ssTok ? (ssTok === 'active' ? 'INVALID — "active" (not a real JWT)' : 'Present — ' + ssTok.slice(0,20) + '…') : 'MISSING';
+    var ssTokColor = (!ssTok || ssTok === 'active') ? '#f87171' : '#86efac';
+    var accTok = st.accessToken ? ('Present — ' + String(st.accessToken).slice(0,12) + '…') : 'MISSING';
+    var accTokColor = st.accessToken ? '#86efac' : '#f87171';
+    var sessTok = st.sessionToken ? (st.sessionToken === 'active' ? 'INVALID — "active"' : 'Present — ' + String(st.sessionToken).slice(0,20) + '…') : 'MISSING';
+    var sessTokColor = (!st.sessionToken || st.sessionToken === 'active') ? '#f87171' : '#86efac';
+
     var html = '<table style="border-collapse:collapse;width:100%">' +
       '<tr><td colspan="2" style="color:#60a5fa;font-weight:700;padding:8px 0 4px;font-size:13px">AUTH</td></tr>' +
       _diagRow('Email', email) +
@@ -23127,6 +23138,11 @@ function confirmFollowUp(accName, contactName) {
       _diagRow('state.isAdmin', String(st.isAdmin), st.isAdmin ? '#86efac' : '#fbbf24') +
       _diagRow('isAdmin() fn', String(isAdm), isAdm ? '#86efac' : '#fbbf24') +
       _diagRow('viewAsRep', viewAs) +
+      '<tr><td colspan="2" style="color:#60a5fa;font-weight:700;padding:8px 0 4px;font-size:13px">SESSION TOKENS</td></tr>' +
+      _diagRow('it_ss_token (sessionStorage)', ssTokDisplay, ssTokColor) +
+      _diagRow('state.sessionToken', sessTok, sessTokColor) +
+      _diagRow('state.accessToken', accTok, accTokColor) +
+      '<tr><td colspan="2" style="padding:6px 0"><button onclick="window._diagTestSession()" style="background:#1e3a5f;border:1px solid #3b82f6;color:#93c5fd;font-family:monospace;font-size:11px;padding:5px 14px;cursor:pointer;border-radius:3px">▶ TEST /check-session</button> <span id="diag-session-result" style="color:#94a3b8;font-size:11px;margin-left:8px"></span></td></tr>' +
 
       '<tr><td colspan="2" style="color:#60a5fa;font-weight:700;padding:8px 0 4px;font-size:13px">DATA LOAD</td></tr>' +
       _diagRow('cacheLoaded', cacheLoaded, cacheLoaded==='YES' ? '#86efac' : '#f87171') +
@@ -23147,6 +23163,26 @@ function confirmFollowUp(accName, contactName) {
     document.getElementById('diag-content').innerHTML = html;
     document.getElementById('diag-overlay').style.display = 'block';
   }
+
+  window._diagTestSession = function() {
+    var el = document.getElementById('diag-session-result');
+    if (el) el.textContent = 'Testing…';
+    var tok = sessionStorage.getItem('it_ss_token') || '';
+    var workerUrl = (typeof CONFIG !== 'undefined' && CONFIG.WORKER_URL) ? CONFIG.WORKER_URL : 'https://intransit-worker.intransit-sales.workers.dev';
+    fetch(workerUrl + '/check-session', {
+      credentials: 'include',
+      headers: { 'X-Session-Token': tok }
+    }).then(function(r) {
+      return r.json().then(function(j) { return { status: r.status, body: j }; });
+    }).then(function(res) {
+      var msg = res.status === 200
+        ? '✓ Session OK — ' + (res.body.email || '?') + ' exp=' + new Date((res.body.exp||0)*1000).toLocaleTimeString()
+        : '✗ ' + res.status + ' — ' + JSON.stringify(res.body);
+      if (el) { el.textContent = msg; el.style.color = res.status === 200 ? '#86efac' : '#f87171'; }
+    }).catch(function(e) {
+      if (el) { el.textContent = '✗ Network error: ' + e.message; el.style.color = '#f87171'; }
+    });
+  };
 
   document.addEventListener('keydown', function(e) {
     if (e.key === 'd' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openDiag(); }

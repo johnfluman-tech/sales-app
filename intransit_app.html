@@ -3415,8 +3415,11 @@ function requestSheetsToken() {
                 body: JSON.stringify({ idToken: state._idToken })
               });
               if (_authRes.ok) {
-                // Worker sets httpOnly cookie — token never stored in JS
-                state.sessionToken = 'active';
+                const _authData = await _authRes.json();
+                // Primary: httpOnly cookie (set by Worker).
+                // Fallback: keep token in sessionStorage only (expires when tab closes).
+                state.sessionToken = _authData.sessionToken || 'active';
+                sessionStorage.setItem('it_ss_token', state.sessionToken);
                 localStorage.removeItem('it_session_token');
               } else {
                 const _authErr = await _authRes.json().catch(() => ({}));
@@ -4164,7 +4167,7 @@ async function checkAuth() {
   }
 
   state.accessToken  = savedToken;
-  state.sessionToken = 'active';
+  state.sessionToken = sessionStorage.getItem('it_ss_token') || 'active';
   state.user = JSON.parse(savedUser);
   setRepFromEmail(state.user.email);
   state.loginTime = parseInt(sessionStorage.getItem('it_login_time') || '0');
@@ -4181,7 +4184,11 @@ async function sheetsGet(range) {
 async function sheetsGetFrom(spreadsheetId, range, _retry) {
   const url = CONFIG.WORKER_URL + '/sheets/' + spreadsheetId + '/values/' + encodeURIComponent(range);
   try {
-    const res = await fetch(url, { headers: { 'X-Google-Token': state.accessToken }, credentials: 'include' });
+    const _ssTok = sessionStorage.getItem('it_ss_token') || '';
+    const res = await fetch(url, {
+      headers: { 'X-Google-Token': state.accessToken, 'X-Session-Token': _ssTok },
+      credentials: 'include'
+    });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
         if (_signedOut) { throw new Error('Session ended'); }
@@ -4233,7 +4240,7 @@ async function sheetsUpdateIn(spreadsheetId, range, values) {
   const url = CONFIG.WORKER_URL + '/sheets/' + spreadsheetId + '/values/' + encodeURIComponent(range) + '?valueInputOption=USER_ENTERED';
   const res = await fetch(url, {
     method: 'PUT',
-    headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
+    headers: { 'X-Google-Token': state.accessToken, 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ values })
   });
@@ -4249,7 +4256,7 @@ async function sheetsUpdate(range, values, spreadsheetId) {
   const url = CONFIG.WORKER_URL + '/sheets/' + sid + '/values/' + encodeURIComponent(range) + '?valueInputOption=USER_ENTERED';
   const res = await fetch(url, {
     method: 'PUT',
-    headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
+    headers: { 'X-Google-Token': state.accessToken, 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ values })
   });
@@ -4265,7 +4272,7 @@ async function sheetsAppend(range, values, spreadsheetId) {
   const url = CONFIG.WORKER_URL + '/sheets/' + sid + '/values/' + encodeURIComponent(range) + ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
+    headers: { 'X-Google-Token': state.accessToken, 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ values })
   });
@@ -14874,7 +14881,7 @@ function getAnthropicKey() {
 async function callAI(payload) {
   const res = await fetch(CONFIG.WORKER_URL + '/ai', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': state.accessToken },
+    headers: { 'Content-Type': 'application/json', 'X-Google-Token': state.accessToken, 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' },
     credentials: 'include',
     body: JSON.stringify(payload)
   });

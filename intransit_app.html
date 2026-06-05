@@ -8099,9 +8099,12 @@ function renderPoolManagementView() {
   // Admin sees ALL reps (including FJohn + Anolan) so they can manage and move to pool.
   // Managers see their configured team. Default non-admin excludes FJohn and Anolan —
   // their accounts are not visible in team views unless explicitly moved to Available Pool.
+  // FJohn and Anolan are always excluded from non-admin pool views —
+  // even if they appear in a manager's teamReps config.
+  var _poolExclude = ['FJohn', 'Anolan'];
   var teamReps = isAdmin()
     ? (CONFIG.REPS||[])
-    : (mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[]).filter(function(r){ return r !== 'FJohn' && r !== 'Anolan'; }));
+    : (mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[])).filter(function(r){ return _poolExclude.indexOf(r) === -1; });
   var repNames  = CONFIG.REP_DISPLAY_NAMES || {};
   var priColors = { Hot: '#ef4444', Warm: '#f59e0b', Cold: '#3b82f6' };
 

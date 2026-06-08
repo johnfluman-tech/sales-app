@@ -1732,6 +1732,95 @@ def push_unowned_accounts_tab(service, h_tabs, collections_df, sid):
         print(f"  WARNING: Could not push _UNOWNED_ACCOUNTS tab — {e}")
 
 
+# ── Rep transfer tracking ─────────────────────────────────────────────────────
+
+def read_rep_snapshot(service):
+    """Return dict of account_name_lower → rep_id from _REP_SNAPSHOT in History sheet."""
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=HISTORY_SHEET_ID,
+            range="'_REP_SNAPSHOT'!A:B"
+        ).execute()
+        rows = result.get('values', [])
+        if len(rows) < 2:
+            return {}
+        return {str(r[0]).strip().lower(): str(r[1]).strip() for r in rows[1:] if len(r) >= 2}
+    except Exception as e:
+        print(f"  WARNING: Could not read rep snapshot — {e}")
+        return {}
+
+
+def log_rep_transfers(service, old_snapshot, new_summary, h_tabs):
+    """Compare new summary against snapshot and append any rep changes to _REP_TRANSFERS."""
+    ts = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    transfers = []
+    for _, row in new_summary.iterrows():
+        name    = str(row.get('CUSTOMER_NAME', '')).strip()
+        new_rep = str(row.get('SALES_REP', '')).strip()
+        if not name or not new_rep:
+            continue
+        old_rep = old_snapshot.get(name.lower(), '')
+        if old_rep and old_rep != new_rep:
+            transfers.append([ts, name, old_rep, new_rep, 'auto-detected', ''])
+
+    if not transfers:
+        print(f"  → 0 rep transfers detected.")
+        return
+
+    print(f"  → {len(transfers)} transfer(s) detected:")
+    for t in transfers:
+        print(f"     {t[1]}: {t[2]} → {t[3]}")
+
+    if '_REP_TRANSFERS' not in h_tabs:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=HISTORY_SHEET_ID,
+            body={'requests': [{'addSheet': {'properties': {'title': '_REP_TRANSFERS'}}}]}
+        ).execute()
+        h_tabs.append('_REP_TRANSFERS')
+        service.spreadsheets().values().update(
+            spreadsheetId=HISTORY_SHEET_ID,
+            range="'_REP_TRANSFERS'!A1:F1",
+            valueInputOption='RAW',
+            body={'values': [['TIMESTAMP', 'ACCOUNT_NAME', 'OLD_REP', 'NEW_REP', 'DETECTED_BY', 'NOTE']]}
+        ).execute()
+
+    service.spreadsheets().values().append(
+        spreadsheetId=HISTORY_SHEET_ID,
+        range="'_REP_TRANSFERS'!A:F",
+        valueInputOption='RAW',
+        insertDataOption='INSERT_ROWS',
+        body={'values': transfers}
+    ).execute()
+
+
+def write_rep_snapshot(service, new_summary, h_tabs):
+    """Overwrite _REP_SNAPSHOT with current account→rep mapping for next-run comparison."""
+    rows = [['ACCOUNT_NAME', 'SALES_REP']]
+    for _, row in new_summary.iterrows():
+        name = str(row.get('CUSTOMER_NAME', '')).strip()
+        rep  = str(row.get('SALES_REP', '')).strip()
+        if name and rep:
+            rows.append([name, rep])
+
+    if '_REP_SNAPSHOT' not in h_tabs:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=HISTORY_SHEET_ID,
+            body={'requests': [{'addSheet': {'properties': {'title': '_REP_SNAPSHOT'}}}]}
+        ).execute()
+        h_tabs.append('_REP_SNAPSHOT')
+
+    service.spreadsheets().values().clear(
+        spreadsheetId=HISTORY_SHEET_ID, range="'_REP_SNAPSHOT'!A:B"
+    ).execute()
+    service.spreadsheets().values().update(
+        spreadsheetId=HISTORY_SHEET_ID,
+        range="'_REP_SNAPSHOT'!A1",
+        valueInputOption='RAW',
+        body={'values': rows}
+    ).execute()
+    print(f"  → Snapshot updated: {len(rows)-1} accounts.")
+
+
 def main():
     print("=" * 60)
     print(f"  Intransit Sales Report  |  {MONTH_STR}")
@@ -1874,7 +1963,7 @@ def main():
             i.INVOICE_NUMBER,
             i.INVOICE_DATE,
             i.INVOICE_TOTAL,
-            oa.SALES_REP,
+            RTRIM(o.USERNAME)   AS SALES_REP,
             c.ID                AS CUSTOMER_ID,
             c.NAME              AS CUSTOMER_NAME,
             d.FULLPART          AS PART_NUMBER,
@@ -2202,7 +2291,7 @@ def main():
             )
             SELECT
                 i.INVOICE_DATE,
-                oa.SALES_REP,
+                RTRIM(o.USERNAME)   AS SALES_REP,
                 c.NAME              AS CUSTOMER_NAME,
                 i.INVOICE_NUMBER,
                 i.INVOICE_TOTAL     AS EXTENDED_PRICE,
@@ -2306,6 +2395,19 @@ def main():
     if len(removed):
         print(f"  → Removing {len(removed)} accounts approved for removal by John")
     summary = summary[summary['JOHN_APPROVAL'].str.strip().str.upper() != 'YES']
+
+    # ── 4b. Detect and log rep transfers ──────────────────────────────────────
+    print("\n[4b/7] Checking for rep assignment changes...")
+    if service:
+        h_tabs   = get_all_tabs(service, HISTORY_SHEET_ID)
+        old_snap = read_rep_snapshot(service)
+        if old_snap:
+            log_rep_transfers(service, old_snap, summary, h_tabs)
+        else:
+            print("  → No previous snapshot found — creating baseline (no transfers logged this run).")
+        write_rep_snapshot(service, summary, h_tabs)
+    else:
+        print("  → Skipped (no Sheets connection).")
 
     # ── 5. Generate Excel files ────────────────────────────────────────────────
     print("\n[5/7] Generating Excel reports...")

@@ -3300,6 +3300,7 @@ let state = {
   prospectCache: [],        // rep's prospects from _PROSPECTS tab
   customerDirectory: [],    // customer list from _CUSTOMER_DIRECTORY tab
   transferHistoryCache: null, // keyed by account name (lowercase) → [{rep,date,part,desc,qty,revenue}]
+  repTransfersCache: null,   // rows from _REP_TRANSFERS tab — [{ts, account, oldRep, newRep, note}]
   _prospectsLoaded: false,
   _selectedProspect: null,
   _prospectTab: 'notes',    // active tab in prospect detail panel
@@ -3883,6 +3884,16 @@ async function renderAdminPanelView() {
     '<div id="active-users-section">Loading&#8230;</div>' +
     '</div>' +
 
+    // Account Transfers
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;margin-bottom:20px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+    '<div style="font-size:14px;font-weight:700;letter-spacing:0.04em">&#8644; ACCOUNT TRANSFERS</div>' +
+    '<button onclick="loadRepTransfers(\'rep-transfers-admin\')" style="background:transparent;border:1px solid var(--border);color:var(--text-3);padding:4px 12px;border-radius:var(--r);font-size:10px;font-family:var(--mono);cursor:pointer;letter-spacing:0.05em">&#8635; REFRESH</button>' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--text-3);margin-bottom:16px">Rep assignment changes detected automatically each sync cycle. Logged when sales_report.py runs (every 30 min) and detects a different rep in the CRM vs the previous run.</div>' +
+    '<div id="rep-transfers-admin">Loading&#8230;</div>' +
+    '</div>' +
+
     // Gmail settings
     '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
@@ -3899,6 +3910,7 @@ async function renderAdminPanelView() {
     '</div>';
   await ipManagerRefresh();
   loadActiveUsers();
+  loadRepTransfers('rep-transfers-admin');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4094,6 +4106,73 @@ async function loadActiveUsers() {
       + '<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-left:auto">auto-refreshes every 60s</span>'
       + '</div>';
   } catch(e) { if (el) el.innerHTML = '<div style="font-size:11px;color:var(--red)">Failed to load: ' + escHtml(e.message) + '</div>'; }
+}
+
+async function loadRepTransfers(targetId) {
+  var el = document.getElementById(targetId || 'rep-transfers-body');
+  if (!el) return;
+  el.innerHTML = 'Loading&#8230;';
+  try {
+    var rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_REP_TRANSFERS'!A:F");
+    if (!rows || rows.length < 2) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No transfers recorded yet. Transfers will appear here after the next sync detects a rep change in the CRM (syncs every 30 min).</div>';
+      state.repTransfersCache = [];
+      return;
+    }
+    var data = rows.slice(1).reverse(); // newest first
+    // Filter to manager's team if applicable
+    var mgrCfg = getManagerConfig();
+    if (mgrCfg && mgrCfg.teamReps && !isAdmin()) {
+      var tr = mgrCfg.teamReps;
+      data = data.filter(function(r){ return tr.indexOf(r[2]||'') !== -1 || tr.indexOf(r[3]||'') !== -1; });
+    }
+    state.repTransfersCache = data;
+    var now = Date.now();
+    var _rel = function(iso) {
+      if (!iso) return '';
+      var diff = Math.floor((now - new Date(iso).getTime()) / 1000);
+      if (diff < 60) return 'Just now';
+      if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+      var d = Math.floor(diff/86400); return d + 'd ago';
+    };
+    var _repN = function(id){ return CONFIG.REP_DISPLAY_NAMES[id] || id || '?'; };
+    if (!data.length) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No transfers for this team yet.</div>';
+      return;
+    }
+    var hdr = '<div style="display:grid;grid-template-columns:75px 1fr 85px 16px 85px 1fr;gap:6px;padding:3px 8px;font-family:var(--mono);font-size:9px;letter-spacing:0.08em;color:var(--text-3);margin-bottom:4px">'
+      + '<span>WHEN</span><span>ACCOUNT</span><span>FROM</span><span></span><span>TO</span><span>NOTE</span></div>';
+    var rows_html = data.slice(0, 100).map(function(r){
+      return '<div style="display:grid;grid-template-columns:75px 1fr 85px 16px 85px 1fr;gap:6px;align-items:center;padding:6px 8px;background:var(--s0);border:1px solid var(--border);margin-bottom:2px;font-size:11px">'
+        + '<span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">' + _rel(r[0]) + '</span>'
+        + '<span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(r[1]||'') + '">' + escHtml(r[1]||'') + '</span>'
+        + '<span style="font-family:var(--mono);font-size:10px;color:var(--red)">' + escHtml(_repN(r[2])) + '</span>'
+        + '<span style="color:var(--text-3);text-align:center">&#8594;</span>'
+        + '<span style="font-family:var(--mono);font-size:10px;color:var(--green)">' + escHtml(_repN(r[3])) + '</span>'
+        + '<span style="font-size:10px;color:var(--text-3);font-style:italic">' + escHtml(r[5]||'') + '</span>'
+        + '</div>';
+    }).join('');
+    el.innerHTML = '<div style="font-family:var(--mono);font-size:10px;color:var(--text-3);margin-bottom:8px">'
+      + data.length + ' transfer' + (data.length !== 1 ? 's' : '') + ' on record'
+      + (data.length > 100 ? ' (showing last 100)' : '')
+      + '</div>' + hdr + rows_html
+      + '<button onclick="loadRepTransfers(\'' + (targetId||'rep-transfers-body') + '\')" style="margin-top:10px;padding:5px 12px;background:var(--s1);border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;cursor:pointer;letter-spacing:0.08em">&#8635; REFRESH</button>';
+  } catch(e) {
+    if (el) el.innerHTML = '<div style="font-size:11px;color:var(--red)">Error: ' + escHtml(e.message) + '</div>';
+  }
+}
+
+function renderRepTransfersView() {
+  if (!isAdmin() && !isManager()) { switchView('accounts'); return; }
+  var el = document.getElementById('main-content');
+  el.innerHTML = '<div style="flex:1;overflow-y:auto"><div style="max-width:900px;margin:0 auto;padding:28px 20px">'
+    + '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:6px">ACCOUNT TRANSFERS</div>'
+    + '<div style="font-family:var(--mono);font-size:18px;font-weight:900;color:var(--text);margin-bottom:4px">Rep Assignment Changes</div>'
+    + '<div style="font-size:11px;color:var(--text-3);margin-bottom:24px">Automatically logged every 30 minutes when sales_report.py detects a rep change in the CRM. Shows the account name, which rep it moved away from, and which rep it moved to.</div>'
+    + '<div id="rep-transfers-body" style="font-size:11px">Loading&#8230;</div>'
+    + '</div></div>';
+  loadRepTransfers('rep-transfers-body');
 }
 
 function confirmForceLogoutAll() {
@@ -4697,6 +4776,7 @@ function switchView(view) {
     teamProfile: () => renderTeamProfile(),
     managerHub:  () => renderManagerHub(),
     managerGuide: () => renderManagerGuide(),
+    repTransfers: () => renderRepTransfersView(),
     followup:    () => {
       if (state.cacheLoaded && state.accounts && state.accounts.length > 0) {
         // Data already ready — render immediately
@@ -16165,6 +16245,12 @@ function renderManagerGuide() {
     '<div style="font-size:20px;margin-bottom:8px">&#9638;</div>' +
     '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px">Dashboard</div>' +
     '<div style="font-size:11px;color:var(--text-3);line-height:1.5">GP trends, revenue by product category, top accounts.</div>' +
+    '</div>' +
+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;cursor:pointer" onclick="switchView(\'repTransfers\')">' +
+    '<div style="font-size:20px;margin-bottom:8px">&#8644;</div>' +
+    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px">Account Transfers</div>' +
+    '<div style="font-size:11px;color:var(--text-3);line-height:1.5">Log of accounts that changed rep in the CRM. Auto-detected every 30 min.</div>' +
     '</div>' +
 
     '</div>' + // end grid

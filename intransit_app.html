@@ -4778,13 +4778,13 @@ function getViewAccounts() {
   // View-as-rep / manager filter — track repFilter for CRM merge
   let _repFilter = null, _repList = null;
   if (state.viewAsRep === '__TEAM_ALL__' || state.viewAsRep === 'MX_TEAM') {
-    if (!isAdmin()) {
-      // Managers see their configured team only
+    if (!isAdmin() || state.viewingAsManager) {
+      // Managers (and admin simulating a manager view) see their configured team only
       const _mgrCfg = getManagerConfig();
       _repList = _mgrCfg ? _mgrCfg.teamReps : [];
       accs = accs.filter(function(a){ return _repList.includes(a.rep); });
     }
-    // Admin in team view sees ALL reps including FJohn and Anolan — no filter
+    // Admin in own all-reps view sees everyone including FJohn and Anolan — no filter
   } else if (state.viewAsRep) {
     _repFilter = state.viewAsRep;
     accs = accs.filter(function(a){ return a.rep === state.viewAsRep; });
@@ -4888,6 +4888,58 @@ function normDate(str) {
 // ══════════════════════════════════════════════════════════
 //  RENDER — ACCOUNTS VIEW
 // ══════════════════════════════════════════════════════════
+function mgrComposeRepMessage() {
+  var repId = state.viewAsRep;
+  if (!repId || repId === '__TEAM_ALL__') return;
+  var repName = getRepDisplayName(repId);
+  var _repEmails = {
+    CKaren:'kmancebo@intransittech.com', BillP:'bill.pratt@intransittech.com',
+    PIan:'ian.pitman@intransittech.com', RMauricio:'mauricio.rangel@intransittech.com',
+    LMancera:'lmancera@intransittech.com', bcastor:'brandonar@intransittech.com',
+    FJohn:'john.fluman@intransittech.com', Anolan:'anolan@intransittech.com'
+  };
+  var repEmail = _repEmails[repId] || '';
+  var accs = (state.filteredAccounts || []).filter(function(a){ return a.rep === repId; });
+  var hiRisk = accs.filter(function(a){ return isInactive(a) || isDeclining(a) || (a.risk && /high/i.test(a.risk)); });
+  var list = (hiRisk.length > 0 ? hiRisk : accs).slice(0, 25);
+  var bodyLines = 'Hi ' + repName + ',\n\nI wanted to follow up on the accounts below that need attention:\n\n';
+  list.forEach(function(a) {
+    var days = a.lastSaleDate ? Math.floor((Date.now() - new Date(a.lastSaleDate)) / 86400000) : null;
+    bodyLines += '• ' + (a.name || '') + (a.status ? ' [' + a.status + ']' : '') + (days ? ' — ' + days + ' days since last order' : '') + '\n';
+  });
+  bodyLines += '\nCould you share a quick update on these? What\'s the current situation and what’s the plan to re-engage?\n\nThank you';
+  var subject = 'Account Follow-up — ' + list.length + ' account' + (list.length !== 1 ? 's' : '') + ' need attention';
+  var existing = document.getElementById('mgr-msg-modal');
+  if (existing) existing.remove();
+  var modal = document.createElement('div');
+  modal.id = 'mgr-msg-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML =
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:8px;width:600px;max-width:95vw;max-height:90vh;overflow-y:auto;padding:24px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+    '<div style="font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:0.06em">&#9993; MESSAGE TO ' + escHtml(repName.toUpperCase()) + '</div>' +
+    '<button onclick="document.getElementById(\'mgr-msg-modal\').remove()" style="background:transparent;border:none;color:var(--text-3);font-size:18px;cursor:pointer;line-height:1">&#10005;</button>' +
+    '</div>' +
+    '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono);margin-bottom:3px">TO</div>' +
+    '<div style="font-family:var(--mono);font-size:12px;color:var(--text-2);margin-bottom:14px">' + escHtml(repEmail || '(email not found)') + '</div>' +
+    '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono);margin-bottom:3px">SUBJECT</div>' +
+    '<input id="mgr-msg-subject" value="' + escHtml(subject) + '" style="width:100%;box-sizing:border-box;background:var(--s0);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:4px;font-size:12px;margin-bottom:12px">' +
+    '<div style="font-size:10px;color:var(--text-3);font-family:var(--mono);margin-bottom:3px">MESSAGE <span style="color:var(--text-muted)">(' + list.length + ' accounts listed' + (hiRisk.length > 0 ? ', high-risk filter applied' : '') + ')</span></div>' +
+    '<textarea id="mgr-msg-body" style="width:100%;box-sizing:border-box;background:var(--s0);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:4px;font-size:12px;font-family:inherit;min-height:260px;resize:vertical;line-height:1.65">' + escHtml(bodyLines) + '</textarea>' +
+    '<div style="display:flex;gap:10px;margin-top:14px">' +
+    '<button id="mgr-msg-open-btn" style="flex:1;background:var(--blue-b);border:none;color:#fff;padding:10px;border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.04em">&#9993; OPEN IN EMAIL APP</button>' +
+    '<button onclick="navigator.clipboard.writeText(document.getElementById(\'mgr-msg-body\').value).then(function(){showToast(\'Copied to clipboard\',\'success\')})" style="background:transparent;border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:11px">&#128203; COPY</button>' +
+    '</div></div>';
+  document.body.appendChild(modal);
+  var _email = repEmail;
+  document.getElementById('mgr-msg-open-btn').onclick = function() {
+    var s = document.getElementById('mgr-msg-subject').value;
+    var b = document.getElementById('mgr-msg-body').value;
+    window.open('mailto:' + encodeURIComponent(_email) + '?subject=' + encodeURIComponent(s) + '&body=' + encodeURIComponent(b), '_blank');
+  };
+  modal.onclick = function(e){ if (e.target === modal) modal.remove(); };
+}
+
 function renderAccountsView() {
   const accs = getViewAccounts();
   state.filteredAccounts = accs;
@@ -4904,6 +4956,7 @@ function renderAccountsView() {
         <button onclick="sortAccountList('total')" id="sort-total" class="sort-btn">VALUE</button>
         <button onclick="sortAccountList('daysInactive')" id="sort-daysInactive" class="sort-btn">INACTIVE</button>
         <button onclick="sortAccountList('status')" id="sort-status" class="sort-btn">STATUS</button>
+        ${((isManager() || (isAdmin() && state.viewingAsManager)) && state.viewAsRep && state.viewAsRep !== '__TEAM_ALL__') ? '<button onclick="mgrComposeRepMessage()" style="margin-left:auto;background:var(--blue-b);border:none;color:#fff;padding:4px 12px;border-radius:var(--r);font-family:var(--mono);font-size:9px;cursor:pointer;letter-spacing:0.05em">&#9993;&nbsp;MSG&nbsp;' + escHtml(getRepDisplayName(state.viewAsRep).toUpperCase()) + '</button>' : ''}
       </div>
       <div class="table-wrap">
         <table>
@@ -8320,7 +8373,7 @@ function renderPoolManagementView() {
   // FJohn and Anolan are always excluded from non-admin pool views —
   // even if they appear in a manager's teamReps config.
   var _poolExclude = ['FJohn', 'Anolan'];
-  var teamReps = isAdmin()
+  var teamReps = (isAdmin() && !state.viewingAsManager)
     ? (CONFIG.REPS||[])
     : (mgrCfg ? mgrCfg.teamReps : (CONFIG.REPS||[])).filter(function(r){ return _poolExclude.indexOf(r) === -1; });
   var repNames  = CONFIG.REP_DISPLAY_NAMES || {};

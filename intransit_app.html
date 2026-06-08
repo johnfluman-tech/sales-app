@@ -3873,6 +3873,16 @@ async function renderAdminPanelView() {
     '<button onclick="ipManagerApprove(document.getElementById(\'ip-manual-input\').value)" style="background:#16a34a;color:#fff;border:none;padding:8px 16px;border-radius:var(--r);cursor:pointer;font-size:11px;font-weight:700;letter-spacing:0.05em">APPROVE</button>' +
     '</div></div></div>' +
 
+    // Who is Online
+    '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px;margin-bottom:20px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+    '<div style="font-size:14px;font-weight:700;letter-spacing:0.04em">&#128100; WHO IS ONLINE</div>' +
+    '<button onclick="loadActiveUsers()" style="background:transparent;border:1px solid var(--border);color:var(--text-3);padding:4px 12px;border-radius:var(--r);font-size:10px;font-family:var(--mono);cursor:pointer;letter-spacing:0.05em">&#8635; REFRESH</button>' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--text-3);margin-bottom:16px">Users active in the last 3 minutes shown as online. Heartbeat updates every 60 seconds — use Refresh to get the latest.</div>' +
+    '<div id="active-users-section">Loading&#8230;</div>' +
+    '</div>' +
+
     // Gmail settings
     '<div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
@@ -3888,6 +3898,7 @@ async function renderAdminPanelView() {
 
     '</div>';
   await ipManagerRefresh();
+  loadActiveUsers();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -16049,6 +16060,7 @@ function renderManagerGuide() {
   }
 
   var html =
+    '<div style="flex:1;overflow-y:auto">' +
     '<div style="max-width:720px;margin:0 auto;padding:28px 20px">' +
     '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:6px">MANAGER GUIDE</div>' +
     '<div style="font-family:var(--mono);font-size:18px;font-weight:900;color:var(--text);margin-bottom:4px">' + teamName + '</div>' +
@@ -16108,7 +16120,7 @@ function renderManagerGuide() {
     '<b style="font-family:var(--mono)">Tip:</b> Use the <b>View As</b> dropdown at the top of the sidebar to switch between seeing the full team and drilling into a single rep\'s accounts, notes, and follow-ups.' +
     '</div>' +
 
-    '</div>';
+    '</div></div>';
 
   document.getElementById('main-content').innerHTML = html;
 }

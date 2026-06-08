@@ -4304,7 +4304,7 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
   try {
     const _ssTok = sessionStorage.getItem('it_ss_token') || '';
     const res = await fetch(url, {
-      headers: { 'X-Google-Token': state.accessToken, 'X-Session-Token': _ssTok },
+      headers: { 'X-Session-Token': _ssTok },
       credentials: 'include'
     });
     if (!res.ok) {
@@ -4362,7 +4362,7 @@ async function sheetsUpdateIn(spreadsheetId, range, values) {
   const url = CONFIG.WORKER_URL + '/sheets/' + spreadsheetId + '/values/' + encodeURIComponent(range) + '?valueInputOption=USER_ENTERED';
   const res = await fetch(url, {
     method: 'PUT',
-    headers: { 'X-Google-Token': state.accessToken, 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
+    headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ values })
   });
@@ -4378,7 +4378,7 @@ async function sheetsUpdate(range, values, spreadsheetId) {
   const url = CONFIG.WORKER_URL + '/sheets/' + sid + '/values/' + encodeURIComponent(range) + '?valueInputOption=USER_ENTERED';
   const res = await fetch(url, {
     method: 'PUT',
-    headers: { 'X-Google-Token': state.accessToken, 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
+    headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ values })
   });
@@ -4394,7 +4394,7 @@ async function sheetsAppend(range, values, spreadsheetId) {
   const url = CONFIG.WORKER_URL + '/sheets/' + sid + '/values/' + encodeURIComponent(range) + ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'X-Google-Token': state.accessToken, 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
+    headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ values })
   });
@@ -5860,7 +5860,6 @@ async function checkIPAndProceed() {
   state.userIP = 'unknown';
   try {
     const _gr = await fetch(CONFIG.WORKER_URL + '/geoip', {
-      headers: { 'X-Google-Token': state.accessToken },
       signal: AbortSignal.timeout(5000)
     });
     if (_gr.ok) {
@@ -5921,7 +5920,6 @@ async function logAccessEntry(locationClaim) {
   if (ipAddress === 'unknown') {
     try {
       const geoRes = await fetch(CONFIG.WORKER_URL + '/geoip', {
-        headers: { 'X-Google-Token': state.accessToken },
         signal: AbortSignal.timeout(4000)
       });
       if (geoRes.ok) {
@@ -5977,7 +5975,7 @@ async function logAccessEntry(locationClaim) {
       try {
         await fetch(CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + ':batchUpdate', {
           method:'POST',
-          headers:{ 'X-Google-Token': state.accessToken, 'Content-Type':'application/json' },
+          headers:{ 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type':'application/json' },
           credentials: 'include',
           body: JSON.stringify({ requests:[{ addSheet:{ properties:{ title:'_ACCESS_LOG' } } }] })
         });
@@ -6085,7 +6083,7 @@ async function checkUnusualActivity() {
     alerts.forEach(a => {
       fetch(CONFIG.WORKER_URL + '/send-alert', {
         method: 'POST',
-        headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
+        headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           to: 'john.fluman@intransittech.com',
@@ -7924,7 +7922,7 @@ async function _poolCreateTabAndWrite(records) {
     var createUrl = CONFIG.WORKER_URL + '/sheets/' + sid + ':batchUpdate';
     await fetch(createUrl, {
       method: 'POST',
-      headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
+      headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ requests: [{ addSheet: { properties: { title: '_POOL_MANAGED' } } }] })
     });
@@ -13546,7 +13544,8 @@ async function saveSignature() {
         const createUrl = CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + ':batchUpdate';
         const createRes = await fetch(createUrl, {
           method: 'POST',
-          headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
+          headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ requests: [{ addSheet: { properties: { title: '_SIGNATURES' } } }] })
         });
         const createData = await createRes.json();
@@ -15084,7 +15083,7 @@ function getAnthropicKey() {
 async function callAI(payload) {
   const res = await fetch(CONFIG.WORKER_URL + '/ai', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': state.accessToken, 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' },
+    headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' },
     credentials: 'include',
     body: JSON.stringify(payload)
   });
@@ -15375,7 +15374,7 @@ async function saveAttackPlan(rep, cards) {
       try {
         await fetch(CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + ':batchUpdate', {
           method: 'POST',
-          headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
+          headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ requests:[{ addSheet:{ properties:{ title:'_ATTACK_PLAN' } } }] })
         });
@@ -18225,7 +18224,8 @@ async function apkApproveGlobalRemove(name, reason, requestRow) {
         const createUrl = CONFIG.WORKER_URL + '/sheets/' + sid + ':batchUpdate';
         await fetch(createUrl, {
           method: 'POST',
-          headers: { 'X-Google-Token': state.accessToken, 'Content-Type': 'application/json' },
+          headers: { 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ requests: [{ addSheet: { properties: { title: '_POOL_REMOVED' } } }] })
         });
       } catch(ce) { /* tab may have been created by another call */ }
@@ -23008,7 +23008,8 @@ async function submitSuggestion() {
     sheetsAppend("'_SUGGESTIONS'!A1", [[dateStr, repName, page, _suggestCat, desc, 'New']], CONFIG.HISTORY_SPREADSHEET_ID).catch(function(){});
     fetch(CONFIG.WORKER_URL + '/send-alert', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-Google-Token': state.accessToken},
+      headers: {'Content-Type': 'application/json', 'X-Session-Token': sessionStorage.getItem('it_ss_token') || ''},
+      credentials: 'include',
       body: JSON.stringify({
         to: 'john.fluman@intransittech.com',
         subject: 'New Feedback: ' + _suggestCat + ' from ' + repName,

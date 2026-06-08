@@ -4105,7 +4105,16 @@ async function loadActiveUsers() {
       + '<button onclick="confirmForceLogoutAll()" style="padding:5px 12px;background:transparent;border:1px solid rgba(239,68,68,0.4);color:var(--red);font-family:var(--font-mono);font-size:9px;cursor:pointer;letter-spacing:0.08em">⏏ LOG OFF ALL</button>'
       + '<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-left:auto">auto-refreshes every 60s</span>'
       + '</div>';
-  } catch(e) { if (el) el.innerHTML = '<div style="font-size:11px;color:var(--red)">Failed to load: ' + escHtml(e.message) + '</div>'; }
+  } catch(e) {
+    if (el) {
+      var _auMsg = e.message || '';
+      if (_auMsg.includes('INVALID_ARGUMENT') || _auMsg.includes('Unable to parse range')) {
+        el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No data yet — tab will be created automatically after the first user logs in and their heartbeat fires (every 60s).</div>';
+      } else {
+        el.innerHTML = '<div style="font-size:11px;color:var(--red)">Failed to load: ' + escHtml(_auMsg) + '</div>';
+      }
+    }
+  }
 }
 
 async function loadRepTransfers(targetId) {
@@ -4159,7 +4168,15 @@ async function loadRepTransfers(targetId) {
       + '</div>' + hdr + rows_html
       + '<button onclick="loadRepTransfers(\'' + (targetId||'rep-transfers-body') + '\')" style="margin-top:10px;padding:5px 12px;background:var(--s1);border:1px solid var(--border);color:var(--text-3);font-family:var(--mono);font-size:9px;cursor:pointer;letter-spacing:0.08em">&#8635; REFRESH</button>';
   } catch(e) {
-    if (el) el.innerHTML = '<div style="font-size:11px;color:var(--red)">Error: ' + escHtml(e.message) + '</div>';
+    if (el) {
+      var _rtMsg = e.message || '';
+      if (_rtMsg.includes('INVALID_ARGUMENT') || _rtMsg.includes('Unable to parse range')) {
+        el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No transfers logged yet. Will appear here once sales_report.py detects a rep change in the CRM (checks every 30 min).</div>';
+        state.repTransfersCache = [];
+      } else {
+        el.innerHTML = '<div style="font-size:11px;color:var(--red)">Error: ' + escHtml(_rtMsg) + '</div>';
+      }
+    }
   }
 }
 
@@ -4777,6 +4794,7 @@ function switchView(view) {
     managerHub:  () => renderManagerHub(),
     managerGuide: () => renderManagerGuide(),
     repTransfers: () => renderRepTransfersView(),
+    collAccountability: () => renderCollectionsAccountabilityView(),
     followup:    () => {
       if (state.cacheLoaded && state.accounts && state.accounts.length > 0) {
         // Data already ready — render immediately
@@ -13765,6 +13783,230 @@ function getDisclaimer() {
   const email = (repId && repEmails[repId]) || state.user?.email || 'john.fluman@intransittech.com';
   return `CONFIDENTIALITY NOTICE: This email and any attachments are intended solely for the named recipient(s) and may contain confidential, proprietary, or legally privileged information belonging to Intransit Technologies Corp. Unauthorized review, use, disclosure, dissemination, or copying of this communication is strictly prohibited. If you have received this message in error, please notify the sender immediately at ${email}, permanently delete this message and all copies from your system, and do not retain, print, or forward any portion of its contents. Thank you.`;
 }
+function renderCollectionsAccountabilityView() {
+  if (!isAdmin() && !isManager()) { switchView('accounts'); return; }
+  var el = document.getElementById('main-content');
+
+  // Determine which reps to show
+  var mgrCfg = getManagerConfig();
+  var teamReps = mgrCfg ? mgrCfg.teamReps.slice()
+    : (isAdmin() ? (CONFIG.REPS || []).filter(function(r){ return r !== 'FJohn' && r !== 'Anolan'; })
+                 : []);
+  var repNames = CONFIG.REP_DISPLAY_NAMES || {};
+  var repEmailMap = {
+    CKaren:'kmancebo@intransittech.com', BillP:'bill.pratt@intransittech.com',
+    PIan:'ian.pitman@intransittech.com', RMauricio:'mauricio.rangel@intransittech.com',
+    LMancera:'lmancera@intransittech.com', bcastor:'brandonar@intransittech.com'
+  };
+
+  // Index notes by account name (lowercase) → most recent note per account per rep
+  var notesRows = Array.isArray(state.contactNotesCache) ? state.contactNotesCache.slice(1) : [];
+  var notesByAcc = {};
+  notesRows.forEach(function(r) {
+    var key = (r[0] || '').toLowerCase().trim();
+    if (!notesByAcc[key]) notesByAcc[key] = [];
+    var dt = r[4] ? new Date(r[4]).getTime() : 0;
+    notesByAcc[key].push({ date: dt, rep: r[5] || '', note: (r[3] || '').slice(0, 80) });
+  });
+
+  var now = Date.now();
+  var D30 = 30 * 86400000;
+  var D90 = 90 * 86400000;
+
+  function _rel(ms) {
+    if (!ms) return '—';
+    var d = Math.floor((now - ms) / 86400000);
+    if (d === 0) return 'Today';
+    if (d === 1) return 'Yesterday';
+    if (d < 30) return d + 'd ago';
+    if (d < 365) return Math.floor(d / 30) + 'mo ago';
+    return Math.floor(d / 365) + 'y ago';
+  }
+
+  // Collect all accounts with open AR, grouped by rep
+  var byRep = {};
+  teamReps.forEach(function(r) { byRep[r] = { total: 0, accounts: [] }; });
+
+  Object.entries(state.collectionsCache || {}).forEach(function(entry) {
+    var name = entry[0], c = entry[1];
+    if (!c || c.balance <= 0) return;
+    var rep = (c.salesRep || '').trim();
+    if (!rep) {
+      var acc = (state.accounts || []).find(function(a) { return a.name.trim() === name.trim(); });
+      rep = acc ? (acc.rep || '') : '';
+    }
+    if (!byRep[rep]) return; // not in this team
+    var accObj = (state.accounts || []).find(function(a) { return a.name.trim() === name.trim(); });
+    var key = name.toLowerCase().trim();
+    var notes = notesByAcc[key] || [];
+    // Sort notes newest-first
+    notes.sort(function(a, b) { return b.date - a.date; });
+    var latestNote = notes[0] || null;
+    var noteAge = latestNote ? now - latestNote.date : null;
+
+    // Follow-up date
+    var fuRaw = accObj ? (accObj.followUpDate || '') : '';
+    var fuTs = fuRaw ? new Date(fuRaw).getTime() : 0;
+    var fuIsValid = fuTs > 0 && new Date(fuRaw).getFullYear() > 1970;
+
+    // Status:
+    // good = note within 30d OR future follow-up scheduled
+    // warn = note 30-90d ago, no follow-up
+    // none = no note within 90d, no follow-up
+    var status;
+    if (noteAge !== null && noteAge < D30) {
+      status = 'good';
+    } else if (fuIsValid && fuTs > now) {
+      status = 'good';
+    } else if (fuIsValid && fuTs > now - D30) {
+      status = 'good'; // follow-up happened recently
+    } else if (noteAge !== null && noteAge < D90) {
+      status = 'warn';
+    } else {
+      status = 'none';
+    }
+
+    byRep[rep].total += c.balance;
+    byRep[rep].accounts.push({
+      name: name, balance: c.balance, risk: c.risk || '', appHold: c.appHold || '',
+      daysPastDue: c.daysPastDue || 0, terms: c.terms || '',
+      noteAge: noteAge, noteText: latestNote ? latestNote.note : '',
+      fuRaw: fuIsValid ? fuRaw : '', fuTs: fuIsValid ? fuTs : 0,
+      status: status
+    });
+  });
+
+  // Overall stats
+  var grandTotal = 0, grandCount = 0, grandGood = 0, grandNone = 0;
+  teamReps.forEach(function(r) {
+    var g = byRep[r]; if (!g) return;
+    grandTotal += g.total;
+    grandCount += g.accounts.length;
+    grandGood  += g.accounts.filter(function(a){ return a.status === 'good'; }).length;
+    grandNone  += g.accounts.filter(function(a){ return a.status === 'none'; }).length;
+  });
+
+  function _statusChip(s) {
+    if (s === 'good') return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0"></span>';
+    if (s === 'warn') return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);flex-shrink:0"></span>';
+    return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0"></span>';
+  }
+
+  function _repSection(repId) {
+    var g = byRep[repId];
+    if (!g || !g.accounts.length) return '';
+    var accs = g.accounts.slice().sort(function(a, b) {
+      // none first, then warn, then good; within each group sort by balance desc
+      var ord = { none: 0, warn: 1, good: 2 };
+      return (ord[a.status] - ord[b.status]) || (b.balance - a.balance);
+    });
+    var good = accs.filter(function(a){ return a.status === 'good'; }).length;
+    var warn = accs.filter(function(a){ return a.status === 'warn'; }).length;
+    var none = accs.filter(function(a){ return a.status === 'none'; }).length;
+    var noFollowUp = accs.filter(function(a){ return a.status === 'none'; });
+
+    var repDisplay = repNames[repId] || repId;
+    var repEmail = repEmailMap[repId] || '';
+
+    var rows = accs.map(function(a) {
+      var riskHtml = a.risk.includes('HIGH') ? '<span style="font-size:9px;font-family:var(--mono);color:var(--red);background:rgba(239,68,68,0.1);padding:1px 5px;border-radius:3px">' + escHtml(a.risk) + '</span>'
+        : a.risk.includes('WATCH') ? '<span style="font-size:9px;font-family:var(--mono);color:var(--gold);background:rgba(245,158,11,0.1);padding:1px 5px;border-radius:3px">' + escHtml(a.risk) + '</span>'
+        : '';
+      var holdHtml = a.appHold === 'YES' ? '<span style="font-size:9px;font-family:var(--mono);color:var(--red);margin-left:3px">🔒 HOLD</span>' : '';
+      var noteHtml = a.noteAge !== null
+        ? '<span style="color:var(--text-2)">' + _rel(now - a.noteAge) + '</span>'
+          + (a.noteText ? '<span style="color:var(--text-3);font-size:10px;margin-left:4px;font-style:italic">"' + escHtml(a.noteText) + (a.noteText.length >= 80 ? '…' : '') + '"</span>' : '')
+        : '<span style="color:var(--text-3)">—</span>';
+      var fuHtml = a.fuRaw
+        ? (a.fuTs < now
+            ? '<span style="color:var(--red);font-size:10px">Overdue ' + _rel(a.fuTs) + '</span>'
+            : '<span style="color:var(--green);font-size:10px">Sched ' + new Date(a.fuRaw).toLocaleDateString('en-US', {month:'short',day:'numeric'}) + '</span>')
+        : '<span style="color:var(--text-3)">—</span>';
+      return '<tr style="border-bottom:1px solid var(--border-light)">'
+        + '<td style="padding:7px 10px 7px 8px;width:16px;vertical-align:middle">' + _statusChip(a.status) + '</td>'
+        + '<td style="padding:7px 6px;font-size:12px;font-weight:500;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(a.name) + '">'
+        +   escHtml(a.name) + '</td>'
+        + '<td style="padding:7px 6px;font-family:var(--mono);font-size:11px;font-weight:700;text-align:right;white-space:nowrap">$' + formatNum(a.balance) + '</td>'
+        + '<td style="padding:7px 6px;font-family:var(--mono);font-size:10px;color:var(--text-3);white-space:nowrap">'
+        +   (a.daysPastDue > 0 ? a.daysPastDue + 'd past due' : a.terms || '—') + '</td>'
+        + '<td style="padding:7px 6px">' + riskHtml + holdHtml + '</td>'
+        + '<td style="padding:7px 6px;font-size:11px">' + noteHtml + '</td>'
+        + '<td style="padding:7px 6px;font-size:11px">' + fuHtml + '</td>'
+        + '</tr>';
+    }).join('');
+
+    // Message button — only for accounts with no follow-up
+    var msgBtn = '';
+    if (noFollowUp.length > 0 && repEmail) {
+      var msgLines = 'Hi ' + repDisplay + ',\n\nThe following accounts have open balances with no recent follow-up. Please provide a status update on each:\n\n';
+      noFollowUp.forEach(function(a) {
+        msgLines += '• ' + a.name + ' — $' + formatNum(a.balance) + (a.daysPastDue > 0 ? ' (' + a.daysPastDue + 'd past due)' : '') + '\n';
+      });
+      msgLines += '\nFor each account please share: current contact status, any payment arrangements, and your plan for collection.\n\nThank you';
+      var _subj = encodeURIComponent('Collections Follow-up Required — ' + noFollowUp.length + ' account' + (noFollowUp.length !== 1 ? 's' : ''));
+      var _body = encodeURIComponent(msgLines);
+      msgBtn = '<a href="mailto:' + encodeURIComponent(repEmail) + '?subject=' + _subj + '&body=' + _body + '" '
+        + 'style="display:inline-block;margin-top:10px;background:transparent;border:1px solid var(--red);color:var(--red);padding:5px 14px;border-radius:var(--r);font-family:var(--mono);font-size:10px;text-decoration:none;cursor:pointer;letter-spacing:0.04em">'
+        + '&#9993; Ask ' + escHtml(repDisplay) + ' about ' + noFollowUp.length + ' account' + (noFollowUp.length !== 1 ? 's' : '') + ' with no follow-up</a>';
+    }
+
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:8px;margin-bottom:20px;overflow:hidden">'
+      // Rep header
+      + '<div style="padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)">'
+      + '<div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--text)">' + escHtml(repDisplay) + '</div>'
+      + '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--red);margin-left:auto">$' + formatNum(g.total) + '</div>'
+      + '<div style="font-size:11px;color:var(--text-3)">' + accs.length + ' account' + (accs.length !== 1 ? 's' : '') + '</div>'
+      + '<div style="display:flex;gap:8px;font-family:var(--mono);font-size:10px">'
+      + (good > 0 ? '<span style="color:var(--green)">&#9679; ' + good + ' followed up</span>' : '')
+      + (warn > 0 ? '<span style="color:var(--gold)">&#9679; ' + warn + ' aging</span>' : '')
+      + (none > 0 ? '<span style="color:var(--red)">&#9679; ' + none + ' no activity</span>' : '')
+      + '</div></div>'
+      // Table
+      + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+      + '<thead><tr style="border-bottom:1px solid var(--border)">'
+      + '<th style="padding:5px 8px;font-family:var(--mono);font-size:9px;letter-spacing:0.08em;color:var(--text-3);font-weight:600;text-align:left;width:24px"></th>'
+      + '<th style="padding:5px 6px;font-family:var(--mono);font-size:9px;letter-spacing:0.08em;color:var(--text-3);font-weight:600;text-align:left">ACCOUNT</th>'
+      + '<th style="padding:5px 6px;font-family:var(--mono);font-size:9px;letter-spacing:0.08em;color:var(--text-3);font-weight:600;text-align:right">BALANCE</th>'
+      + '<th style="padding:5px 6px;font-family:var(--mono);font-size:9px;letter-spacing:0.08em;color:var(--text-3);font-weight:600">TERMS</th>'
+      + '<th style="padding:5px 6px;font-family:var(--mono);font-size:9px;letter-spacing:0.08em;color:var(--text-3);font-weight:600">RISK</th>'
+      + '<th style="padding:5px 6px;font-family:var(--mono);font-size:9px;letter-spacing:0.08em;color:var(--text-3);font-weight:600">LAST REP NOTE</th>'
+      + '<th style="padding:5px 6px;font-family:var(--mono);font-size:9px;letter-spacing:0.08em;color:var(--text-3);font-weight:600">FOLLOW-UP</th>'
+      + '</tr></thead>'
+      + '<tbody>' + rows + '</tbody>'
+      + '</table></div>'
+      + (msgBtn ? '<div style="padding:10px 16px 14px">' + msgBtn + '</div>' : '')
+      + '</div>';
+  }
+
+  var teamName = mgrCfg ? mgrCfg.teamName : 'All Reps';
+  var followedPct = grandCount > 0 ? Math.round(grandGood / grandCount * 100) : 0;
+
+  var legend = '<div style="display:flex;gap:16px;font-size:11px;margin-bottom:24px">'
+    + '<span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span>Note in last 30 days or follow-up scheduled</span>'
+    + '<span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:var(--gold);display:inline-block"></span>Note 30–90 days ago, nothing recent</span>'
+    + '<span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block"></span>No activity in 90+ days — needs attention</span>'
+    + '</div>';
+
+  var summaryKpis = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">'
+    + '<div class="stat-card"><div class="stat-label">Total AR Outstanding</div><div class="stat-value red" style="font-size:20px">$' + formatNum(grandTotal) + '</div><div class="stat-sub">' + grandCount + ' accounts</div></div>'
+    + '<div class="stat-card"><div class="stat-label">Followed Up</div><div class="stat-value" style="color:var(--green);font-size:20px">' + grandGood + '</div><div class="stat-sub">' + (grandCount - grandGood) + ' remaining</div></div>'
+    + '<div class="stat-card"><div class="stat-label">No Activity</div><div class="stat-value red" style="font-size:20px">' + grandNone + '</div><div class="stat-sub">need immediate follow-up</div></div>'
+    + '<div class="stat-card"><div class="stat-label">Follow-up Rate</div><div class="stat-value" style="color:' + (followedPct >= 70 ? 'var(--green)' : followedPct >= 40 ? 'var(--gold)' : 'var(--red)') + ';font-size:20px">' + followedPct + '%</div><div class="stat-sub">' + grandGood + ' of ' + grandCount + ' accounts</div></div>'
+    + '</div>';
+
+  var repSections = teamReps.map(_repSection).filter(Boolean).join('') || '<div style="font-size:12px;color:var(--text-3);padding:20px 0">No accounts with open balances found for this team.</div>';
+
+  el.innerHTML = '<div style="flex:1;overflow-y:auto">'
+    + '<div style="max-width:1000px;margin:0 auto;padding:28px 20px">'
+    + '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:4px">COLLECTIONS ACCOUNTABILITY</div>'
+    + '<div style="font-family:var(--mono);font-size:18px;font-weight:900;color:var(--text);margin-bottom:4px">' + escHtml(teamName) + ' — Weekly Review</div>'
+    + '<div style="font-size:11px;color:var(--text-3);margin-bottom:20px">As of ' + new Date().toLocaleDateString('en-US', {weekday:'long',month:'long',day:'numeric',year:'numeric'}) + ' · Shows all accounts with open AR balances and whether the rep has followed up</div>'
+    + summaryKpis
+    + legend
+    + repSections
+    + '</div></div>';
+}
+
 function renderCollectionsView() {
   const content = document.getElementById('main-content');
   const repFilter = isAdmin() ? (state.viewAsRep || null) : state.repId;
@@ -13847,6 +14089,7 @@ function renderCollectionsView() {
           oninput="filterCollections('search',null)"
           style="background:var(--navy-mid);border:1px solid var(--border);color:var(--text);
                  font-family:var(--font-main);font-size:12px;padding:6px 10px;outline:none;margin-left:auto;width:200px">
+        ${(isAdmin() || isManager()) ? '<button onclick="switchView(\'collAccountability\')" style="background:transparent;border:1px solid var(--gold);color:var(--gold);padding:6px 12px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.06em;cursor:pointer;border-radius:var(--r);white-space:nowrap">&#9679;&#9679;&#9679; ACCOUNTABILITY</button>' : ''}
       </div>
 
       <!-- Two-panel layout -->
@@ -16251,6 +16494,12 @@ function renderManagerGuide() {
     '<div style="font-size:20px;margin-bottom:8px">&#8644;</div>' +
     '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px">Account Transfers</div>' +
     '<div style="font-size:11px;color:var(--text-3);line-height:1.5">Log of accounts that changed rep in the CRM. Auto-detected every 30 min.</div>' +
+    '</div>' +
+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;cursor:pointer" onclick="switchView(\'collAccountability\')">' +
+    '<div style="font-size:20px;margin-bottom:8px">&#9679;&#9679;&#9679;</div>' +
+    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px">Collections Accountability</div>' +
+    '<div style="font-size:11px;color:var(--text-3);line-height:1.5">Per-rep open AR with follow-up status. Traffic-light view for weekly/monthly review.</div>' +
     '</div>' +
 
     '</div>' + // end grid

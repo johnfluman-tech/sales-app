@@ -4327,10 +4327,19 @@ async function sheetsGetFrom(spreadsheetId, range, _retry) {
           showToast('Session expired — please sign out and sign back in', 'error');
         }
         if (res.status === 401 && !state._refreshingToken) {
-          showToast('Session expired — signing out, please sign in again.', 'error');
-          if (!_signedOut && !window._autoSignoutPending) {
-            window._autoSignoutPending = true;
-            setTimeout(function(){ window._autoSignoutPending = false; handleSignout(); }, 3000);
+          const _errBody = await res.clone().json().catch(() => ({}));
+          if (_errBody.error === 'IP_NOT_APPROVED') {
+            showAccessBlockedScreen('IP Address Not Approved', _errBody.message || 'Your current IP address is not approved. Please contact your administrator.');
+            if (!_signedOut && !window._autoSignoutPending) {
+              window._autoSignoutPending = true;
+              setTimeout(function(){ window._autoSignoutPending = false; handleSignout(); }, 3000);
+            }
+          } else {
+            showToast('Session expired — signing out, please sign in again.', 'error');
+            if (!_signedOut && !window._autoSignoutPending) {
+              window._autoSignoutPending = true;
+              setTimeout(function(){ window._autoSignoutPending = false; handleSignout(); }, 3000);
+            }
           }
         }
         throw new Error('Sheets API ' + res.status);

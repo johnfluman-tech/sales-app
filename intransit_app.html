@@ -1274,6 +1274,12 @@ body::before {
           <span class="nav-icon">&#128200;</span> Manager Hub
         </div>
       </div>
+      <div class="nav-item" id="nav-manager-guide" data-view="managerGuide" onclick="switchView('managerGuide')"
+           style="display:none;border-left:2px solid var(--gold)">
+        <div class="nav-item-inner">
+          <span class="nav-icon">&#128196;</span> Manager Guide
+        </div>
+      </div>
       <div class="nav-item" id="nav-academy" data-view="academy" onclick="switchView('academy')" style="border-left:2px solid var(--gold)">
         <div class="nav-item-inner">
           <span class="nav-icon">🎓</span> Academy
@@ -3579,6 +3585,8 @@ function completeLogin() {
     document.getElementById('nav-manager-hub').style.display = 'block';
     const _pmNav = document.getElementById('nav-pool-management');
     if (_pmNav) _pmNav.style.display = 'block';
+    const _mgGuide = document.getElementById('nav-manager-guide');
+    if (_mgGuide) _mgGuide.style.display = 'block';
   }
   if (isManager()) {
     document.getElementById('view-as-section').style.display = 'block';
@@ -4677,6 +4685,7 @@ function switchView(view) {
     teamNotes:   () => renderTeamNotes(),
     teamProfile: () => renderTeamProfile(),
     managerHub:  () => renderManagerHub(),
+    managerGuide: () => renderManagerGuide(),
     followup:    () => {
       if (state.cacheLoaded && state.accounts && state.accounts.length > 0) {
         // Data already ready — render immediately
@@ -16017,6 +16026,91 @@ function renderManagerHub() {
     '</div>' +
     '<div style="flex:1;overflow-y:auto;padding:20px">' + bodyHtml + '</div>' +
     '</div>';
+}
+
+// ── MANAGER GUIDE ──────────────────────────────────────────────────────────────
+
+function renderManagerGuide() {
+  if (!isManager() && !isAdmin()) { switchView('accounts'); return; }
+  var mgrCfg   = getManagerConfig();
+  var teamName = mgrCfg ? mgrCfg.teamName : 'Your Team';
+  var teamReps = mgrCfg ? mgrCfg.teamReps : [];
+  var repNames = teamReps.map(function(r){ return CONFIG.REP_DISPLAY_NAMES[r] || r; }).join(', ');
+
+  function card(icon, title, body, btnLabel, btnView, btnColor) {
+    return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px 22px;margin-bottom:16px">' +
+      '<div style="display:flex;align-items:flex-start;gap:14px">' +
+      '<div style="font-size:26px;line-height:1">' + icon + '</div>' +
+      '<div style="flex:1">' +
+      '<div style="font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:0.08em;color:var(--text);margin-bottom:6px">' + title + '</div>' +
+      '<div style="font-size:12px;color:var(--text-2);line-height:1.65;margin-bottom:12px">' + body + '</div>' +
+      '<button onclick="switchView(\'' + btnView + '\')" style="background:' + (btnColor||'var(--blue-b)') + ';color:#fff;border:none;padding:7px 16px;border-radius:4px;font-family:var(--mono);font-size:11px;letter-spacing:0.06em;cursor:pointer">&#8594; ' + btnLabel + '</button>' +
+      '</div></div></div>';
+  }
+
+  var html =
+    '<div style="max-width:720px;margin:0 auto;padding:28px 20px">' +
+    '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--text-3);margin-bottom:6px">MANAGER GUIDE</div>' +
+    '<div style="font-family:var(--mono);font-size:18px;font-weight:900;color:var(--text);margin-bottom:4px">' + teamName + '</div>' +
+    '<div style="font-size:11px;color:var(--text-3);margin-bottom:28px">Reps: ' + repNames + '</div>' +
+
+    '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">AR &amp; COLLECTIONS</div>' +
+
+    card('💰', 'Customers with overdue invoices',
+      'The <b>Collections</b> page shows every account on your team with an open balance. For each one you can see the assigned rep, total owed, days past due, credit terms, and risk level. Use the <b>View As</b> dropdown in the sidebar to filter down to one rep at a time.',
+      'Open Collections', 'collections', 'var(--red)') +
+
+    '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:10px;margin-top:22px;padding-bottom:6px;border-bottom:1px solid var(--border)">INACTIVE &amp; AT-RISK CUSTOMERS</div>' +
+
+    card('📉', 'See all customers who stopped buying',
+      'Go to <b>Accounts</b> and click the <b>INACTIVE</b> pill at the top of the list. This filters to every account on your team that has gone quiet — showing last sale date, days inactive, and year-by-year revenue so you can see exactly when the relationship dropped off.',
+      'View Inactive Accounts', 'accounts', '#6366f1') +
+
+    card('📅', 'Daily AI-prioritized follow-up list',
+      'The <b>Daily Mission</b> page automatically surfaces the most critical at-risk and overdue accounts for your team each day, ranked by AI. It also shows which reps have follow-ups due. Good starting point before your rep check-ins.',
+      'Open Daily Mission', 'followup', 'var(--gold)') +
+
+    card('🤖', 'Get an AI explanation for a specific account',
+      'Click any account in the accounts list to open it. Look for the <b>AI Advisor</b> panel on the right side and click <b>⚡ Game Plan</b>. It reads the full purchase history and gives a specific assessment of what happened with that customer and what the rep should do next.',
+      'View Accounts', 'accounts', 'var(--green)') +
+
+    '<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.12em;color:var(--text-3);margin-bottom:10px;margin-top:22px;padding-bottom:6px;border-bottom:1px solid var(--border)">OTHER MANAGER TOOLS</div>' +
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;cursor:pointer" onclick="switchView(\'managerHub\')">' +
+    '<div style="font-size:20px;margin-bottom:8px">&#128200;</div>' +
+    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px">Manager Hub</div>' +
+    '<div style="font-size:11px;color:var(--text-3);line-height:1.5">Team scoreboard, performance vs prior year, revenue by rep.</div>' +
+    '</div>' +
+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;cursor:pointer" onclick="switchView(\'teamNotes\')">' +
+    '<div style="font-size:20px;margin-bottom:8px">&#128203;</div>' +
+    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px">Team Notes</div>' +
+    '<div style="font-size:11px;color:var(--text-3);line-height:1.5">All notes left by your reps on their accounts, newest first.</div>' +
+    '</div>' +
+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;cursor:pointer" onclick="switchView(\'poolManagement\')">' +
+    '<div style="font-size:20px;margin-bottom:8px">&#127944;</div>' +
+    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px">Pool Management</div>' +
+    '<div style="font-size:11px;color:var(--text-3);line-height:1.5">Accounts available for reassignment. Approve or deny rep requests.</div>' +
+    '</div>' +
+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;cursor:pointer" onclick="switchView(\'dashboard\')">' +
+    '<div style="font-size:20px;margin-bottom:8px">&#9638;</div>' +
+    '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px">Dashboard</div>' +
+    '<div style="font-size:11px;color:var(--text-3);line-height:1.5">GP trends, revenue by product category, top accounts.</div>' +
+    '</div>' +
+
+    '</div>' + // end grid
+
+    '<div style="margin-top:22px;padding:14px 16px;background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.2);border-radius:6px;font-size:11px;color:var(--text-2);line-height:1.65">' +
+    '<b style="font-family:var(--mono)">Tip:</b> Use the <b>View As</b> dropdown at the top of the sidebar to switch between seeing the full team and drilling into a single rep\'s accounts, notes, and follow-ups.' +
+    '</div>' +
+
+    '</div>';
+
+  document.getElementById('main-content').innerHTML = html;
 }
 
 function _mgrScoreboardHtml(teamReps) {

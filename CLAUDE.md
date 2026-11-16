@@ -115,6 +115,7 @@ AUDIT: 1.7M | CALLNOTE: 908K | REQ: 258K | ORDERHEA: 53K | INVCHEA: 64K | CUSTOM
 | FJohn | John Fluman | Admin |
 | bcastor | Brandon Castor | FJohn |
 | Anolan | Ana Nolan | FJohn |
+| JCordova | Jose Cordova | — (no CRM login yet; on Karen's MX Team since 2026-11-16) |
 
 ---
 
@@ -141,6 +142,7 @@ AUDIT: 1.7M | CALLNOTE: 908K | REQ: 258K | ORDERHEA: 53K | INVCHEA: 64K | CUSTOM
 'lmancera@intransittech.com':   'LMancera',
 'brandonar@intransittech.com':  'bcastor',
 'anolan@intransittech.com':     'Anolan',
+'jose.cordova@intransittech.com': 'JCordova',
 ```
 
 ### Local API
@@ -182,3 +184,52 @@ Last run 2026-05-30: 100% → 66.7% of limit.
 AFL Telecomunicaciones (CUSTOMER_ID 2103, 12132, 12795) has no contacts with EMP_ID set → doesn't appear in ACCOUNT_REP_VIEW → not attributed to any rep.
 BillP placed 56 orders ($98K) for AFL via SALESPERSON_ID.
 Fix: set CONTACT.EMP_ID = 1095 (BillP's EMPLOYEE.ID) on AFL's contacts in the CRM.
+
+---
+
+## Session 2026-11-16 — Opus 5.5 audit, Call Planner, Email Blast, Jose
+
+**Rep added:** `JCordova` = jose.cordova@ → app REPS / display names / REP_EMAIL_MAP / all 3 MANAGER_CONFIG teamReps / MANAGERS.CKaren / MX list / simulate list / disclaimer map; `sales_report.py` ACTIVE_REPS + SQL IN lists. He has no CRM login, so no rep tab and no accounts: he works from calls assigned in Call Planner. If his CRM LOGIN_ID ends up different from `JCordova`, rename it everywhere.
+
+**New: separate `<script>` block at the end of intransit_app.html.** Source is `sales_tools.js`. Edit that file, then replace the last `<script>` block. A bug there cannot blank the main app.
+- **📞 Call Planner** (`switchView('callPlanner')`): TODAY / SUGGESTED / NEXT 14 DAYS / HISTORY.
+  - Suggestions are scored: follow-up due, slipping 45–400 days, declining, revenue, never called. Skips DNC and wrong numbers, calls already scheduled, and anything called in the last 4 days.
+  - Call handling: `tel:` click-to-call (the log opens 1.5 s after dialing), MX local time for +52 numbers, 8 outcomes with an automatic next callback in business days.
+  - Prep and scheduling: 🧠 AI call prep (Spanish opener for MX), Google Calendar link and .ics export, ▶ Power Hour session mode, paste a call list.
+  - Managers: assign calls to a rep (e.g. Karen → Jose), plus a TEAM CALL BOARD with calls, connects, connect %, RFQs, overdue callbacks, and emails per rep.
+  - Every call is also written to `_CONTACT_NOTES` as type `Outcome`.
+- **✉ Email Blast** (`switchView('emailBlast')`):
+  - Audience: scoped accounts × contacts. Filters for segment, minimum revenue, .mx, and skip-recently-emailed. AP/billing addresses and opt-outs are excluded.
+  - Message: EN/ES templates with merge fields `{{first_name|fallback}} {{company}} {{last_order}} {{rep_name}}`, plus AI write / improve / translate, a preview per recipient, and a test send to yourself.
+  - Sending: Gmail **drafts** (the default) or send, one message per recipient, 3 s throttle, max 200. Signature and an opt-out line are added. A RESULTS tab detects replies and has an opt-out button.
+- New History tabs, created automatically and append-only (latest row per ID wins): `_CALL_SCHEDULE`, `_CALL_LOG`, `_BLAST_LOG`, `_EMAIL_OPTOUT`. Every read is filtered with `_permissionScope().matchFn(REP_ID)`.
+- **Setup:** Email Blast needs `https://www.googleapis.com/auth/gmail.compose` on the OAuth consent screen. If it is missing, the 403 toast says so.
+
+**Audit fixes in this version:**
+- 5 `_LOG` request appends (hold / transfer / hide-transfer / global-remove) had no sheet ID, so they went to Main. They now go to History. `renderRemovalsView` / `showTransferRequests` / `_NOTES_BACKUP` now read from History.
+- Capped ranges dropped the NEWEST rows (`_LOG` A1:D5000 force-logout, `_ACCESS_LOG` P500/P2000, `_REQUEST_LOG` H500, `_INVOICE_HISTORY` L60000). They are now open ranges.
+- 55 inline handlers used `escHtml()` inside `onclick="fn('...')"`. The browser decodes `&#39;`, so names like Lowe's broke the button (and it was an XSS vector). New helper `escAttrJs()` = escHtml(escJs()). **Rule: inside inline handlers use escAttrJs, or data-* attributes.**
+- Account objects never had `ytdRevenue`, so the pool YTD filter/sort, AI rep match, and Account Intel (every account showed a 100% decline) were all wrong. `loadAllAccounts` now sets `ytdRevenue` from the current year's column.
+- `checkForceLogout` is throttled to once a minute (it was a full `_LOG` read on every nav click).
+- Unique `schedAdd` IDs (recurring events had shared one ID).
+- Task/schedule modals used a UTC default date (after ~5 pm it showed tomorrow).
+- `showSuggestionModal` → `openSuggestionModal`; `renderAccountList` → `renderAccountsView`; invalid `'📊'` escape fixed.
+- Prospects reload loop for Karen (scope key mismatch).
+- Display names: Lizeth Mancera, Ana Nolan.
+- `sales_report.py`:
+  - `read_notes_from_sheet` now reads History rep tabs first; Main only fills blanks.
+  - `backup_notes_to_sheet` now writes to History.
+  - `push_rep_tab` clears A1:AZ (was A1:Z, which left stale columns past Z).
+  - **RDS02 must re-download it.**
+
+**Known, not fixed:**
+- Every rep downloads company-wide `_GP` / invoices (slow login, and other reps' data is visible in DevTools).
+- Rep tabs load one after another.
+- `saveAttackPlan` overwrite race leaves ghost rows.
+- `_HIDDEN_ACCOUNTS` is keyed by name only.
+- Return requests never leave Pending.
+- Manager Hub / Intel AI output goes into innerHTML unescaped.
+- Notes Feed search fires an AI call on every keystroke.
+- Academy REP READINESS bars are `Math.random()`.
+- `_CUSTOMER_DIRECTORY` excludes rep-owned accounts, so Prospects CRM search finds nothing.
+- `intransit-worker` source on this PC is the May 26 copy and does NOT match the deployed worker (D1, sessions, service account).

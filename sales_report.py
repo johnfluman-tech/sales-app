@@ -28,7 +28,7 @@ HISTORY_SHEET_ID = "192ELLBgiEUZ3z6ytkWXbmA24wS2BjHmclJdf_UF_c24"   # Intransit 
 ACTIVITY_SHEET_ID = "12dJ0eLFQse-_pi1k6rXc25yTkwwYTjMm32v11tGKeRo"  # Intransit Activity Data
 SCOPES           = ["https://www.googleapis.com/auth/spreadsheets"]
 
-ACTIVE_REPS  = ['CKaren', 'BillP', 'PIan', 'RMauricio', 'LMancera', 'bcastor', 'FJohn', 'Anolan']
+ACTIVE_REPS  = ['CKaren', 'BillP', 'PIan', 'RMauricio', 'LMancera', 'bcastor', 'FJohn', 'Anolan', 'JCordova']
 OUTPUT_DIR   = r"C:\scripts\reports"
 TODAY        = date.today()
 MONTH_STR    = TODAY.strftime("%Y-%m")
@@ -71,45 +71,53 @@ def get_sheets_service():
 
 
 def read_notes_from_sheet(service):
-    """Read rep notes from every rep tab in the Sheet. Returns dict keyed by (customer_name, rep)."""
+    """Read rep notes from every rep tab. Returns dict keyed by (customer_name, rep).
+    Since 2026-05-29 the app reads AND writes rep tabs in the HISTORY sheet, so History is
+    the source of truth. The Main sheet copy (frozen at the cell limit) is only used to fill
+    accounts that have no note data in History yet. (Fixed 2026-11-16: previously read Main
+    only, so notes saved in the app were overwritten by stale Main values every run.)"""
     notes = {}
     if service is None:
         return notes
-    try:
-        meta      = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
-        tab_names = [s['properties']['title'] for s in meta['sheets']]
-        for tab in tab_names:
-            if tab.startswith('_') or tab == 'MASTER':
-                continue
-            result = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range=f"'{tab}'!A1:Z5000"
-            ).execute()
-            rows = result.get('values', [])
-            if len(rows) < 2:
-                continue
-            # Find the real header row (the one that contains 'CUSTOMER_NAME')
-            # Rep tabs have 3 instruction/blank rows before the actual column headers
-            header_idx = None
-            for _i, _r in enumerate(rows):
-                if 'CUSTOMER_NAME' in _r:
-                    header_idx = _i
-                    break
-            if header_idx is None:
-                continue
-            headers = rows[header_idx]
-            for row in rows[header_idx + 1:]:
-                row += [''] * (len(headers) - len(row))
-                rec = dict(zip(headers, row))
-                key = (rec.get('CUSTOMER_NAME', '').strip(), rec.get('SALES_REP', '').strip())
-                if not key[0]:
+    for sheet_id, label in ((HISTORY_SHEET_ID, 'History'), (SPREADSHEET_ID, 'Main (fallback)')):
+        added = 0
+        try:
+            tab_names = get_all_tabs(service, sheet_id)
+            for tab in tab_names:
+                if tab not in ACTIVE_REPS:
                     continue
-                notes[key] = {c: rec.get(c, '') for c in PRESERVE_COLS}
-        print(f"  → Read notes for {len(notes)} accounts from Google Sheet.")
-    except Exception as e:
-        print(f"  WARNING: Could not read Sheet notes — {e}")
+                result = service.spreadsheets().values().get(
+                    spreadsheetId=sheet_id,
+                    range=f"'{tab}'!A1:AZ5000"
+                ).execute()
+                rows = result.get('values', [])
+                if len(rows) < 2:
+                    continue
+                header_idx = None
+                for _i, _r in enumerate(rows):
+                    if 'CUSTOMER_NAME' in _r:
+                        header_idx = _i
+                        break
+                if header_idx is None:
+                    continue
+                headers = rows[header_idx]
+                for row in rows[header_idx + 1:]:
+                    row += [''] * (len(headers) - len(row))
+                    rec = dict(zip(headers, row))
+                    key = (rec.get('CUSTOMER_NAME', '').strip(), rec.get('SALES_REP', '').strip())
+                    if not key[0]:
+                        continue
+                    vals = {c: rec.get(c, '') for c in PRESERVE_COLS}
+                    prev = notes.get(key)
+                    if prev is None or not any(str(v).strip() for v in prev.values()):
+                        if prev is None or any(str(v).strip() for v in vals.values()):
+                            notes[key] = vals
+                            added += 1
+        except Exception as e:
+            print(f"  WARNING: Could not read notes from {label} — {e}")
+        print(f"  → Notes from {label}: {added} accounts")
+    print(f"  → Read notes for {len(notes)} accounts total.")
     return notes
-
 
 def ensure_tab_exists(service, tab_name, all_tabs, row_count=5000, sheet_id=None):
     """Create a Sheet tab if it doesn't already exist."""
@@ -140,34 +148,34 @@ def backup_notes_to_sheet(service, all_tabs):
     if service is None:
         return
     try:
-        ensure_tab_exists(service, '_NOTES_BACKUP', all_tabs)
+        ensure_tab_exists(service, '_NOTES_BACKUP', get_all_tabs(service, HISTORY_SHEET_ID), sheet_id=HISTORY_SHEET_ID)
 
         # Check if header exists
         existing = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
+            spreadsheetId=HISTORY_SHEET_ID,
             range="'_NOTES_BACKUP'!A1:A1"
         ).execute()
         if not existing.get('values'):
             header = [['BACKUP_TIMESTAMP', 'CUSTOMER_NAME', 'SALES_REP'] + NOTE_COLS]
             service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
+                spreadsheetId=HISTORY_SHEET_ID,
                 range="'_NOTES_BACKUP'!A1",
                 valueInputOption="RAW",
                 body={"values": header}
             ).execute()
 
         # Read all rep tabs and collect notes that have any content
-        meta      = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
+        meta      = service.spreadsheets().get(spreadsheetId=HISTORY_SHEET_ID).execute()
         tab_names = [s['properties']['title'] for s in meta['sheets']]
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         backup_rows = []
 
         for tab in tab_names:
-            if tab.startswith('_') or tab == 'MASTER':
+            if tab not in ACTIVE_REPS:
                 continue
             result = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range=f"'{tab}'!A1:Z5000"
+                spreadsheetId=HISTORY_SHEET_ID,
+                range=f"'{tab}'!A1:AZ5000"
             ).execute()
             rows = result.get('values', [])
             if len(rows) < 5:
@@ -194,7 +202,7 @@ def backup_notes_to_sheet(service, all_tabs):
 
         if backup_rows:
             service.spreadsheets().values().append(
-                spreadsheetId=SPREADSHEET_ID,
+                spreadsheetId=HISTORY_SHEET_ID,
                 range="'_NOTES_BACKUP'!A1",
                 valueInputOption="RAW",
                 insertDataOption="INSERT_ROWS",
@@ -206,14 +214,14 @@ def backup_notes_to_sheet(service, all_tabs):
 
         # Format the backup tab header row
         backup_sheet_id = None
-        meta2 = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
+        meta2 = service.spreadsheets().get(spreadsheetId=HISTORY_SHEET_ID).execute()
         for s in meta2['sheets']:
             if s['properties']['title'] == '_NOTES_BACKUP':
                 backup_sheet_id = s['properties']['sheetId']
                 break
         if backup_sheet_id is not None:
             service.spreadsheets().batchUpdate(
-                spreadsheetId=SPREADSHEET_ID,
+                spreadsheetId=HISTORY_SHEET_ID,
                 body={"requests": [
                     {"repeatCell": {
                         "range": {"sheetId": backup_sheet_id, "startRowIndex": 0, "endRowIndex": 1},
@@ -290,7 +298,7 @@ def push_rep_tab(service, rep, rep_df, year_list, all_tabs):
 
         service.spreadsheets().values().clear(
             spreadsheetId=HISTORY_SHEET_ID,
-            range=f"'{rep}'!A1:Z5000"
+            range=f"'{rep}'!A1:AZ5000"
         ).execute()
         service.spreadsheets().values().update(
             spreadsheetId=HISTORY_SHEET_ID,
@@ -796,7 +804,7 @@ def push_customer_directory_tab(service, conn, all_tabs):
                        ROW_NUMBER() OVER (PARTITION BY arv.ACCOUNT ORDER BY e.LOGIN_ID) AS rn
                 FROM dbo.ACCOUNT_REP_VIEW arv
                 JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-                WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
             )
             SELECT
                 c.ID            AS CUSTOMER_ID,
@@ -1082,7 +1090,7 @@ def push_collections_invoices_tab(service, all_tabs):
                 (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
                  JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
                  WHERE arv2.ACCOUNT = i.CUSTOMER_ID
-                   AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                   AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
                  ORDER BY e2.LOGIN_ID) AS SALES_REP,
                 c.TERMS                  AS PAYMENT_TERMS,
                 o.ORDER_NUMBER           AS ORDER_NUMBER,
@@ -1096,7 +1104,7 @@ def push_collections_invoices_tab(service, all_tabs):
               AND i.CUSTOMER_ID IN (
                   SELECT arv.ACCOUNT FROM dbo.ACCOUNT_REP_VIEW arv
                   JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-                  WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                  WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
               )
             ORDER BY c.NAME, i.INVOICE_DATE DESC
         """
@@ -1841,7 +1849,7 @@ def main():
                    ROW_NUMBER() OVER (PARTITION BY arv.ACCOUNT ORDER BY e.LOGIN_ID) AS rn
             FROM dbo.ACCOUNT_REP_VIEW arv
             JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-            WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+            WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
         )
         SELECT
             i.INVOICE_DATE,
@@ -1872,7 +1880,7 @@ def main():
           AND ct.CUSTOMER_ID IN (
               SELECT arv.ACCOUNT FROM dbo.ACCOUNT_REP_VIEW arv
               JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-              WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
           )
     """
     contacts_df = pd.read_sql(contact_sql, conn)
@@ -1918,7 +1926,7 @@ def main():
             (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
              JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
              WHERE arv2.ACCOUNT = c.ID
-               AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+               AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
              ORDER BY e2.LOGIN_ID) AS SALES_REP,
             ct.FIRST_NAME,
             ct.LAST_NAME,
@@ -1932,7 +1940,7 @@ def main():
           AND ct.CUSTOMER_ID IN (
               SELECT arv.ACCOUNT FROM dbo.ACCOUNT_REP_VIEW arv
               JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-              WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+              WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
           )
         ORDER BY ct.CUSTOMER_ID, ct.LAST_NAME
     """
@@ -1957,7 +1965,7 @@ def main():
                    ROW_NUMBER() OVER (PARTITION BY arv.ACCOUNT ORDER BY e.LOGIN_ID) AS rn
             FROM dbo.ACCOUNT_REP_VIEW arv
             JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-            WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+            WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
         )
         SELECT TOP 100000
             i.INVOICE_NUMBER,
@@ -2004,7 +2012,7 @@ def main():
                        ROW_NUMBER() OVER (PARTITION BY arv.ACCOUNT ORDER BY e.LOGIN_ID) AS rn
                 FROM dbo.ACCOUNT_REP_VIEW arv
                 JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-                WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
             )
             SELECT
                 i.CUSTOMER_ID,
@@ -2117,7 +2125,7 @@ def main():
         LEFT JOIN dbo.CONTACT ct ON ct.RECNUM = r.CONTACT_ID
         LEFT JOIN dbo.CUSTOMER c  ON c.ID = ct.CUSTOMER_ID
         WHERE r.DATE_ENTERED >= DATEADD(year, -1, GETDATE())
-          AND RTRIM(r.SELLER) IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+          AND RTRIM(r.SELLER) IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
         ORDER BY r.DATE_ENTERED DESC
     """
         reqs_df = pd.read_sql(reqs_sql, conn)
@@ -2142,7 +2150,7 @@ def main():
                 (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
                  JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
                  WHERE arv2.ACCOUNT = c.ID
-                   AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                   AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
                  ORDER BY e2.LOGIN_ID) AS SALES_REP,
                 q.QUOTE_DATE,
                 q.CLOSED,
@@ -2162,7 +2170,7 @@ def main():
               AND c.ID IN (
                   SELECT arv.ACCOUNT FROM dbo.ACCOUNT_REP_VIEW arv
                   JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-                  WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                  WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
               )
             ORDER BY q.QUOTE_DATE DESC
         """
@@ -2185,7 +2193,7 @@ def main():
                 (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
                  JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
                  WHERE arv2.ACCOUNT = c.ID
-                   AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                   AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
                  ORDER BY e2.LOGIN_ID) AS SALES_REP,
                 c.ESTABLISHED,
                 c.NUM_OF_BUYERS,
@@ -2217,7 +2225,7 @@ def main():
             WHERE c.ID IN (
                 SELECT arv.ACCOUNT FROM dbo.ACCOUNT_REP_VIEW arv
                 JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-                WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
             )
         """
         cust_stats_df = pd.read_sql(stats_sql, conn)
@@ -2238,7 +2246,7 @@ def main():
                 (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
                  JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
                  WHERE arv2.ACCOUNT = o.CUSTOMER_ID
-                   AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                   AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
                  ORDER BY e2.LOGIN_ID) AS SALES_REP,
                 o.ORDER_DATE,
                 d.DETAIL_NUMBER,
@@ -2258,7 +2266,7 @@ def main():
             WHERE o.CUSTOMER_ID IN (
                 SELECT arv.ACCOUNT FROM dbo.ACCOUNT_REP_VIEW arv
                 JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-                WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
             )
               AND d.CLOSED = 'N'
               AND d.QTY_NEEDED > 0
@@ -2287,7 +2295,7 @@ def main():
                        ROW_NUMBER() OVER (PARTITION BY arv.ACCOUNT ORDER BY e.LOGIN_ID) AS rn
                 FROM dbo.ACCOUNT_REP_VIEW arv
                 JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-                WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
             )
             SELECT
                 i.INVOICE_DATE,
@@ -2326,7 +2334,7 @@ def main():
                 (SELECT TOP 1 RTRIM(e2.LOGIN_ID) FROM dbo.ACCOUNT_REP_VIEW arv2
                  JOIN dbo.EMPLOYEE e2 ON e2.ID = arv2.SALES_REP
                  WHERE arv2.ACCOUNT = o.CUSTOMER_ID
-                   AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                   AND e2.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
                  ORDER BY e2.LOGIN_ID) AS SALES_REP,
                 CONVERT(VARCHAR(10), o.ORDER_DATE, 120) AS ORDER_DATE,
                 d.FULLPART          AS PART_NUMBER,
@@ -2341,7 +2349,7 @@ def main():
               AND o.CUSTOMER_ID IN (
                   SELECT arv.ACCOUNT FROM dbo.ACCOUNT_REP_VIEW arv
                   JOIN dbo.EMPLOYEE e ON e.ID = arv.SALES_REP
-                  WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan')
+                  WHERE e.LOGIN_ID IN ('CKaren','BillP','PIan','RMauricio','LMancera','bcastor','FJohn','Anolan','JCordova')
               )
         """
         ord_hist_df = pd.read_sql(ord_hist_sql, conn)

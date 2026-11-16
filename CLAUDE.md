@@ -233,3 +233,23 @@ Fix: set CONTACT.EMP_ID = 1095 (BillP's EMPLOYEE.ID) on AFL's contacts in the CR
 - Academy REP READINESS bars are `Math.random()`.
 - `_CUSTOMER_DIRECTORY` excludes rep-owned accounts, so Prospects CRM search finds nothing.
 - `intransit-worker` source on this PC is the May 26 copy and does NOT match the deployed worker (D1, sessions, service account).
+
+---
+
+## ⚠ DEPLOYMENT — how the live app is actually served (verified 2026-11-16)
+- The worker `intransit-worker` serves the app at `/` from **KV namespace `INTRANSIT_HTML` (id cba4f60e10d642819ee53ff20ca4cd05), key `app`**. GitHub Pages only redirects to the worker. **Pushing to GitHub does NOT deploy the app.**
+- Deploy the app: `PUT https://api.cloudflare.com/client/v4/accounts/98f70530e18c5c72458bf52e4b31c80e/storage/kv/namespaces/cba4f60e10d642819ee53ff20ca4cd05/values/app` with the HTML as the body (wrangler OAuth token from `%APPDATA%\xdg.config\.wrangler\config\default.toml`). Before uploading, download the current value and confirm it matches the last commit. If it doesn't, someone deployed without committing; merge first.
+- Worker source is version-controlled in `worker/` (copied from `C:\Users\fluma\intransit-worker\index.js`). `worker/wrangler.toml` has all bindings. The old May copy is useless. Deploy code only, which keeps bindings and secrets: `PUT .../workers/scripts/intransit-worker/content` (multipart, metadata `{"main_module":"index.js"}`).
+
+## Session 2026-11-16 (part 2) — server-side data scoping + remaining audit items
+- **Worker scoping** (`sessionScope`, `repVisible`, `canWriteFor` in worker/index.js):
+  - Who sees what: non-admin sessions get only their own rows; managers (CKaren, CMancilla, MPerezfreye) get `MX_TEAM`; admin gets everything.
+  - Scoped tabs: SCOPED_TABS (`_GP _INVOICE_HISTORY _ORDERS_HISTORY _COLLECTIONS _COLLECTIONS_INVOICES _OPEN_ORDERS _REQS _QUOTES _CONTACTS _CONTACT_REVENUE`) are filtered on `SALES_REP`. A row is hidden only if it belongs to another *app rep*, so unowned/"Imported" rows stay visible for prospecting.
+  - Other reads: another rep's tab returns empty. D1 `/notes` and `/contact-notes` are scoped. `includeGridData` / `values:batchGet` / `ranges=` are blocked for non-admin.
+  - Writes: `/attack-plan`, `/schedule`, and `/notes` POSTs for a rep outside your scope → 403. The attack_plan/schedule DELETE+INSERT now runs in one `DB.batch` (atomic).
+  - **When a rep or team changes, update REP_BY_EMAIL / MX_TEAM / APP_REPS in the worker AND the app config.**
+- App fixes:
+  - Attack Plan sheet mirror reads `A:F` and pads with blank rows (no more ghost cards). Reset also clears D1; before this, a reset plan came back on reload.
+  - Removed the Main-sheet `_SCHEDULE` mirror: it wiped other reps' rows, and Main is full.
+  - RETURN requests leave Pending once a `RETURN_RESOLVED` newer than the request exists.
+  - Academy REP READINESS now shows real data: `_academySyncProgress` appends to History `_ACADEMY_PROGRESS` (TS, REP_ID, EMAIL, LESSONS_DONE, XP, TOTAL_LESSONS), and `_academyFillReadiness` shows lessons done / total and XP. It used to be `Math.random()`.

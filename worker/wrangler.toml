@@ -1,0 +1,42 @@
+name = "intransit-worker"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+# Secrets (set with `wrangler secret put`, NOT stored here):
+#   ANTHROPIC_API_KEY
+#   ANTHROPIC_KEY
+#   GOOGLE_CREDENTIALS
+#   RESEND_API_KEY
+#   SA_EMAIL
+#   SA_PRIVATE_KEY
+#   SESSION_SECRET
+#   SUPABASE_ANON_KEY
+
+[vars]
+ADMIN_EMAIL = "<redacted — see C:\Users\fluma\intransit-worker\wrangler.toml>"
+ALLOWED_MOBILE_EMAILS = "<redacted — see C:\Users\fluma\intransit-worker\wrangler.toml>"
+BUSINESS_END_HOUR = "17"
+BUSINESS_START_HOUR = "7"
+GOOGLE_CLIENT_ID = "379521778420-8gjfdn4ea5knllkdvd675klu80tcl8jb.apps.googleusercontent.com"
+OFFICE_IP = "<redacted — see C:\Users\fluma\intransit-worker\wrangler.toml>"
+TIMEZONE = "America/Los_Angeles"
+
+[[d1_databases]]
+binding = "DB"
+database_id = "d2848032-5390-4918-9808-d88de65acd49"
+database_name = "intransit"
+
+[[kv_namespaces]]
+binding = "INTRANSIT_HTML"
+id = "cba4f60e10d642819ee53ff20ca4cd05"
+
+[[kv_namespaces]]
+binding = "IP_ALLOWLIST"
+id = "1457ffa195454f7a8903c8ac741ea7b5"
+
+[[kv_namespaces]]
+binding = "OFFHOURS_ACCESS"
+id = "4fae6c54cdb34a06967f145a9ed139ce"
+
+[triggers]
+crons = ["0 12 * * *"]

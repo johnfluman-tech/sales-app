@@ -7098,8 +7098,17 @@ async function renderRemovalsView() {
   try {
     const rlRows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_REQUEST_LOG'!A:H");
     const allReqRows = (rlRows || []).slice(1); // skip header row
+    const _retResolvedAt = {};
+    allReqRows.forEach(function(r) {
+      if ((r[1]||'').toUpperCase() !== 'RETURN_RESOLVED') return;
+      const k = (r[2]||'').toLowerCase().trim(); const t = r[0]||'';
+      if (k && (!_retResolvedAt[k] || t > _retResolvedAt[k])) _retResolvedAt[k] = t;
+    });
     returnReqs = allReqRows.filter(function(r) {
-      return (r[1]||'') === 'RETURN' && (!(r[5]||'') || (r[5]||'').toUpperCase() === 'PENDING');
+      if ((r[1]||'') !== 'RETURN') return false;
+      if ((r[5]||'') && (r[5]||'').toUpperCase() !== 'PENDING') return false;
+      const k = (r[2]||'').toLowerCase().trim();
+      return !(_retResolvedAt[k] && _retResolvedAt[k] >= (r[0]||''));   // resolved after it was requested
     }).slice().reverse().slice(0, 30);
     // Build resolved set — any type that has been resolved (DONE/DENIED/APPROVED)
     // Used to filter HOLD/TRANSFER items out of the pending list
@@ -10549,12 +10558,7 @@ async function schedPushToSheets(events) {
     headers: { 'Content-Type': 'application/json', 'X-Session-Token': tok },
     body: JSON.stringify({ rep, events })
   }).catch(function(){});
-  // Sheets mirror (best-effort)
-  try {
-    const rows = [['ID','TYPE','ACCOUNT','CONTACT','EMAIL','DATE','TIME','NOTE','REP','DONE']];
-    events.forEach(e => rows.push([e.id||'',e.type||'',e.accName||'',e.contactName||'',e.contactEmail||'',e.date||'',e.time||'',e.note||'',e.rep||'',e.done?'YES':'']));
-    sheetsUpdate("'_SCHEDULE'!A1", rows, CONFIG.SPREADSHEET_ID).catch(function(){});
-  } catch(e) { /* silent */ }
+  // (Nov 2026) Main-sheet mirror removed: it overwrote all reps' rows with mine and Main is full.
 }
 async function schedLoadFromSheets() {
   const tok = sessionStorage.getItem('it_ss_token') || '';
@@ -15749,7 +15753,7 @@ async function loadAttackPlan(rep) {
 
   // Fallback: Sheets (History sheet — was previously loading from wrong Main sheet)
   try {
-    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A1:F2000");
+    const rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A:F");
     if (rows && rows.length >= 2) {
       const hdrs = rows[0];
       const iRep=hdrs.indexOf('REP'), iName=hdrs.indexOf('ACCOUNT_NAME');
@@ -15781,7 +15785,7 @@ async function saveAttackPlan(rep, cards) {
     let rows = [header];
     let tabExists = false;
     try {
-      const ex = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A1:F2000");
+      const ex = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A:F");
       if (ex && ex.length > 0) { rows = ex; tabExists = true; }
     } catch(e) { tabExists = false; }
 
@@ -15792,6 +15796,10 @@ async function saveAttackPlan(rep, cards) {
       filtered.push([rep, c.name, c.zone, i, acc ? formatNum(acc.total) : '', now]);
     });
 
+    // Pad with blank rows so rows left over from a longer previous plan are cleared
+    // (they used to survive below the new end and come back as ghost/duplicate cards)
+    const _prevLen = rows.length;
+    while (filtered.length < _prevLen) filtered.push(['','','','','','']);
     let saved = false;
     if (tabExists) {
       try {
@@ -18242,12 +18250,19 @@ function apkConfirmReset() {
     else window.apkState[a.name] = 'pool';
   });
   // Clear saved plan in Sheet
-  sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A1:F2000").then(rows => {
+  sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A:F").then(rows => {
     if (rows && rows.length > 1) {
       const f = rows.filter((r, i) => i === 0 || (r[0] || '').trim() !== rep);
+      while (f.length < rows.length) f.push(['','','','','','']);   // clear leftover rows
       sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ATTACK_PLAN'!A1:F" + f.length, f).catch(() => {});
     }
   }).catch(() => {});
+  // D1 is what loadAttackPlan reads first, so the reset must clear it too (it used to come back on reload)
+  fetch(CONFIG.WORKER_URL + '/attack-plan', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '' },
+    body: JSON.stringify({ rep_id: rep, cards: [] })
+  }).catch(function(){});
   localStorage.removeItem('it_attackplan_' + rep);
   const repAccsNew = state.accounts.filter(a => a.rep === rep).sort((a, b) => (b.total || 0) - (a.total || 0));
   const otherAccs = state.accounts.filter(a => a.rep !== rep && isInactive(a)).sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 50);
@@ -19100,6 +19115,43 @@ function academyGetProgress() {
 function academySaveProgress(p) {
   localStorage.setItem('it_academy_progress', JSON.stringify(p));
   academyUpdateBadge();
+  // Sync a progress summary so the admin REP READINESS board shows real data (latest row per rep wins)
+  clearTimeout(window._acadSyncT);
+  window._acadSyncT = setTimeout(function(){ _academySyncProgress(p).catch(function(){}); }, 3000);
+}
+function _academyTotalLessons() {
+  try { return ACADEMY_TRACKS.reduce(function(n, t){ return n + ((t.lessons || []).length); }, 0) || 1; } catch(e) { return 1; }
+}
+async function _academySyncProgress(p) {
+  if (!state.repId || state.viewAsRep) return;   // never record progress while admin is viewing as someone
+  var row = [[new Date().toISOString(), state.repId, (state.user && state.user.email) || '', (p.completedLessons || []).length, p.xp || 0, _academyTotalLessons()]];
+  try {
+    await sheetsAppend("'_ACADEMY_PROGRESS'!A1", row, CONFIG.HISTORY_SPREADSHEET_ID);
+  } catch(e) {
+    try {
+      await fetch(CONFIG.WORKER_URL + '/sheets/' + CONFIG.HISTORY_SPREADSHEET_ID + ':batchUpdate', {
+        method:'POST', credentials:'include',
+        headers:{ 'X-Session-Token': sessionStorage.getItem('it_ss_token') || '', 'Content-Type':'application/json' },
+        body: JSON.stringify({ requests:[{ addSheet:{ properties:{ title:'_ACADEMY_PROGRESS' } } }] })
+      });
+      await sheetsUpdateIn(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACADEMY_PROGRESS'!A1", [['TS','REP_ID','EMAIL','LESSONS_DONE','XP','TOTAL_LESSONS']]);
+      await sheetsAppend("'_ACADEMY_PROGRESS'!A1", row, CONFIG.HISTORY_SPREADSHEET_ID);
+    } catch(e2) { console.warn('[ACADEMY] progress sync failed', e2 && e2.message); }
+  }
+}
+async function _academyFillReadiness() {
+  var rows = [];
+  try { rows = await sheetsGetFrom(CONFIG.HISTORY_SPREADSHEET_ID, "'_ACADEMY_PROGRESS'!A:F"); } catch(e) { rows = []; }
+  var latest = {};
+  rows.slice(1).forEach(function(r){ if (r[1] && (!latest[r[1]] || (r[0]||'') > (latest[r[1]][0]||''))) latest[r[1]] = r; });
+  var total = _academyTotalLessons();
+  document.querySelectorAll('[data-acad-ready]').forEach(function(el){
+    var r = latest[el.getAttribute('data-acad-ready')];
+    var done = r ? (parseInt(r[3]) || 0) : 0, xp = r ? (parseInt(r[4]) || 0) : 0, tot = r ? (parseInt(r[5]) || total) : total;
+    var pct = Math.min(100, Math.round(done * 100 / Math.max(1, tot)));
+    var bar = el.querySelector('.acad-ready-bar'); if (bar) bar.style.width = pct + '%';
+    var lbl = el.querySelector('.acad-ready-lbl'); if (lbl) lbl.textContent = r ? (done + '/' + tot + ' · ' + xp + ' XP') : 'not started';
+  });
 }
 
 function academyUpdateBadge() {
@@ -19232,13 +19284,15 @@ function renderAcademyView() {
   if (isAdmin()) {
     leaderHtml = '<div style="margin-top:12px;padding:10px;background:var(--s2);border-radius:var(--r)">' +
       '<div style="font-family:var(--mono);font-size:9px;color:var(--text-3);letter-spacing:0.1em;margin-bottom:8px">REP READINESS</div>';
-    CONFIG.REPS.forEach(rep => {
-      leaderHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
-        '<span style="font-size:11px;color:var(--text-2);width:70px">' + rep + '</span>' +
-        '<div style="flex:1;height:4px;background:var(--border);border-radius:2px"><div style="height:4px;width:' + Math.floor(Math.random()*60+20) + '%;background:var(--blue-b);border-radius:2px"></div></div>' +
+    CONFIG.REPS.filter(rep => rep !== 'FJohn').forEach(rep => {
+      leaderHtml += '<div data-acad-ready="' + escHtml(rep) + '" style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
+        '<span style="font-size:11px;color:var(--text-2);width:110px">' + escHtml(getRepDisplayName(rep) || rep) + '</span>' +
+        '<div style="flex:1;height:4px;background:var(--border);border-radius:2px"><div class="acad-ready-bar" style="height:4px;width:0%;background:var(--blue-b);border-radius:2px"></div></div>' +
+        '<span class="acad-ready-lbl" style="font-family:var(--mono);font-size:9px;color:var(--text-3);width:110px;text-align:right">…</span>' +
         '</div>';
     });
-    leaderHtml += '</div>';
+    leaderHtml += '<div style="font-size:9px;color:var(--text-3);margin-top:4px">Lessons completed, synced when each rep finishes a lesson</div></div>';
+    setTimeout(function(){ _academyFillReadiness(); }, 50);
   }
 
   // Get lesson content
